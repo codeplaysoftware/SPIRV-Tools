@@ -58,6 +58,8 @@ add_library(SPIRV-Tools-opt
   types.h
   type_manager.h
   unify_const_pass.h
+  dominator_analysis_pass.h
+  dominator_analysis_tree.h
 
   aggressive_dead_code_elim_pass.cpp
   basic_block.cpp
@@ -102,6 +104,8 @@ add_library(SPIRV-Tools-opt
   type_manager.cpp
   unify_const_pass.cpp
   instruction_list.cpp
+  dominator_analysis_pass.cpp
+  dominator_analysis_tree.cpp
 )
 
 spvtools_default_compile_options(SPIRV-Tools-opt)

@@ -204,3 +204,7 @@ add_spvtools_unittest(TARGET ir_context
   LIBS SPIRV-Tools-opt
 )
 
+add_spvtools_unittest(TARGET pass_dominator_analysis
+    SRCS dominator_analysis_pass.cpp
+    LIBS SPIRV-Tools-opt
+)
