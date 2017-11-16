@@ -42,6 +42,21 @@ class DominatorTree {
   // the IDs of A and B
   bool Dominates(uint32_t A, uint32_t B) const;
 
+  bool StrictlyDominates(const ir::BasicBlock* A,
+                         const ir::BasicBlock* B) const;
+
+  bool StrictlyDominates(uint32_t A, uint32_t B) const;
+
+  // Returns the immediate dominator of basicblock A
+  const ir::BasicBlock* GetImmediateDominatorOrNull(
+      const ir::BasicBlock* A) const;
+
+  // Returns the immediate dominator of basicblock A
+  const ir::BasicBlock* GetImmediateDominatorOrNull(uint32_t A) const;
+
+  bool Reachable(const ir::BasicBlock* A) const;
+  bool Reachable(uint32_t A) const;
+
  private:
   struct DominatorTreeNode {
     DominatorTreeNode(const ir::BasicBlock* bb)

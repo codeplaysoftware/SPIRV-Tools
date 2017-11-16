@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "dominator_analysis_tree.h"
+#include "dominator_tree.h"
 #include <iostream>
 #include "cfa.h"
 
@@ -83,6 +83,31 @@ class BasicBlockSuccessorHelper {
   std::map<const ir::BasicBlock*, std::vector<ir::BasicBlock*>> Successors;
   std::map<const ir::BasicBlock*, std::vector<ir::BasicBlock*>> Pred;
 };
+
+const ir::BasicBlock* DominatorTree::GetImmediateDominatorOrNull(
+    uint32_t A) const {
+  auto itr = Nodes.find(A);
+  if (itr != Nodes.end()) {
+    return itr->second.Parent->BB;
+  }
+
+  return nullptr;
+}
+
+const ir::BasicBlock* DominatorTree::GetImmediateDominatorOrNull(
+    const ir::BasicBlock* A) const {
+  return GetImmediateDominatorOrNull(A->id());
+}
+
+bool DominatorTree::StrictlyDominates(uint32_t A, uint32_t B) const {
+  if (A == B) return false;
+  return Dominates(A, B);
+}
+
+bool DominatorTree::StrictlyDominates(const ir::BasicBlock* A,
+                                      const ir::BasicBlock* B) const {
+  return DominatorTree::StrictlyDominates(A->id(), B->id());
+}
 
 bool DominatorTree::Dominates(uint32_t A, uint32_t B) const {
   // Node A dominates node B if they are the same

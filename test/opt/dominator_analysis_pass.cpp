@@ -30,6 +30,15 @@ using ::testing::UnorderedElementsAre;
 
 using PassClassTest = PassTest<::testing::Test>;
 
+const ir::Function* getFromModule(ir::Module* module, uint32_t id) {
+  for (ir::Function& F : *module) {
+    if (F.result_id() == id) {
+      return &F;
+    }
+  }
+  return nullptr;
+}
+
 /*
   Generated from the following GLSL
 #version 440 core
@@ -144,9 +153,30 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
                   SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
-  opt::DominatorAnalysisPass testPass;
-  ir::IRContext context(std::move(module), nullptr);
-  testPass.Process(&context);
+  opt::DominatorAnalysis testPass;
+  testPass.InitializeTree(*module);
+
+  const ir::Function* F = getFromModule(module.get(), 4);
+
+  EXPECT_TRUE(testPass.Dominates(5, 18, F) == true);
+  EXPECT_TRUE(testPass.Dominates(5, 53, F) == true);
+  EXPECT_TRUE(testPass.Dominates(5, 19, F) == true);
+  EXPECT_TRUE(testPass.Dominates(5, 25, F) == true);
+  EXPECT_TRUE(testPass.Dominates(5, 29, F) == true);
+  EXPECT_TRUE(testPass.Dominates(5, 27, F) == true);
+  EXPECT_TRUE(testPass.Dominates(5, 26, F) == true);
+  EXPECT_TRUE(testPass.Dominates(5, 28, F) == true);
+
+  EXPECT_TRUE(testPass.StrictlyDominates(5, 18, F) == true);
+  EXPECT_TRUE(testPass.StrictlyDominates(5, 53, F) == true);
+  EXPECT_TRUE(testPass.StrictlyDominates(5, 19, F) == true);
+  EXPECT_TRUE(testPass.StrictlyDominates(5, 25, F) == true);
+  EXPECT_TRUE(testPass.StrictlyDominates(5, 29, F) == true);
+  EXPECT_TRUE(testPass.StrictlyDominates(5, 27, F) == true);
+  EXPECT_TRUE(testPass.StrictlyDominates(5, 26, F) == true);
+  EXPECT_TRUE(testPass.StrictlyDominates(5, 28, F) == true);
+
+  //  testPass.CheckAllNodesForDomination(*module,std::cout);
 }
 
 }  // namespace

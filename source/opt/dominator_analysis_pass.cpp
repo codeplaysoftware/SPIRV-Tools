@@ -45,6 +45,18 @@ bool DominatorAnalysis::Dominates(uint32_t A, uint32_t B,
   return itr->second.Dominates(A, B);
 }
 
+bool DominatorAnalysis::StrictlyDominates(const ir::BasicBlock* A,
+                                          const ir::BasicBlock* B,
+                                          const ir::Function* F) const {
+  return StrictlyDominates(A->id(), B->id(), F);
+}
+
+bool DominatorAnalysis::StrictlyDominates(uint32_t A, uint32_t B,
+                                          const ir::Function* F) const {
+  auto itr = Trees.find(F);
+  return itr->second.StrictlyDominates(A, B);
+}
+
 void DominatorAnalysis::CheckAllNodesForDomination(
     ir::Module& module, std::ostream& OutStream) const {
   for (ir::Function& F : module) {

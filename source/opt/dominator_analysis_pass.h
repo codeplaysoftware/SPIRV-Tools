@@ -15,7 +15,7 @@
 #ifndef DOMINATOR_ANALYSIS_PASS_H
 #define DOMINATOR_ANALYSIS_PASS_H
 #include <cstdint>
-#include "dominator_analysis_tree.h"
+#include "dominator_tree.h"
 #include "module.h"
 #include "pass.h"
 
@@ -34,6 +34,11 @@ class DominatorAnalysis {
                  const ir::Function* F) const;
 
   bool Dominates(uint32_t A, uint32_t B, const ir::Function* F) const;
+
+  bool StrictlyDominates(const ir::BasicBlock* A, const ir::BasicBlock* B,
+                         const ir::Function* F) const;
+
+  bool StrictlyDominates(uint32_t A, uint32_t B, const ir::Function* F) const;
 
   void CheckAllNodesForDomination(ir::Module& M, std::ostream& OutStream) const;
 
