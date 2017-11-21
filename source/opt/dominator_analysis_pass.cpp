@@ -19,45 +19,58 @@
 namespace spvtools {
 namespace opt {
 
-DominatorAnalysis::DominatorAnalysis() {}
-
 void DominatorAnalysis::InitializeTree(ir::Module& module) {
+  DominatorAnalysisBase::InitializeTree(module);
+}
+
+void PostDominatorAnalysis::InitializeTree(ir::Module& module) {
+  DominatorAnalysisBase::InitializeTree(module);
+}
+
+void DominatorAnalysisBase::InitializeTree(ir::Module& module) {
   for (const ir::Function& func : module) {
     InitializeTree(&func);
   }
 }
 
-void DominatorAnalysis::InitializeTree(const ir::Function* F) {
-  Trees[F] = {};
+void PostDominatorAnalysis::InitializeTree(const ir::Function* F) {
+  Trees[F] = {true};
 
   Trees[F].InitializeTree(F);
   Trees[F].DumpTreeAsDot(std::cout);
 }
 
-bool DominatorAnalysis::Dominates(const ir::BasicBlock* A,
-                                  const ir::BasicBlock* B,
-                                  const ir::Function* F) const {
+void DominatorAnalysis::InitializeTree(const ir::Function* F) {
+  Trees[F] = {false};
+
+  Trees[F].InitializeTree(F);
+  Trees[F].DumpTreeAsDot(std::cout);
+}
+
+bool DominatorAnalysisBase::Dominates(const ir::BasicBlock* A,
+                                      const ir::BasicBlock* B,
+                                      const ir::Function* F) const {
   return Dominates(A->id(), B->id(), F);
 }
-bool DominatorAnalysis::Dominates(uint32_t A, uint32_t B,
-                                  const ir::Function* F) const {
+bool DominatorAnalysisBase::Dominates(uint32_t A, uint32_t B,
+                                      const ir::Function* F) const {
   auto itr = Trees.find(F);
   return itr->second.Dominates(A, B);
 }
 
-bool DominatorAnalysis::StrictlyDominates(const ir::BasicBlock* A,
-                                          const ir::BasicBlock* B,
-                                          const ir::Function* F) const {
+bool DominatorAnalysisBase::StrictlyDominates(const ir::BasicBlock* A,
+                                              const ir::BasicBlock* B,
+                                              const ir::Function* F) const {
   return StrictlyDominates(A->id(), B->id(), F);
 }
 
-bool DominatorAnalysis::StrictlyDominates(uint32_t A, uint32_t B,
-                                          const ir::Function* F) const {
+bool DominatorAnalysisBase::StrictlyDominates(uint32_t A, uint32_t B,
+                                              const ir::Function* F) const {
   auto itr = Trees.find(F);
   return itr->second.StrictlyDominates(A, B);
 }
 
-void DominatorAnalysis::CheckAllNodesForDomination(
+void DominatorAnalysisBase::CheckAllNodesForDomination(
     ir::Module& module, std::ostream& OutStream) const {
   for (ir::Function& F : module) {
     // Skip over empty functions
