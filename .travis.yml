@@ -43,8 +43,7 @@ git:
 
 branches:
   only:
-    - master
-    - /^testing-.*$/
+    - /^testing.*$/
 
 before_install:
   - if [[ "$BUILD_ANDROID_CMAKE" == "ON" ]] || [[ "$BUILD_ANDROID_MK" == "ON" ]]; then

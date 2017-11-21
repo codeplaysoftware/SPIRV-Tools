@@ -18,8 +18,7 @@ configuration:
 
 branches:
   only:
-    - master
-    - /^testing-.*$/
+    - /^testing.*$/
 
 # Travis advances the master-tot tag to current top of the tree after
 # each push into the master branch, because it relies on that tag to
