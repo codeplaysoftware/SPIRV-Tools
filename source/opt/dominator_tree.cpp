@@ -28,8 +28,8 @@ class BasicBlockSuccessorHelper {
   BasicBlockSuccessorHelper(ir::Function* func, bool post) : F(func) {
     GenerateList();
 
-    std::unique_ptr<ir::Instruction> fakeLabel{
-        new ir::Instruction(SpvOp::SpvOpLabel, 0, -1, {})};
+    std::unique_ptr<ir::Instruction> fakeLabel{new ir::Instruction(
+        F->GetParent()->context(), SpvOp::SpvOpLabel, 0, -1, {})};
     FakeStartNode = std::unique_ptr<ir::BasicBlock>(
         new ir::BasicBlock(std::move(fakeLabel)));
     if (post) {
@@ -258,10 +258,6 @@ void DominatorTree::InitializeTree(const ir::Function* F) {
     second->Children.push_back(first);
   }
 
-  //  auto entryItr = Nodes.find(F->entry()->id());
-  // if (entryItr != Nodes.end()) {
-  //    Root = &entryItr->second;
-  // }
   Root = GetOrInsertNode(helper->GetEntryNode());
   // Locate the root of the tree
   int index = 0;
