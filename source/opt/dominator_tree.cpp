@@ -112,15 +112,10 @@ class BasicBlockSuccessorHelper {
   // TODO: As above
   GetBlocksFunction GetSuccessorFunctor() {
     return [&](const ir::BasicBlock* BB) {
-      //   Successors.clear();
-      auto findResult = Successors.find(BB);
-
-      if (findResult != Successors.end()) {
-        return &findResult->second;
-      } else {
-        assert(false);
-      }
+      auto v = &Pred[BB];
+      return v;
     };
+
   }
 
   const ir::BasicBlock* GetEntryNode() const { return FakeStartNode.get(); }
