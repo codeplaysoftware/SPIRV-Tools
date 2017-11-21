@@ -22,11 +22,13 @@
 namespace spvtools {
 namespace opt {
 
+class BasicBlockSuccessorHelper;
 // A class representing a tree of BasicBlocks in a given function, where each
 // node is dominated by its parent.
 class DominatorTree {
  public:
-  DominatorTree() : Root(nullptr){};
+  DominatorTree() : Root(nullptr), PostDominator(false){};
+  DominatorTree(bool post) : Root(nullptr), PostDominator(post){};
 
   bool Validate() const;
 
@@ -83,7 +85,6 @@ class DominatorTree {
   };
 
   // The root of the tree.
-  // TODO: Add multiple roots
   DominatorTreeNode* Root;
 
   // Adds the BasicBlock to the tree structure if it doesn't already exsist
@@ -97,7 +98,6 @@ class DominatorTree {
   // Wrapper functio which gets the list of BasicBlock->DominatingBasicBlock
   // from the CFA and stores it in the edges parameter
   void GetDominatorEdges(
-      const ir::Function* F,
       std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>& edges);
 
   // Pairs each basic block id to the tree node containing that basic block.
@@ -107,6 +107,9 @@ class DominatorTree {
   // vector of each successor node from any give node
   std::map<const DominatorTreeNode*, std::vector<DominatorTreeNode*>>
       Successors;
+
+  // True if this is a post dominator tree
+  bool PostDominator;
 };
 
 }  // ir

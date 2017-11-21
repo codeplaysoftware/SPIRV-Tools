@@ -25,7 +25,75 @@ namespace opt {
 // parts of DFS to avoid needing these functions
 class BasicBlockSuccessorHelper {
  public:
-  BasicBlockSuccessorHelper(ir::Function* func) : F(func) {}
+  BasicBlockSuccessorHelper(ir::Function* func, bool post) : F(func) {
+    GenerateList();
+
+    std::unique_ptr<ir::Instruction> fakeLabel{
+        new ir::Instruction(SpvOp::SpvOpLabel, 0, -1, {})};
+    FakeStartNode = std::unique_ptr<ir::BasicBlock>(
+        new ir::BasicBlock(std::move(fakeLabel)));
+    if (post) {
+      Pred[FakeStartNode.get()] = {};
+      for (auto& pair : Successors) {
+        // If the BasicBlock has noSuccessor then it is a root node
+        if (pair.second.size() == 0) {
+          pair.second.push_back(FakeStartNode.get());
+          Pred[FakeStartNode.get()].push_back(
+              const_cast<ir::BasicBlock*>(pair.first));
+        }
+      }
+
+      Successors[FakeStartNode.get()] = {};
+
+    } else {
+      Successors[FakeStartNode.get()] = {};
+      for (auto& pair : Pred) {
+        // If the BasicBlock has no predecessor the it is a root node
+        if (pair.second.size() == 0) {
+          pair.second.push_back(FakeStartNode.get());
+          Successors[FakeStartNode.get()].push_back(
+              const_cast<ir::BasicBlock*>(pair.first));
+        }
+      }
+
+      Pred[FakeStartNode.get()] = {};
+    }
+  }
+
+  void GenerateList() {
+    for (ir::BasicBlock& _BB : *F) {
+      ir::BasicBlock* BB = &_BB;
+      if (Pred.find(BB) == Pred.end()) {
+        Pred[BB] = {};
+      }
+
+      if (Successors.find(BB) == Successors.end()) {
+        Successors[BB] = {};
+      }
+
+      BB->ForEachSuccessorLabel([&](const uint32_t successorID) {
+        // TODO: If we keep somthing like this, avoid going over the full N
+        // functions each time
+        for (auto itr = F->begin(); itr < F->end(); ++itr) {
+          ir::BasicBlock* bb = &*itr;
+          if (successorID == bb->id()) {
+            Successors[BB].push_back(bb);
+
+            if (Pred.find(bb) == Pred.end()) {
+              Pred[bb] = {};
+            }
+
+            if (std::find(Pred[bb].begin(), Pred[bb].end(), BB) ==
+                Pred[bb].end())
+              Pred[bb].push_back(const_cast<ir::BasicBlock*>(BB));
+
+            // Found the successor node, exit out
+            break;
+          }
+        }
+      });
+    }
+  }
 
   using GetBlocksFunction =
       std::function<const std::vector<ir::BasicBlock*>*(const ir::BasicBlock*)>;
@@ -50,38 +118,20 @@ class BasicBlockSuccessorHelper {
       if (findResult != Successors.end()) {
         return &findResult->second;
       } else {
-        // If we haven't already found a successor add it to the list
-        Successors[BB] = {};
-
-        BB->ForEachSuccessorLabel([&](const uint32_t successorID) {
-
-          // TODO: If we keep somthing like this, avoid going over the full N
-          // functions each time
-          for (auto itr = F->begin(); itr < F->end(); ++itr) {
-            ir::BasicBlock* bb = &*itr;
-            if (successorID == bb->id()) {
-              Successors[BB].push_back(bb);
-
-              if (Pred.find(bb) == Pred.end()) {
-                Pred[bb] = {};
-              }
-
-              if (std::find(Pred[bb].begin(), Pred[bb].end(), BB) ==
-                  Pred[bb].end())
-                Pred[bb].push_back(const_cast<ir::BasicBlock*>(BB));
-            }
-          }
-        });
-
-        return &Successors[BB];
+        assert(false);
       }
     };
   }
+
+  const ir::BasicBlock* GetEntryNode() const { return FakeStartNode.get(); }
 
  private:
   ir::Function* F;
   std::map<const ir::BasicBlock*, std::vector<ir::BasicBlock*>> Successors;
   std::map<const ir::BasicBlock*, std::vector<ir::BasicBlock*>> Pred;
+
+  // By maintaining a fake node which acts as the first entry node we
+  std::unique_ptr<ir::BasicBlock> FakeStartNode;
 };
 
 const ir::BasicBlock* DominatorTree::GetImmediateDominatorOrNull(
@@ -140,7 +190,6 @@ DominatorTree::DominatorTreeNode* DominatorTree::GetOrInsertNode(
 }
 
 void DominatorTree::GetDominatorEdges(
-    const ir::Function* F,
     std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>& edges) {
   // Ignore preorder operation
   auto nop_preorder = [](const ir::BasicBlock*) {};
@@ -156,22 +205,28 @@ void DominatorTree::GetDominatorEdges(
     postorder.push_back(b);
   };
 
-  // TODO: Refactor helper class and get rid of this const cast
-  BasicBlockSuccessorHelper helper{const_cast<ir::Function*>(F)};
-
   // The successor function tells DepthFirstTraversal how to move to successive
   // nodes by providing an interface to get a list of successor nodes from any
   // given node
-  auto successorFunctor = helper.GetSuccessorFunctor();
-  CFA<ir::BasicBlock>::DepthFirstTraversal(F->entry().get(), successorFunctor,
-                                           nop_preorder, postorder_function,
-                                           nop_backedge);
+  auto successorFunctor = helper->GetSuccessorFunctor();
 
   // predecessorFunctor does the same as the successor functor but for all nodes
   // preceding a given node
-  auto predecessorFunctor = helper.GetPredFunctor();
-  edges =
-      CFA<ir::BasicBlock>::CalculateDominators(postorder, predecessorFunctor);
+  auto predecessorFunctor = helper->GetPredFunctor();
+
+  if (PostDominator) {
+    CFA<ir::BasicBlock>::DepthFirstTraversal(helper->GetEntryNode(),
+                                             predecessorFunctor, nop_preorder,
+                                             postorder_function, nop_backedge);
+    edges =
+        CFA<ir::BasicBlock>::CalculateDominators(postorder, successorFunctor);
+  } else {
+    CFA<ir::BasicBlock>::DepthFirstTraversal(helper->GetEntryNode(),
+                                             successorFunctor, nop_preorder,
+                                             postorder_function, nop_backedge);
+    edges =
+        CFA<ir::BasicBlock>::CalculateDominators(postorder, predecessorFunctor);
+  }
 }
 
 void DominatorTree::InitializeTree(const ir::Function* F) {
@@ -179,10 +234,13 @@ void DominatorTree::InitializeTree(const ir::Function* F) {
   if (F->cbegin() == F->cend()) {
     return;
   }
+  // TODO: Refactor helper class and get rid of this const cast
+  helper = new BasicBlockSuccessorHelper(const_cast<ir::Function*>(F),
+                                         PostDominator);
 
   // Get the immedate dominator for each node
   std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>> edges;
-  GetDominatorEdges(F, edges);
+  GetDominatorEdges(edges);
 
   // Transform the vector<pair> into the tree structure which we can use to
   // efficiently query dominace
@@ -200,12 +258,12 @@ void DominatorTree::InitializeTree(const ir::Function* F) {
     second->Children.push_back(first);
   }
 
+  //  auto entryItr = Nodes.find(F->entry()->id());
+  // if (entryItr != Nodes.end()) {
+  //    Root = &entryItr->second;
+  // }
+  Root = GetOrInsertNode(helper->GetEntryNode());
   // Locate the root of the tree
-  auto itr = Nodes.find(F->entry()->id());
-  if (itr != Nodes.end()) {
-    Root = &itr->second;
-  }
-
   int index = 0;
   auto preFunc = [&](const DominatorTreeNode* node) {
     const_cast<DominatorTreeNode*>(node)->DepthFirstInCount = ++index;
@@ -228,9 +286,20 @@ void DominatorTree::DumpTreeAsDot(std::ostream& OutStream) const {
 
   OutStream << "digraph {\n";
   Visit(Root, [&](const DominatorTreeNode* node) {
-    OutStream << node->BB->id() << "[label=\"" << node->BB->id() << "\"];\n";
+
+    // Print the node, note special case for the fake entry node
+    if (node->BB != helper->GetEntryNode()) {
+      OutStream << node->BB->id() << "[label=\"" << node->BB->id() << "\"];\n";
+    } else {
+      OutStream << node->BB->id() << "[label=\"FakeEntryNode\"];\n";
+    }
+
+    // Print the arrow from the parent to this node
     if (node->Parent) {
-      OutStream << node->Parent->BB->id() << " -> " << node->BB->id() << ";\n";
+      OutStream << node->Parent->BB->id() << " -> " << node->BB->id();
+      if (node->Parent->BB == helper->GetEntryNode())
+        OutStream << "[style=dotted]";
+      OutStream << ";\n";
     }
   });
   OutStream << "}\n";
