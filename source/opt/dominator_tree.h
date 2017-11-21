@@ -27,8 +27,10 @@ class BasicBlockSuccessorHelper;
 // node is dominated by its parent.
 class DominatorTree {
  public:
-  DominatorTree() : Root(nullptr), PostDominator(false){};
-  DominatorTree(bool post) : Root(nullptr), PostDominator(post){};
+  DominatorTree()
+      : Root(nullptr), FakeStartNode(nullptr), PostDominator(false){};
+  DominatorTree(bool post)
+      : Root(nullptr), FakeStartNode(nullptr), PostDominator(post){};
 
   bool Validate() const;
 
@@ -87,6 +89,10 @@ class DominatorTree {
   // The root of the tree.
   DominatorTreeNode* Root;
 
+  // We need to make a fake basic block for the fake root node so it can be used
+  // in the DepthFirst and CalculateDominator functions as a normal basic block
+  std::unique_ptr<ir::BasicBlock> FakeStartNode;
+
   // Adds the BasicBlock to the tree structure if it doesn't already exsist
   DominatorTreeNode* GetOrInsertNode(const ir::BasicBlock* BB);
 
@@ -98,6 +104,7 @@ class DominatorTree {
   // Wrapper functio which gets the list of BasicBlock->DominatingBasicBlock
   // from the CFA and stores it in the edges parameter
   void GetDominatorEdges(
+      const ir::Function* F,
       std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>& edges);
 
   // Pairs each basic block id to the tree node containing that basic block.
@@ -108,7 +115,6 @@ class DominatorTree {
   std::map<const DominatorTreeNode*, std::vector<DominatorTreeNode*>>
       Successors;
 
-  BasicBlockSuccessorHelper * helper;
   // True if this is a post dominator tree
   bool PostDominator;
 };
