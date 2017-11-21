@@ -22,13 +22,13 @@
 namespace spvtools {
 namespace opt {
 
-class DominatorAnalysis {
+class DominatorAnalysisBase {
  public:
-  DominatorAnalysis();
+  DominatorAnalysisBase(){};
+  virtual ~DominatorAnalysisBase(){};
+  virtual void InitializeTree(ir::Module& TheModule);
 
-  void InitializeTree(ir::Module& TheModule);
-
-  void InitializeTree(const ir::Function* F);
+  virtual void InitializeTree(const ir::Function* F) = 0;
 
   bool Dominates(const ir::BasicBlock* A, const ir::BasicBlock* B,
                  const ir::Function* F) const;
@@ -42,17 +42,38 @@ class DominatorAnalysis {
 
   void CheckAllNodesForDomination(ir::Module& M, std::ostream& OutStream) const;
 
- private:
+ protected:
   // Each function in the module will create its own dominator tree
   std::map<const ir::Function*, DominatorTree> Trees;
+};
+
+class DominatorAnalysis : public DominatorAnalysisBase {
+ public:
+  DominatorAnalysis() : DominatorAnalysisBase() {}
+
+  ~DominatorAnalysis() {}
+
+  void InitializeTree(ir::Module& TheModule) override;
+  void InitializeTree(const ir::Function* f) override;
+};
+
+class PostDominatorAnalysis : public DominatorAnalysisBase {
+ public:
+  PostDominatorAnalysis() : DominatorAnalysisBase(){};
+
+  ~PostDominatorAnalysis() {}
+
+  void InitializeTree(ir::Module& TheModule) override;
+  void InitializeTree(const ir::Function* f) override;
 };
 
 class DominatorAnalysisPass : public Pass {
  public:
   Status Process(ir::IRContext* c) override {
-    DominatorAnalysis DA;
-    DA.InitializeTree(*c->module());
+    DominatorAnalysisBase* DA = new DominatorAnalysis();
+    DA->InitializeTree(*c->module());
     // DA.CheckAllNodesForDomination(*c->module(), std::cout);
+    delete DA;
     return Status::SuccessWithoutChange;
   }
 
