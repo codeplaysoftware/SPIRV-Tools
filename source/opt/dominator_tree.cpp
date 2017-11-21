@@ -58,23 +58,23 @@ class BasicBlockSuccessorHelper {
   }
 
   void GenerateList() {
-    for (ir::BasicBlock& _BB : *F) {
-      ir::BasicBlock* BB = &_BB;
-      if (Pred.find(BB) == Pred.end()) {
-        Pred[BB] = {};
+    for (ir::BasicBlock& BB : *F) {
+      ir::BasicBlock* ptrToBB = &BB;
+      if (Pred.find(ptrToBB) == Pred.end()) {
+        Pred[ptrToBB] = {};
       }
 
-      if (Successors.find(BB) == Successors.end()) {
-        Successors[BB] = {};
+      if (Successors.find(ptrToBB) == Successors.end()) {
+        Successors[ptrToBB] = {};
       }
 
-      BB->ForEachSuccessorLabel([&](const uint32_t successorID) {
+      BB.ForEachSuccessorLabel([&](const uint32_t successorID) {
         // TODO: If we keep somthing like this, avoid going over the full N
         // functions each time
         for (auto itr = F->begin(); itr < F->end(); ++itr) {
           ir::BasicBlock* bb = &*itr;
           if (successorID == bb->id()) {
-            Successors[BB].push_back(bb);
+            Successors[ptrToBB].push_back(bb);
 
             if (Pred.find(bb) == Pred.end()) {
               Pred[bb] = {};
@@ -82,7 +82,7 @@ class BasicBlockSuccessorHelper {
 
             if (std::find(Pred[bb].begin(), Pred[bb].end(), BB) ==
                 Pred[bb].end())
-              Pred[bb].push_back(const_cast<ir::BasicBlock*>(BB));
+              Pred[bb].push_back(const_cast<ir::BasicBlock*>(ptrToBB));
 
             // Found the successor node, exit out
             break;
