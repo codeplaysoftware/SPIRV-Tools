@@ -108,6 +108,7 @@ class DominatorTree {
   std::map<const DominatorTreeNode*, std::vector<DominatorTreeNode*>>
       Successors;
 
+  BasicBlockSuccessorHelper * helper;
   // True if this is a post dominator tree
   bool PostDominator;
 };
