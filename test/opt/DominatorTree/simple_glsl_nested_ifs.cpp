@@ -120,39 +120,40 @@ TEST_F(PassClassTest, UnreachableNestedIfs) {
   std::unique_ptr<ir::IRContext> context =
       BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
                   SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
-  ir::Module *module = context->module();
+  ir::Module* module = context->module();
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
-  opt::DominatorAnalysis testPass;
-  testPass.InitializeTree(*module);
 
+  opt::DominatorAnalysisPass pass;
   const ir::Function* F = getFromModule(module, 4);
 
-  EXPECT_TRUE(testPass.Dominates(5, 8, F));
-  EXPECT_TRUE(testPass.Dominates(5, 9, F));
-  EXPECT_TRUE(testPass.Dominates(5, 21, F));
-  EXPECT_TRUE(testPass.Dominates(5, 18, F));
-  EXPECT_TRUE(testPass.Dominates(5, 10, F));
-  EXPECT_TRUE(testPass.Dominates(5, 11, F));
-  EXPECT_TRUE(testPass.Dominates(5, 23, F));
-  EXPECT_TRUE(testPass.Dominates(5, 22, F));
-  EXPECT_TRUE(testPass.Dominates(5, 26, F));
-  EXPECT_TRUE(testPass.Dominates(8, 18, F));
-  EXPECT_TRUE(testPass.Dominates(8, 10, F));
-  EXPECT_TRUE(testPass.Dominates(8, 11, F));
-  EXPECT_TRUE(testPass.Dominates(21, 23, F));
-  EXPECT_TRUE(testPass.Dominates(21, 22, F));
-  EXPECT_TRUE(testPass.Dominates(21, 26, F));
-  
-  EXPECT_TRUE(testPass.StrictlyDominates(5, 8, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(5, 9, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(5, 21, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(8, 18, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(8, 10, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(8, 11, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(21, 23, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(21, 22, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(21, 26, F));
+  opt::DominatorAnalysis* analysis = pass.GetDominatorAnalysis(F);
+
+  EXPECT_TRUE(analysis->Dominates(5, 8));
+  EXPECT_TRUE(analysis->Dominates(5, 9));
+  EXPECT_TRUE(analysis->Dominates(5, 21));
+  EXPECT_TRUE(analysis->Dominates(5, 18));
+  EXPECT_TRUE(analysis->Dominates(5, 10));
+  EXPECT_TRUE(analysis->Dominates(5, 11));
+  EXPECT_TRUE(analysis->Dominates(5, 23));
+  EXPECT_TRUE(analysis->Dominates(5, 22));
+  EXPECT_TRUE(analysis->Dominates(5, 26));
+  EXPECT_TRUE(analysis->Dominates(8, 18));
+  EXPECT_TRUE(analysis->Dominates(8, 10));
+  EXPECT_TRUE(analysis->Dominates(8, 11));
+  EXPECT_TRUE(analysis->Dominates(21, 23));
+  EXPECT_TRUE(analysis->Dominates(21, 22));
+  EXPECT_TRUE(analysis->Dominates(21, 26));
+
+  EXPECT_TRUE(analysis->StrictlyDominates(5, 8));
+  EXPECT_TRUE(analysis->StrictlyDominates(5, 9));
+  EXPECT_TRUE(analysis->StrictlyDominates(5, 21));
+  EXPECT_TRUE(analysis->StrictlyDominates(8, 18));
+  EXPECT_TRUE(analysis->StrictlyDominates(8, 10));
+  EXPECT_TRUE(analysis->StrictlyDominates(8, 11));
+  EXPECT_TRUE(analysis->StrictlyDominates(21, 23));
+  EXPECT_TRUE(analysis->StrictlyDominates(21, 22));
+  EXPECT_TRUE(analysis->StrictlyDominates(21, 26));
 }
 
 }  // namespace

@@ -24,25 +24,21 @@ namespace opt {
 
 class DominatorAnalysisBase {
  public:
-  DominatorAnalysisBase(){};
-  virtual ~DominatorAnalysisBase(){};
-  virtual void InitializeTree(ir::Module& TheModule);
+  DominatorAnalysisBase() : Tree(nullptr) {}
+  virtual ~DominatorAnalysisBase() {}
 
   virtual void InitializeTree(const ir::Function* F) = 0;
+  bool Dominates(const ir::BasicBlock* A, const ir::BasicBlock* B) const;
 
-  bool Dominates(const ir::BasicBlock* A, const ir::BasicBlock* B,
-                 const ir::Function* F) const;
+  bool Dominates(uint32_t A, uint32_t B) const;
 
-  bool Dominates(uint32_t A, uint32_t B, const ir::Function* F) const;
+  bool StrictlyDominates(const ir::BasicBlock* A,
+                         const ir::BasicBlock* B) const;
 
-  bool StrictlyDominates(const ir::BasicBlock* A, const ir::BasicBlock* B,
-                         const ir::Function* F) const;
-
-  bool StrictlyDominates(uint32_t A, uint32_t B, const ir::Function* F) const;
+  bool StrictlyDominates(uint32_t A, uint32_t B) const;
 
  protected:
-  // Each function in the module will create its own dominator tree
-  std::map<const ir::Function*, DominatorTree> Trees;
+  std::unique_ptr<DominatorTree> Tree;
 };
 
 class DominatorAnalysis : public DominatorAnalysisBase {
@@ -51,7 +47,6 @@ class DominatorAnalysis : public DominatorAnalysisBase {
 
   ~DominatorAnalysis() {}
 
-  void InitializeTree(ir::Module& TheModule) override;
   void InitializeTree(const ir::Function* f) override;
 };
 
@@ -61,21 +56,21 @@ class PostDominatorAnalysis : public DominatorAnalysisBase {
 
   ~PostDominatorAnalysis() {}
 
-  void InitializeTree(ir::Module& TheModule) override;
   void InitializeTree(const ir::Function* f) override;
 };
 
-class DominatorAnalysisPass : public Pass {
+// TODO: Decide if we want this to be a normal pass or not
+class DominatorAnalysisPass {
  public:
-  Status Process(ir::IRContext* c) override {
-    DominatorAnalysisBase* DA = new DominatorAnalysis();
-    DA->InitializeTree(*c->module());
-    // DA.CheckAllNodesForDomination(*c->module(), std::cout);
-    delete DA;
-    return Status::SuccessWithoutChange;
-  }
+  DominatorAnalysisPass() {}
 
-  const char* name() const override { return "Dominator Analysis Pass"; }
+  DominatorAnalysis* GetDominatorAnalysis(const ir::Function* f);
+  PostDominatorAnalysis* GetPostDominatorAnalysis(const ir::Function* f);
+
+ private:
+  // Each function in the module will create its own dominator tree
+  std::map<const ir::Function*, DominatorAnalysis> DomTrees;
+  std::map<const ir::Function*, PostDominatorAnalysis> PostDomTrees;
 };
 
 }  // ir

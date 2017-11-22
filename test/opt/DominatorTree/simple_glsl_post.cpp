@@ -153,61 +153,61 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   ir::Module* module = context->module();
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
-  opt::PostDominatorAnalysis testPass;
-  testPass.InitializeTree(*module);
+  opt::DominatorAnalysisPass pass;
 
   const ir::Function* F = getFromModule(module, 4);
+  opt::PostDominatorAnalysis* analysis = pass.GetPostDominatorAnalysis(F);
 
-  EXPECT_TRUE(testPass.Dominates(19, 18, F));
-  EXPECT_TRUE(testPass.Dominates(19, 5, F));
-  EXPECT_TRUE(testPass.Dominates(19, 53, F));
-  EXPECT_TRUE(testPass.Dominates(19, 19, F));
-  EXPECT_TRUE(testPass.Dominates(19, 25, F));
-  EXPECT_TRUE(testPass.Dominates(19, 29, F));
-  EXPECT_TRUE(testPass.Dominates(19, 27, F));
-  EXPECT_TRUE(testPass.Dominates(19, 26, F));
-  EXPECT_TRUE(testPass.Dominates(19, 28, F));
+  EXPECT_TRUE(analysis->Dominates(19, 18));
+  EXPECT_TRUE(analysis->Dominates(19, 5));
+  EXPECT_TRUE(analysis->Dominates(19, 53));
+  EXPECT_TRUE(analysis->Dominates(19, 19));
+  EXPECT_TRUE(analysis->Dominates(19, 25));
+  EXPECT_TRUE(analysis->Dominates(19, 29));
+  EXPECT_TRUE(analysis->Dominates(19, 27));
+  EXPECT_TRUE(analysis->Dominates(19, 26));
+  EXPECT_TRUE(analysis->Dominates(19, 28));
 
-  EXPECT_TRUE(testPass.Dominates(27, 18, F));
-  EXPECT_TRUE(testPass.Dominates(27, 25, F));
-  EXPECT_TRUE(testPass.Dominates(27, 29, F));
-  EXPECT_TRUE(testPass.Dominates(27, 27, F));
-  EXPECT_TRUE(testPass.Dominates(27, 26, F));
-  EXPECT_TRUE(testPass.Dominates(27, 28, F));
+  EXPECT_TRUE(analysis->Dominates(27, 18));
+  EXPECT_TRUE(analysis->Dominates(27, 25));
+  EXPECT_TRUE(analysis->Dominates(27, 29));
+  EXPECT_TRUE(analysis->Dominates(27, 27));
+  EXPECT_TRUE(analysis->Dominates(27, 26));
+  EXPECT_TRUE(analysis->Dominates(27, 28));
 
-  EXPECT_FALSE(testPass.Dominates(27, 19, F));
-  EXPECT_FALSE(testPass.Dominates(27, 5, F));
-  EXPECT_FALSE(testPass.Dominates(27, 53, F));
+  EXPECT_FALSE(analysis->Dominates(27, 19));
+  EXPECT_FALSE(analysis->Dominates(27, 5));
+  EXPECT_FALSE(analysis->Dominates(27, 53));
 
-  EXPECT_FALSE(testPass.StrictlyDominates(19, 19, F));
+  EXPECT_FALSE(analysis->StrictlyDominates(19, 19));
 
-  EXPECT_TRUE(testPass.StrictlyDominates(19, 18, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(19, 5, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(19, 53, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(19, 25, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(19, 29, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(19, 27, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(19, 26, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(19, 28, F));
+  EXPECT_TRUE(analysis->StrictlyDominates(19, 18));
+  EXPECT_TRUE(analysis->StrictlyDominates(19, 5));
+  EXPECT_TRUE(analysis->StrictlyDominates(19, 53));
+  EXPECT_TRUE(analysis->StrictlyDominates(19, 25));
+  EXPECT_TRUE(analysis->StrictlyDominates(19, 29));
+  EXPECT_TRUE(analysis->StrictlyDominates(19, 27));
+  EXPECT_TRUE(analysis->StrictlyDominates(19, 26));
+  EXPECT_TRUE(analysis->StrictlyDominates(19, 28));
 
   // These would be expected true for a normal, non post, dominator tree
-  EXPECT_FALSE(testPass.Dominates(5, 18, F));
-  EXPECT_FALSE(testPass.Dominates(5, 53, F));
-  EXPECT_FALSE(testPass.Dominates(5, 19, F));
-  EXPECT_FALSE(testPass.Dominates(5, 25, F));
-  EXPECT_FALSE(testPass.Dominates(5, 29, F));
-  EXPECT_FALSE(testPass.Dominates(5, 27, F));
-  EXPECT_FALSE(testPass.Dominates(5, 26, F));
-  EXPECT_FALSE(testPass.Dominates(5, 28, F));
+  EXPECT_FALSE(analysis->Dominates(5, 18));
+  EXPECT_FALSE(analysis->Dominates(5, 53));
+  EXPECT_FALSE(analysis->Dominates(5, 19));
+  EXPECT_FALSE(analysis->Dominates(5, 25));
+  EXPECT_FALSE(analysis->Dominates(5, 29));
+  EXPECT_FALSE(analysis->Dominates(5, 27));
+  EXPECT_FALSE(analysis->Dominates(5, 26));
+  EXPECT_FALSE(analysis->Dominates(5, 28));
 
-  EXPECT_FALSE(testPass.StrictlyDominates(5, 18, F));
-  EXPECT_FALSE(testPass.StrictlyDominates(5, 53, F));
-  EXPECT_FALSE(testPass.StrictlyDominates(5, 19, F));
-  EXPECT_FALSE(testPass.StrictlyDominates(5, 25, F));
-  EXPECT_FALSE(testPass.StrictlyDominates(5, 29, F));
-  EXPECT_FALSE(testPass.StrictlyDominates(5, 27, F));
-  EXPECT_FALSE(testPass.StrictlyDominates(5, 26, F));
-  EXPECT_FALSE(testPass.StrictlyDominates(5, 28, F));
+  EXPECT_FALSE(analysis->StrictlyDominates(5, 18));
+  EXPECT_FALSE(analysis->StrictlyDominates(5, 53));
+  EXPECT_FALSE(analysis->StrictlyDominates(5, 19));
+  EXPECT_FALSE(analysis->StrictlyDominates(5, 25));
+  EXPECT_FALSE(analysis->StrictlyDominates(5, 29));
+  EXPECT_FALSE(analysis->StrictlyDominates(5, 27));
+  EXPECT_FALSE(analysis->StrictlyDominates(5, 26));
+  EXPECT_FALSE(analysis->StrictlyDominates(5, 28));
 }
 
 }  // namespace
