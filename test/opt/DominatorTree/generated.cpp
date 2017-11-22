@@ -22,7 +22,7 @@
 #include "../pass_utils.h"
 #include "opt/dominator_analysis_pass.h"
 #include "opt/pass.h"
-
+#if 0
 namespace {
 
 using namespace spvtools;
@@ -276,5 +276,6 @@ TEST_F(PassClassTest, DominatorUnreachableFromExit) {
   EXPECT_TRUE(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)), getBasicBlock(TestFn, 11));
 #endif
 }
-
 }  // namespace
+
+#endif

@@ -47,78 +47,7 @@ static void depthFirstSearchPostOrder(const ir::BasicBlock* BB,
 class BasicBlockSuccessorHelper {
  public:
   BasicBlockSuccessorHelper(ir::Function* func, ir::BasicBlock* fakeStartNode,
-                            bool post)
-      : F(func) {
-    // Generate the internal representation of the CFG
-    GenerateList();
-
-    auto postorder_function = [&](const ir::BasicBlock* b) {
-      ReachableNodes.insert(b);
-    };
-
-    depthFirstSearchPostOrder(func->entry().get(), GetSuccessorFunctor(),
-                              postorder_function);
-
-    // Locate the roots of the tree and make them the children of the fake start
-    // node and make the fake start node their parents.
-    auto* Previous = &Pred;
-    auto* Next = &Successors;
-    if (post) {
-      // Since the postdomiantor is traversing the tree in reverse we need to
-      // change the critera for what we consider an end node from a node with no
-      // predecessors to one with no successors
-      Previous = &Successors;
-      Next = &Pred;
-    }
-
-    (*Next)[fakeStartNode] = {};
-    for (auto& pair : *Previous) {
-      // If the BasicBlock has nodes preceding it in the traversal of the tree
-      // then it is a root node.
-      if (pair.second.size() == 0 && ReachableNodes.count(pair.first) != 0) {
-        pair.second.push_back(fakeStartNode);
-        (*Next)[fakeStartNode].push_back(
-            const_cast<ir::BasicBlock*>(pair.first));
-      }
-    }
-    // The fake root node should have no nodes behind it in the tree.
-    (*Previous)[fakeStartNode] = {};
-  }
-
-  void GenerateList() {
-    for (ir::BasicBlock& BB : *F) {
-      ir::BasicBlock* ptrToBB = &BB;
-      if (Pred.find(ptrToBB) == Pred.end()) {
-        Pred[ptrToBB] = {};
-      }
-
-      if (Successors.find(ptrToBB) == Successors.end()) {
-        Successors[ptrToBB] = {};
-      }
-
-      ptrToBB->ForEachSuccessorLabel([&](const uint32_t successorID) {
-        // TODO: If we keep somthing like this, avoid going over the full N
-        // functions each time
-        for (auto itr = F->begin(); itr < F->end(); ++itr) {
-          ir::BasicBlock* bb = &*itr;
-          if (successorID == bb->id()) {
-            Successors[ptrToBB].push_back(bb);
-
-            if (Pred.find(bb) == Pred.end()) {
-              Pred[bb] = {};
-            }
-
-            if (std::find(Pred[bb].begin(), Pred[bb].end(), ptrToBB) ==
-                Pred[bb].end())
-              Pred[bb].push_back(const_cast<ir::BasicBlock*>(ptrToBB));
-
-            // Found the successor node, exit out
-            break;
-          }
-        }
-      });
-    }
-  }
+                            bool post);
 
   using GetBlocksFunction =
       std::function<const std::vector<ir::BasicBlock*>*(const ir::BasicBlock*)>;
@@ -152,7 +81,98 @@ class BasicBlockSuccessorHelper {
 
   // By maintaining a fake node which acts as the first entry node we
   std::unique_ptr<ir::BasicBlock> FakeStartNode;
+
+  void FindFakeNodeChildren(ir::BasicBlock*);
+
+  void GenerateList();
 };
+
+BasicBlockSuccessorHelper::BasicBlockSuccessorHelper(
+    ir::Function* func, ir::BasicBlock* fakeStartNode, bool post)
+    : F(func) {
+  // Generate the internal representation of the CFG
+  GenerateList();
+
+  auto postorder_function = [&](const ir::BasicBlock* b) {
+    ReachableNodes.insert(b);
+  };
+
+  depthFirstSearchPostOrder(func->entry().get(), GetSuccessorFunctor(),
+                            postorder_function);
+
+  // If we're moving through the tree in post order we can have multiple
+  // children for the fake entry node otherwise we just make it a predecessor of
+  // the entry node
+  if (post) {
+    FindFakeNodeChildren(fakeStartNode);
+  } else {
+    Pred[fakeStartNode] = {};
+    Successors[fakeStartNode] = {func->entry().get()};
+  }
+  Pred[func->entry().get()].push_back(fakeStartNode);
+}
+
+// Locate the roots of the tree and make them the children of the fake start
+// node and make the fake start node their parents.
+void BasicBlockSuccessorHelper::FindFakeNodeChildren(
+    ir::BasicBlock* fakeStartNode) {
+  Pred[fakeStartNode] = {};
+  for (auto& pair : Successors) {
+    if (ReachableNodes.count(pair.first) == 0) {
+      for (const ir::BasicBlock* BBptr : pair.second) {
+        auto& p = Pred[BBptr];
+
+        auto itr = std::find(p.begin(), p.end(), pair.first);
+        if (itr == p.end()) continue;
+        p.erase(itr);
+      }
+      continue;
+    }
+    // If the BasicBlock has nodes preceding it in the traversal of the tree
+    // then it is a root node.
+    if (pair.second.size() == 0) {
+      pair.second.push_back(fakeStartNode);
+      Pred[fakeStartNode].push_back(const_cast<ir::BasicBlock*>(pair.first));
+    }
+  }
+  // The fake root node should have no nodes behind it in the tree.
+  Successors[fakeStartNode] = {};
+}
+
+void BasicBlockSuccessorHelper::GenerateList() {
+  for (ir::BasicBlock& BB : *F) {
+    ir::BasicBlock* ptrToBB = &BB;
+    if (Pred.find(ptrToBB) == Pred.end()) {
+      Pred[ptrToBB] = {};
+    }
+
+    if (Successors.find(ptrToBB) == Successors.end()) {
+      Successors[ptrToBB] = {};
+    }
+
+    ptrToBB->ForEachSuccessorLabel([&](const uint32_t successorID) {
+      // TODO: If we keep somthing like this, avoid going over the full N
+      // functions each time
+      for (auto itr = F->begin(); itr < F->end(); ++itr) {
+        ir::BasicBlock* bb = &*itr;
+        if (successorID == bb->id()) {
+          Successors[ptrToBB].push_back(bb);
+
+          if (Pred.find(bb) == Pred.end()) {
+            Pred[bb] = {};
+          }
+
+          if (std::find(Pred[bb].begin(), Pred[bb].end(), ptrToBB) ==
+              Pred[bb].end())
+            Pred[bb].push_back(const_cast<ir::BasicBlock*>(ptrToBB));
+
+          // Found the successor node, exit out
+          break;
+        }
+      }
+    });
+  }
+}
 
 const ir::BasicBlock* DominatorTree::GetImmediateDominatorOrNull(
     uint32_t A) const {
