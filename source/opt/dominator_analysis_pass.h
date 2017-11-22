@@ -40,8 +40,6 @@ class DominatorAnalysisBase {
 
   bool StrictlyDominates(uint32_t A, uint32_t B, const ir::Function* F) const;
 
-  void CheckAllNodesForDomination(ir::Module& M, std::ostream& OutStream) const;
-
  protected:
   // Each function in the module will create its own dominator tree
   std::map<const ir::Function*, DominatorTree> Trees;

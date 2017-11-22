@@ -70,28 +70,5 @@ bool DominatorAnalysisBase::StrictlyDominates(uint32_t A, uint32_t B,
   return itr->second.StrictlyDominates(A, B);
 }
 
-void DominatorAnalysisBase::CheckAllNodesForDomination(
-    ir::Module& module, std::ostream& OutStream) const {
-  for (ir::Function& F : module) {
-    // Skip over empty functions
-    if (F.cbegin() == F.cend()) {
-      continue;
-    }
-
-    for (ir::BasicBlock& BB : F) {
-      for (ir::BasicBlock& BB2 : F) {
-        OutStream << BB.id();
-
-        if (Dominates(&BB, &BB2, &F)) {
-          OutStream << " dominates ";
-        } else {
-          OutStream << " does not dominate ";
-        }
-        OutStream << BB2.id() << "\n";
-      }
-    }
-  }
-}
-
 }  // opt
 }  // spvtools

@@ -14,10 +14,31 @@
 
 #include "dominator_tree.h"
 #include <iostream>
+#include <set>
 #include "cfa.h"
 
 namespace spvtools {
 namespace opt {
+
+template <typename SuccessorLambda, typename PreLambda, typename PostLambda>
+static void depthFirstSearch(const ir::BasicBlock* BB,
+                             SuccessorLambda successors, PreLambda pre,
+                             PostLambda post) {
+  // Ignore backedge operation
+  auto nop_backedge = [](const ir::BasicBlock*, const ir::BasicBlock*) {};
+
+  CFA<ir::BasicBlock>::DepthFirstTraversal(BB, successors, pre, post,
+                                           nop_backedge);
+}
+
+template <typename SuccessorLambda, typename PostLambda>
+static void depthFirstSearchPostOrder(const ir::BasicBlock* BB,
+                                      SuccessorLambda successors,
+                                      PostLambda post) {
+  // Ignore preorder operation
+  auto nop_preorder = [](const ir::BasicBlock*) {};
+  depthFirstSearch(BB, successors, nop_preorder, post);
+}
 
 // This helper class is basically a massive workaround for the current way that
 // depth first is implemented
@@ -30,6 +51,13 @@ class BasicBlockSuccessorHelper {
       : F(func) {
     // Generate the internal representation of the CFG
     GenerateList();
+
+    auto postorder_function = [&](const ir::BasicBlock* b) {
+      ReachableNodes.insert(b);
+    };
+
+    depthFirstSearchPostOrder(func->entry().get(), GetSuccessorFunctor(),
+                              postorder_function);
 
     // Locate the roots of the tree and make them the children of the fake start
     // node and make the fake start node their parents.
@@ -47,7 +75,7 @@ class BasicBlockSuccessorHelper {
     for (auto& pair : *Previous) {
       // If the BasicBlock has nodes preceding it in the traversal of the tree
       // then it is a root node.
-      if (pair.second.size() == 0) {
+      if (pair.second.size() == 0 && ReachableNodes.count(pair.first) != 0) {
         pair.second.push_back(fakeStartNode);
         (*Next)[fakeStartNode].push_back(
             const_cast<ir::BasicBlock*>(pair.first));
@@ -120,6 +148,7 @@ class BasicBlockSuccessorHelper {
   ir::Function* F;
   std::map<const ir::BasicBlock*, std::vector<ir::BasicBlock*>> Successors;
   std::map<const ir::BasicBlock*, std::vector<ir::BasicBlock*>> Pred;
+  std::set<const ir::BasicBlock*> ReachableNodes;
 
   // By maintaining a fake node which acts as the first entry node we
   std::unique_ptr<ir::BasicBlock> FakeStartNode;
@@ -183,12 +212,6 @@ DominatorTree::DominatorTreeNode* DominatorTree::GetOrInsertNode(
 void DominatorTree::GetDominatorEdges(
     const ir::Function* F,
     std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>& edges) {
-  // Ignore preorder operation
-  auto nop_preorder = [](const ir::BasicBlock*) {};
-
-  // Ignore backedge operation
-  auto nop_backedge = [](const ir::BasicBlock*, const ir::BasicBlock*) {};
-
   // Each time the depth first traversal calls the postorder callback
   // std::function we push that node into the postorder vector to create our
   // postorder list
@@ -223,15 +246,13 @@ void DominatorTree::GetDominatorEdges(
   // using the predecessor function in place of the successor function and vice
   // versa
   if (PostDominator) {
-    CFA<ir::BasicBlock>::DepthFirstTraversal(FakeStartNode.get(),
-                                             predecessorFunctor, nop_preorder,
-                                             postorder_function, nop_backedge);
+    depthFirstSearchPostOrder(FakeStartNode.get(), predecessorFunctor,
+                              postorder_function);
     edges =
         CFA<ir::BasicBlock>::CalculateDominators(postorder, successorFunctor);
   } else {
-    CFA<ir::BasicBlock>::DepthFirstTraversal(FakeStartNode.get(),
-                                             successorFunctor, nop_preorder,
-                                             postorder_function, nop_backedge);
+    depthFirstSearchPostOrder(FakeStartNode.get(), successorFunctor,
+                              postorder_function);
     edges =
         CFA<ir::BasicBlock>::CalculateDominators(postorder, predecessorFunctor);
   }
@@ -276,12 +297,13 @@ void DominatorTree::InitializeTree(const ir::Function* F) {
       const_cast<DominatorTreeNode*>(node)->DepthFirstOutCount = ++index;
   };
 
-  auto ignore_e = [](const DominatorTreeNode*, const DominatorTreeNode*) {};
-
   auto getSucc = [&](const DominatorTreeNode* node) { return &node->Children; };
 
+  // Ignore backedge operation
+  auto nop_backedge = [](const DominatorTreeNode*, const DominatorTreeNode*) {};
+
   CFA<DominatorTreeNode>::DepthFirstTraversal(Root, getSucc, preFunc, postFunc,
-                                              ignore_e);
+                                              nop_backedge);
 }
 
 void DominatorTree::DumpTreeAsDot(std::ostream& OutStream) const {
