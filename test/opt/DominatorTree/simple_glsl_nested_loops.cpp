@@ -364,78 +364,78 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   ir::Module* module = context->module();
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
-  opt::DominatorAnalysis testPass;
-  testPass.InitializeTree(*module);
+
+  opt::DominatorAnalysisPass pass;
 
   const ir::Function* F = getFromModule(module, 4);
+  opt::DominatorAnalysis* analysis = pass.GetDominatorAnalysis(F);
 
-  EXPECT_TRUE(testPass.Dominates(5, 10, F));
-  EXPECT_TRUE(testPass.Dominates(5, 46, F));
-  EXPECT_TRUE(testPass.Dominates(5, 82, F));
-  EXPECT_TRUE(testPass.Dominates(5, 114, F));
-  EXPECT_TRUE(testPass.Dominates(5, 116, F));
+  EXPECT_TRUE(analysis->Dominates(5, 10));
+  EXPECT_TRUE(analysis->Dominates(5, 46));
+  EXPECT_TRUE(analysis->Dominates(5, 82));
+  EXPECT_TRUE(analysis->Dominates(5, 114));
+  EXPECT_TRUE(analysis->Dominates(5, 116));
 
-  EXPECT_TRUE(testPass.Dominates(10, 14, F));
-  EXPECT_TRUE(testPass.Dominates(10, 11, F));
-  EXPECT_TRUE(testPass.Dominates(10, 29, F));
-  EXPECT_TRUE(testPass.Dominates(10, 33, F));
-  EXPECT_TRUE(testPass.Dominates(10, 30, F));
-  EXPECT_TRUE(testPass.Dominates(10, 32, F));
-  EXPECT_TRUE(testPass.Dominates(10, 31, F));
-  EXPECT_TRUE(testPass.Dominates(10, 13, F));
-  EXPECT_TRUE(testPass.Dominates(10, 12, F));
+  EXPECT_TRUE(analysis->Dominates(10, 14));
+  EXPECT_TRUE(analysis->Dominates(10, 11));
+  EXPECT_TRUE(analysis->Dominates(10, 29));
+  EXPECT_TRUE(analysis->Dominates(10, 33));
+  EXPECT_TRUE(analysis->Dominates(10, 30));
+  EXPECT_TRUE(analysis->Dominates(10, 32));
+  EXPECT_TRUE(analysis->Dominates(10, 31));
+  EXPECT_TRUE(analysis->Dominates(10, 13));
+  EXPECT_TRUE(analysis->Dominates(10, 12));
 
-  EXPECT_TRUE(testPass.Dominates(12, 46, F));
-  
-  EXPECT_TRUE(testPass.Dominates(46, 50, F));
-  EXPECT_TRUE(testPass.Dominates(46, 47, F));
-  EXPECT_TRUE(testPass.Dominates(46, 57, F));
-  EXPECT_TRUE(testPass.Dominates(46, 61, F));
-  EXPECT_TRUE(testPass.Dominates(46, 58, F));
-  EXPECT_TRUE(testPass.Dominates(46, 60, F));
-  EXPECT_TRUE(testPass.Dominates(46, 59, F));
-  EXPECT_TRUE(testPass.Dominates(46, 77, F));
-  EXPECT_TRUE(testPass.Dominates(46, 49, F));
-  EXPECT_TRUE(testPass.Dominates(46, 76, F));
-  EXPECT_TRUE(testPass.Dominates(46, 48, F));
+  EXPECT_TRUE(analysis->Dominates(12, 46));
 
-  EXPECT_TRUE(testPass.Dominates(48, 82, F));
+  EXPECT_TRUE(analysis->Dominates(46, 50));
+  EXPECT_TRUE(analysis->Dominates(46, 47));
+  EXPECT_TRUE(analysis->Dominates(46, 57));
+  EXPECT_TRUE(analysis->Dominates(46, 61));
+  EXPECT_TRUE(analysis->Dominates(46, 58));
+  EXPECT_TRUE(analysis->Dominates(46, 60));
+  EXPECT_TRUE(analysis->Dominates(46, 59));
+  EXPECT_TRUE(analysis->Dominates(46, 77));
+  EXPECT_TRUE(analysis->Dominates(46, 49));
+  EXPECT_TRUE(analysis->Dominates(46, 76));
+  EXPECT_TRUE(analysis->Dominates(46, 48));
 
-  EXPECT_TRUE(testPass.Dominates(82, 86, F));
-  EXPECT_TRUE(testPass.Dominates(82, 83, F));
-  EXPECT_TRUE(testPass.Dominates(82, 95, F));
-  EXPECT_TRUE(testPass.Dominates(82, 99, F));
-  EXPECT_TRUE(testPass.Dominates(82, 96, F));
-  EXPECT_TRUE(testPass.Dominates(82, 103, F));
-  EXPECT_TRUE(testPass.Dominates(82, 107, F));
-  EXPECT_TRUE(testPass.Dominates(82, 104, F));
-  EXPECT_TRUE(testPass.Dominates(82, 106, F));
-  EXPECT_TRUE(testPass.Dominates(82, 105, F));
-  EXPECT_TRUE(testPass.Dominates(82, 98, F));
-  EXPECT_TRUE(testPass.Dominates(82, 97, F));
-  EXPECT_TRUE(testPass.Dominates(82, 85, F));
-  EXPECT_TRUE(testPass.Dominates(82, 84, F));
+  EXPECT_TRUE(analysis->Dominates(48, 82));
 
-  EXPECT_TRUE(testPass.Dominates(84, 114, F));
+  EXPECT_TRUE(analysis->Dominates(82, 86));
+  EXPECT_TRUE(analysis->Dominates(82, 83));
+  EXPECT_TRUE(analysis->Dominates(82, 95));
+  EXPECT_TRUE(analysis->Dominates(82, 99));
+  EXPECT_TRUE(analysis->Dominates(82, 96));
+  EXPECT_TRUE(analysis->Dominates(82, 103));
+  EXPECT_TRUE(analysis->Dominates(82, 107));
+  EXPECT_TRUE(analysis->Dominates(82, 104));
+  EXPECT_TRUE(analysis->Dominates(82, 106));
+  EXPECT_TRUE(analysis->Dominates(82, 105));
+  EXPECT_TRUE(analysis->Dominates(82, 98));
+  EXPECT_TRUE(analysis->Dominates(82, 97));
+  EXPECT_TRUE(analysis->Dominates(82, 85));
+  EXPECT_TRUE(analysis->Dominates(82, 84));
 
-  EXPECT_TRUE(testPass.Dominates(114, 118, F));
-  EXPECT_TRUE(testPass.Dominates(114, 116, F));
-  EXPECT_TRUE(testPass.Dominates(114, 115, F));
-  EXPECT_TRUE(testPass.Dominates(114, 132, F));
-  EXPECT_TRUE(testPass.Dominates(114, 135, F));
-  EXPECT_TRUE(testPass.Dominates(114, 139, F));
-  EXPECT_TRUE(testPass.Dominates(114, 136, F));
-  EXPECT_TRUE(testPass.Dominates(114, 143, F));
-  EXPECT_TRUE(testPass.Dominates(114, 147, F));
-  EXPECT_TRUE(testPass.Dominates(114, 144, F));
-  EXPECT_TRUE(testPass.Dominates(114, 146, F));
-  EXPECT_TRUE(testPass.Dominates(114, 145, F));
-  EXPECT_TRUE(testPass.Dominates(114, 158, F));
-  EXPECT_TRUE(testPass.Dominates(114, 138, F));
-  EXPECT_TRUE(testPass.Dominates(114, 137, F));
-  EXPECT_TRUE(testPass.Dominates(114, 131, F));
-  EXPECT_TRUE(testPass.Dominates(114, 117, F));
+  EXPECT_TRUE(analysis->Dominates(84, 114));
 
+  EXPECT_TRUE(analysis->Dominates(114, 118));
+  EXPECT_TRUE(analysis->Dominates(114, 116));
+  EXPECT_TRUE(analysis->Dominates(114, 115));
+  EXPECT_TRUE(analysis->Dominates(114, 132));
+  EXPECT_TRUE(analysis->Dominates(114, 135));
+  EXPECT_TRUE(analysis->Dominates(114, 139));
+  EXPECT_TRUE(analysis->Dominates(114, 136));
+  EXPECT_TRUE(analysis->Dominates(114, 143));
+  EXPECT_TRUE(analysis->Dominates(114, 147));
+  EXPECT_TRUE(analysis->Dominates(114, 144));
+  EXPECT_TRUE(analysis->Dominates(114, 146));
+  EXPECT_TRUE(analysis->Dominates(114, 145));
+  EXPECT_TRUE(analysis->Dominates(114, 158));
+  EXPECT_TRUE(analysis->Dominates(114, 138));
+  EXPECT_TRUE(analysis->Dominates(114, 137));
+  EXPECT_TRUE(analysis->Dominates(114, 131));
+  EXPECT_TRUE(analysis->Dominates(114, 117));
 }
 
 }  // namespace

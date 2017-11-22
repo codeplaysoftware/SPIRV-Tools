@@ -19,55 +19,50 @@
 namespace spvtools {
 namespace opt {
 
-void DominatorAnalysis::InitializeTree(ir::Module& module) {
-  DominatorAnalysisBase::InitializeTree(module);
-}
-
-void PostDominatorAnalysis::InitializeTree(ir::Module& module) {
-  DominatorAnalysisBase::InitializeTree(module);
-}
-
-void DominatorAnalysisBase::InitializeTree(ir::Module& module) {
-  for (const ir::Function& func : module) {
-    InitializeTree(&func);
+DominatorAnalysis* DominatorAnalysisPass::GetDominatorAnalysis(
+    const ir::Function* f) {
+  if (DomTrees.find(f) == DomTrees.end()) {
+    DomTrees[f].InitializeTree(f);
   }
+
+  return &DomTrees[f];
 }
 
-void PostDominatorAnalysis::InitializeTree(const ir::Function* F) {
-  Trees[F] = {true};
+PostDominatorAnalysis* DominatorAnalysisPass::GetPostDominatorAnalysis(
+    const ir::Function* f) {
+  if (PostDomTrees.find(f) == PostDomTrees.end()) {
+    PostDomTrees[f].InitializeTree(f);
+  }
 
-  Trees[F].InitializeTree(F);
-  Trees[F].DumpTreeAsDot(std::cout);
+  return &PostDomTrees[f];
 }
 
-void DominatorAnalysis::InitializeTree(const ir::Function* F) {
-  Trees[F] = {false};
+void DominatorAnalysis::InitializeTree(const ir::Function* f) {
+  Tree = std::unique_ptr<DominatorTree>(new DominatorTree(false));
+  Tree->InitializeTree(f);
+}
 
-  Trees[F].InitializeTree(F);
-  Trees[F].DumpTreeAsDot(std::cout);
+void PostDominatorAnalysis::InitializeTree(const ir::Function* f) {
+  Tree = std::unique_ptr<DominatorTree>(new DominatorTree(true));
+  Tree->InitializeTree(f);
 }
 
 bool DominatorAnalysisBase::Dominates(const ir::BasicBlock* A,
-                                      const ir::BasicBlock* B,
-                                      const ir::Function* F) const {
-  return Dominates(A->id(), B->id(), F);
+                                      const ir::BasicBlock* B) const {
+  return Dominates(A->id(), B->id());
 }
-bool DominatorAnalysisBase::Dominates(uint32_t A, uint32_t B,
-                                      const ir::Function* F) const {
-  auto itr = Trees.find(F);
-  return itr->second.Dominates(A, B);
+
+bool DominatorAnalysisBase::Dominates(uint32_t A, uint32_t B) const {
+  return Tree->Dominates(A, B);
 }
 
 bool DominatorAnalysisBase::StrictlyDominates(const ir::BasicBlock* A,
-                                              const ir::BasicBlock* B,
-                                              const ir::Function* F) const {
-  return StrictlyDominates(A->id(), B->id(), F);
+                                              const ir::BasicBlock* B) const {
+  return StrictlyDominates(A->id(), B->id());
 }
 
-bool DominatorAnalysisBase::StrictlyDominates(uint32_t A, uint32_t B,
-                                              const ir::Function* F) const {
-  auto itr = Trees.find(F);
-  return itr->second.StrictlyDominates(A, B);
+bool DominatorAnalysisBase::StrictlyDominates(uint32_t A, uint32_t B) const {
+  return Tree->StrictlyDominates(A, B);
 }
 
 }  // opt

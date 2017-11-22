@@ -153,28 +153,28 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   ir::Module* module = context->module();
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
-  opt::DominatorAnalysis testPass;
-  testPass.InitializeTree(*module);
-
   const ir::Function* F = getFromModule(module, 4);
+  opt::DominatorAnalysisPass pass;
 
-  EXPECT_TRUE(testPass.Dominates(5, 18, F));
-  EXPECT_TRUE(testPass.Dominates(5, 53, F));
-  EXPECT_TRUE(testPass.Dominates(5, 19, F));
-  EXPECT_TRUE(testPass.Dominates(5, 25, F));
-  EXPECT_TRUE(testPass.Dominates(5, 29, F));
-  EXPECT_TRUE(testPass.Dominates(5, 27, F));
-  EXPECT_TRUE(testPass.Dominates(5, 26, F));
-  EXPECT_TRUE(testPass.Dominates(5, 28, F));
+  opt::DominatorAnalysis* analysis = pass.GetDominatorAnalysis(F);
 
-  EXPECT_TRUE(testPass.StrictlyDominates(5, 18, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(5, 53, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(5, 19, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(5, 25, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(5, 29, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(5, 27, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(5, 26, F));
-  EXPECT_TRUE(testPass.StrictlyDominates(5, 28, F));
+  EXPECT_TRUE(analysis->Dominates(5, 18));
+  EXPECT_TRUE(analysis->Dominates(5, 53));
+  EXPECT_TRUE(analysis->Dominates(5, 19));
+  EXPECT_TRUE(analysis->Dominates(5, 25));
+  EXPECT_TRUE(analysis->Dominates(5, 29));
+  EXPECT_TRUE(analysis->Dominates(5, 27));
+  EXPECT_TRUE(analysis->Dominates(5, 26));
+  EXPECT_TRUE(analysis->Dominates(5, 28));
+
+  EXPECT_TRUE(analysis->StrictlyDominates(5, 18));
+  EXPECT_TRUE(analysis->StrictlyDominates(5, 53));
+  EXPECT_TRUE(analysis->StrictlyDominates(5, 19));
+  EXPECT_TRUE(analysis->StrictlyDominates(5, 25));
+  EXPECT_TRUE(analysis->StrictlyDominates(5, 29));
+  EXPECT_TRUE(analysis->StrictlyDominates(5, 27));
+  EXPECT_TRUE(analysis->StrictlyDominates(5, 26));
+  EXPECT_TRUE(analysis->StrictlyDominates(5, 28));
 }
 
 }  // namespace
