@@ -81,6 +81,8 @@ class BasicBlock {
 
   iterator begin() { return insts_.begin(); }
   iterator end() { return insts_.end(); }
+  const_iterator begin() const { return insts_.cbegin(); }
+  const_iterator end() const { return insts_.cend(); }
   const_iterator cbegin() const { return insts_.cbegin(); }
   const_iterator cend() const { return insts_.cend(); }
 
