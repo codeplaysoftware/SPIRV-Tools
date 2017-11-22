@@ -91,7 +91,7 @@ class DominatorTree {
 
   // We need to make a fake basic block for the fake root node so it can be used
   // in the DepthFirst and CalculateDominator functions as a normal basic block
-  std::unique_ptr<ir::BasicBlock> FakeStartNode;
+  std::shared_ptr<ir::BasicBlock> FakeStartNode;
 
   // Adds the BasicBlock to the tree structure if it doesn't already exsist
   DominatorTreeNode* GetOrInsertNode(const ir::BasicBlock* BB);
