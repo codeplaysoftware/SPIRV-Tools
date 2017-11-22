@@ -47,3 +47,8 @@ add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_nested_loops_with_un
 SRCS simple_glsl_nested_loops_with_unreachables.cpp
 LIBS SPIRV-Tools-opt
 )
+
+add_spvtools_unittest(TARGET dominator_generated
+    SRCS generated.cpp
+    LIBS SPIRV-Tools-opt
+)
