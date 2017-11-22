@@ -68,7 +68,7 @@ class BasicBlockSuccessorHelper {
         Successors[ptrToBB] = {};
       }
 
-      BB.ForEachSuccessorLabel([&](const uint32_t successorID) {
+      ptrToBB->ForEachSuccessorLabel([&](const uint32_t successorID) {
         // TODO: If we keep somthing like this, avoid going over the full N
         // functions each time
         for (auto itr = F->begin(); itr < F->end(); ++itr) {
@@ -80,7 +80,7 @@ class BasicBlockSuccessorHelper {
               Pred[bb] = {};
             }
 
-            if (std::find(Pred[bb].begin(), Pred[bb].end(), BB) ==
+            if (std::find(Pred[bb].begin(), Pred[bb].end(), ptrToBB) ==
                 Pred[bb].end())
               Pred[bb].push_back(const_cast<ir::BasicBlock*>(ptrToBB));
 
