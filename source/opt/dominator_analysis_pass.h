@@ -37,6 +37,11 @@ class DominatorAnalysisBase {
 
   bool StrictlyDominates(uint32_t A, uint32_t B) const;
 
+  void DumpAsDot(std::ostream& Out) const;
+
+  ir::BasicBlock* ImmediateDominator(const ir::BasicBlock*) const;
+  ir::BasicBlock* ImmediateDominator(uint32_t) const;
+
  protected:
   std::unique_ptr<DominatorTree> Tree;
 };

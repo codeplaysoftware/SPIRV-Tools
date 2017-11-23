@@ -34,16 +34,16 @@ class DominatorTree {
 
   bool Validate() const;
 
-  // Dumps the tree in the graphvis dot format into the stream
+  // Dumps the tree in the graphvis dot format into the stream.
   void DumpTreeAsDot(std::ostream& OutStream) const;
 
   void InitializeTree(const ir::Function* M);
 
-  // Check if BasicBlock B is a dominator of BasicBlock A
+  // Check if BasicBlock B is a dominator of BasicBlock A.
   bool Dominates(const ir::BasicBlock* A, const ir::BasicBlock* B) const;
 
   // Check if BasicBlock B is a dominator of BasicBlock A. This function uses
-  // the IDs of A and B
+  // the IDs of A and B.
   bool Dominates(uint32_t A, uint32_t B) const;
 
   bool StrictlyDominates(const ir::BasicBlock* A,
@@ -51,19 +51,18 @@ class DominatorTree {
 
   bool StrictlyDominates(uint32_t A, uint32_t B) const;
 
-  // Returns the immediate dominator of basicblock A
-  const ir::BasicBlock* GetImmediateDominatorOrNull(
-      const ir::BasicBlock* A) const;
+  // Returns the immediate dominator of basicblock A.
+  ir::BasicBlock* ImmediateDominator(const ir::BasicBlock* A) const;
 
-  // Returns the immediate dominator of basicblock A
-  const ir::BasicBlock* GetImmediateDominatorOrNull(uint32_t A) const;
+  // Returns the immediate dominator of basicblock A.
+  ir::BasicBlock* ImmediateDominator(uint32_t A) const;
 
   bool Reachable(const ir::BasicBlock* A) const;
   bool Reachable(uint32_t A) const;
 
  private:
   struct DominatorTreeNode {
-    DominatorTreeNode(const ir::BasicBlock* bb)
+    DominatorTreeNode(ir::BasicBlock* bb)
         : BB(bb),
           Parent(nullptr),
           Children({}),
@@ -71,7 +70,7 @@ class DominatorTree {
           DepthFirstOutCount(-1) {}
     DominatorTreeNode() : DominatorTreeNode(nullptr) {}
 
-    const ir::BasicBlock* BB;
+    ir::BasicBlock* BB;
     DominatorTreeNode* Parent;
     std::vector<DominatorTreeNode*> Children;
     int DepthFirstInCount;
@@ -90,19 +89,19 @@ class DominatorTree {
   DominatorTreeNode* Root;
 
   // We need to make a fake basic block for the fake root node so it can be used
-  // in the DepthFirst and CalculateDominator functions as a normal basic block
+  // in the DepthFirst and CalculateDominator functions as a normal basic block.
   std::shared_ptr<ir::BasicBlock> FakeStartNode;
 
-  // Adds the BasicBlock to the tree structure if it doesn't already exsist
-  DominatorTreeNode* GetOrInsertNode(const ir::BasicBlock* BB);
+  // Adds the BasicBlock to the tree structure if it doesn't already exsist.
+  DominatorTreeNode* GetOrInsertNode(ir::BasicBlock* BB);
 
   // Applies the std::function 'func' to 'node' then applies it to nodes
-  // children
+  // children.
   void Visit(const DominatorTreeNode* node,
              std::function<void(const DominatorTreeNode*)> func) const;
 
   // Wrapper functio which gets the list of BasicBlock->DominatingBasicBlock
-  // from the CFA and stores it in the edges parameter
+  // from the CFA and stores it in the edges parameter.
   void GetDominatorEdges(
       const ir::Function* F,
       std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>& edges);
@@ -111,11 +110,11 @@ class DominatorTree {
   std::map<uint32_t, DominatorTreeNode> Nodes;
 
   // The depth first implementation in cfa requires us to have access to a
-  // vector of each successor node from any give node
+  // vector of each successor node from any give node.
   std::map<const DominatorTreeNode*, std::vector<DominatorTreeNode*>>
       Successors;
 
-  // True if this is a post dominator tree
+  // True if this is a post dominator tree.
   bool PostDominator;
 };
 
