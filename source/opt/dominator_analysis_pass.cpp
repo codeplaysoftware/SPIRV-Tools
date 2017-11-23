@@ -49,6 +49,7 @@ void PostDominatorAnalysis::InitializeTree(const ir::Function* f) {
 
 bool DominatorAnalysisBase::Dominates(const ir::BasicBlock* A,
                                       const ir::BasicBlock* B) const {
+  if (!A || !B) return false;
   return Dominates(A->id(), B->id());
 }
 
@@ -58,11 +59,28 @@ bool DominatorAnalysisBase::Dominates(uint32_t A, uint32_t B) const {
 
 bool DominatorAnalysisBase::StrictlyDominates(const ir::BasicBlock* A,
                                               const ir::BasicBlock* B) const {
+  if (!A || !B) return false;
   return StrictlyDominates(A->id(), B->id());
 }
 
 bool DominatorAnalysisBase::StrictlyDominates(uint32_t A, uint32_t B) const {
   return Tree->StrictlyDominates(A, B);
+}
+
+void DominatorAnalysisBase::DumpAsDot(std::ostream& Out) const {
+  if (!Tree) return;
+
+  Tree->DumpTreeAsDot(Out);
+}
+
+ir::BasicBlock* DominatorAnalysisBase::ImmediateDominator(
+    const ir::BasicBlock* node) const {
+  if (!Tree || !node) return nullptr;
+  return Tree->ImmediateDominator(node);
+}
+
+ir::BasicBlock* DominatorAnalysisBase::ImmediateDominator(uint32_t id) const {
+  return Tree->ImmediateDominator(id);
 }
 
 }  // opt

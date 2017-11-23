@@ -171,16 +171,19 @@ TEST_F(PassClassTest, DominatorSimpleCFG) {
   EXPECT_FALSE(DomTree.StrictlyDominates(1, 10));
   EXPECT_FALSE(DomTree.StrictlyDominates(1, 1));
 
-#if 0
   EXPECT_EQ(DomTree.ImmediateDominator(Entry), nullptr);
   EXPECT_EQ(DomTree.ImmediateDominator(nullptr), nullptr);
 
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)), getBasicBlock(TestFn, 10));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)), getBasicBlock(TestFn, 11));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 13)), getBasicBlock(TestFn, 11));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 14)), getBasicBlock(TestFn, 11));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 15)), getBasicBlock(TestFn, 14));
-#endif
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)),
+            getBasicBlock(TestFn, 10));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)),
+            getBasicBlock(TestFn, 11));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 13)),
+            getBasicBlock(TestFn, 11));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 14)),
+            getBasicBlock(TestFn, 11));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 15)),
+            getBasicBlock(TestFn, 14));
 }
 
 TEST_F(PassClassTest, DominatorIrreducibleCFG) {
@@ -240,14 +243,16 @@ TEST_F(PassClassTest, DominatorIrreducibleCFG) {
 
   check_no_dominance(DomTree, TestFn, 10, 11);
 
-#if 0
   EXPECT_EQ(DomTree.ImmediateDominator(Entry), nullptr);
 
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 9)), getBasicBlock(TestFn, 8));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 10)), getBasicBlock(TestFn, 9));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)), getBasicBlock(TestFn, 9));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)), getBasicBlock(TestFn, 11));
-#endif
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 9)),
+            getBasicBlock(TestFn, 8));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 10)),
+            getBasicBlock(TestFn, 9));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)),
+            getBasicBlock(TestFn, 9));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)),
+            getBasicBlock(TestFn, 11));
 }
 
 TEST_F(PassClassTest, DominatorLoopToSelf) {
@@ -289,19 +294,18 @@ TEST_F(PassClassTest, DominatorLoopToSelf) {
       << "The entry node is not the expected one";
 
   // (strict) dominance checks
-  for (uint32_t id : {10, 11, 12})
-    check_dominance(DomTree, TestFn, id, id);
+  for (uint32_t id : {10, 11, 12}) check_dominance(DomTree, TestFn, id, id);
 
   check_dominance(DomTree, TestFn, 10, 11);
   check_dominance(DomTree, TestFn, 10, 12);
   check_dominance(DomTree, TestFn, 11, 12);
 
-#if 0
   EXPECT_EQ(DomTree.ImmediateDominator(Entry), nullptr);
 
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)), getBasicBlock(TestFn, 10));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)), getBasicBlock(TestFn, 11));
-#endif
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)),
+            getBasicBlock(TestFn, 10));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)),
+            getBasicBlock(TestFn, 11));
 }
 
 TEST_F(PassClassTest, DominatorUnreachableInLoop) {
@@ -372,15 +376,18 @@ TEST_F(PassClassTest, DominatorUnreachableInLoop) {
   check_no_dominance(DomTree, TestFn, 13, 14);
   check_no_dominance(DomTree, TestFn, 13, 15);
 
-#if 0
   EXPECT_EQ(DomTree.ImmediateDominator(Entry), nullptr);
 
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)), getBasicBlock(TestFn, 10));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)), getBasicBlock(TestFn, 11));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 13)), getBasicBlock(TestFn, 11));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 14)), getBasicBlock(TestFn, 12));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 15)), getBasicBlock(TestFn, 14));
-#endif
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)),
+            getBasicBlock(TestFn, 10));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)),
+            getBasicBlock(TestFn, 11));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 13)),
+            getBasicBlock(TestFn, 11));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 14)),
+            getBasicBlock(TestFn, 12));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 15)),
+            getBasicBlock(TestFn, 14));
 }
 
 TEST_F(PassClassTest, DominatorInfinitLoop) {
@@ -424,8 +431,7 @@ TEST_F(PassClassTest, DominatorInfinitLoop) {
       << "The entry node is not the expected one";
 
   // (strict) dominance checks
-  for (uint32_t id : {10, 11, 12, 13})
-    check_dominance(DomTree, TestFn, id, id);
+  for (uint32_t id : {10, 11, 12, 13}) check_dominance(DomTree, TestFn, id, id);
 
   check_dominance(DomTree, TestFn, 10, 11);
   check_dominance(DomTree, TestFn, 10, 12);
@@ -436,13 +442,14 @@ TEST_F(PassClassTest, DominatorInfinitLoop) {
 
   check_no_dominance(DomTree, TestFn, 13, 12);
 
-#if 0
   EXPECT_EQ(DomTree.ImmediateDominator(Entry), nullptr);
 
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)), getBasicBlock(TestFn, 10));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)), getBasicBlock(TestFn, 11));
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 13)), getBasicBlock(TestFn, 11));
-#endif
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)),
+            getBasicBlock(TestFn, 10));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)),
+            getBasicBlock(TestFn, 11));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 13)),
+            getBasicBlock(TestFn, 11));
 }
 
 TEST_F(PassClassTest, DominatorUnreachableFromEntry) {
@@ -483,20 +490,18 @@ TEST_F(PassClassTest, DominatorUnreachableFromEntry) {
       << "The entry node is not the expected one";
 
   // (strict) dominance checks
-  for (uint32_t id : {8, 9})
-    check_dominance(DomTree, TestFn, id, id);
+  for (uint32_t id : {8, 9}) check_dominance(DomTree, TestFn, id, id);
 
   check_dominance(DomTree, TestFn, 8, 9);
 
   check_no_dominance(DomTree, TestFn, 10, 8);
   check_no_dominance(DomTree, TestFn, 10, 9);
 
-#if 0
   EXPECT_EQ(DomTree.ImmediateDominator(Entry), nullptr);
 
-  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 9)), getBasicBlock(TestFn, 8));
+  EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 9)),
+            getBasicBlock(TestFn, 8));
   EXPECT_EQ(DomTree.ImmediateDominator(getBasicBlock(TestFn, 10)), nullptr);
-#endif
 }
 
 }  // namespace

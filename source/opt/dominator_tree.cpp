@@ -24,7 +24,7 @@ template <typename SuccessorLambda, typename PreLambda, typename PostLambda>
 static void depthFirstSearch(const ir::BasicBlock* BB,
                              SuccessorLambda successors, PreLambda pre,
                              PostLambda post) {
-  // Ignore backedge operation
+  // Ignore backedge operation.
   auto nop_backedge = [](const ir::BasicBlock*, const ir::BasicBlock*) {};
 
   CFA<ir::BasicBlock>::DepthFirstTraversal(BB, successors, pre, post,
@@ -35,15 +35,15 @@ template <typename SuccessorLambda, typename PostLambda>
 static void depthFirstSearchPostOrder(const ir::BasicBlock* BB,
                                       SuccessorLambda successors,
                                       PostLambda post) {
-  // Ignore preorder operation
+  // Ignore preorder operation.
   auto nop_preorder = [](const ir::BasicBlock*) {};
   depthFirstSearch(BB, successors, nop_preorder, post);
 }
 
 // This helper class is basically a massive workaround for the current way that
-// depth first is implemented
+// depth first is implemented.
 // TODO: Either clean this up with a nicer way of doing it all or reimplememt
-// parts of DFS to avoid needing these functions
+// parts of DFS to avoid needing these functions.
 class BasicBlockSuccessorHelper {
  public:
   BasicBlockSuccessorHelper(ir::Function* func, ir::BasicBlock* fakeStartNode,
@@ -52,7 +52,7 @@ class BasicBlockSuccessorHelper {
   using GetBlocksFunction =
       std::function<const std::vector<ir::BasicBlock*>*(const ir::BasicBlock*)>;
 
-  // Returns the list of predessor functions
+  // Returns the list of predessor functions.
   // TODO: Just a hack to get this working, doesn't even check if pred is in the
   // list
   GetBlocksFunction GetPredFunctor() {
@@ -62,7 +62,7 @@ class BasicBlockSuccessorHelper {
     };
   }
 
-  // Returns a vector of the list of successor nodes from a given node
+  // Returns a vector of the list of successor nodes from a given node.
   // TODO: As above
   GetBlocksFunction GetSuccessorFunctor() {
     return [&](const ir::BasicBlock* BB) {
@@ -79,7 +79,9 @@ class BasicBlockSuccessorHelper {
   std::map<const ir::BasicBlock*, std::vector<ir::BasicBlock*>> Pred;
   std::set<const ir::BasicBlock*> ReachableNodes;
 
-  // By maintaining a fake node which acts as the first entry node we
+  // By maintaining a fake node which acts as the first entry node we can
+  // maintain track of multiple roots while still having a singular point for
+  // depth first search.
   std::unique_ptr<ir::BasicBlock> FakeStartNode;
 
   void FindFakeNodeChildren(ir::BasicBlock*);
@@ -90,7 +92,7 @@ class BasicBlockSuccessorHelper {
 BasicBlockSuccessorHelper::BasicBlockSuccessorHelper(
     ir::Function* func, ir::BasicBlock* fakeStartNode, bool post)
     : F(func) {
-  // Generate the internal representation of the CFG
+  // Generate the internal representation of the CFG.
   GenerateList();
 
   auto postorder_function = [&](const ir::BasicBlock* b) {
@@ -102,7 +104,7 @@ BasicBlockSuccessorHelper::BasicBlockSuccessorHelper(
 
   // If we're moving through the tree in post order we can have multiple
   // children for the fake entry node otherwise we just make it a predecessor of
-  // the entry node
+  // the entry node.
   if (post) {
     FindFakeNodeChildren(fakeStartNode);
   } else {
@@ -152,7 +154,7 @@ void BasicBlockSuccessorHelper::GenerateList() {
 
     ptrToBB->ForEachSuccessorLabel([&](const uint32_t successorID) {
       // TODO: If we keep somthing like this, avoid going over the full N
-      // functions each time
+      // functions each time.
       for (auto itr = F->begin(); itr < F->end(); ++itr) {
         ir::BasicBlock* bb = &*itr;
         if (successorID == bb->id()) {
@@ -166,29 +168,13 @@ void BasicBlockSuccessorHelper::GenerateList() {
               Pred[bb].end())
             Pred[bb].push_back(const_cast<ir::BasicBlock*>(ptrToBB));
 
-          // Found the successor node, exit out
+          // Found the successor node, exit out.
           break;
         }
       }
     });
   }
 }
-
-const ir::BasicBlock* DominatorTree::GetImmediateDominatorOrNull(
-    uint32_t A) const {
-  auto itr = Nodes.find(A);
-  if (itr != Nodes.end()) {
-    return itr->second.Parent->BB;
-  }
-
-  return nullptr;
-}
-
-const ir::BasicBlock* DominatorTree::GetImmediateDominatorOrNull(
-    const ir::BasicBlock* A) const {
-  return GetImmediateDominatorOrNull(A->id());
-}
-
 bool DominatorTree::StrictlyDominates(uint32_t A, uint32_t B) const {
   if (A == B) return false;
   return Dominates(A, B);
@@ -200,11 +186,15 @@ bool DominatorTree::StrictlyDominates(const ir::BasicBlock* A,
 }
 
 bool DominatorTree::Dominates(uint32_t A, uint32_t B) const {
-  // Node A dominates node B if they are the same
-  if (A == B) return true;
+  // Check that both of the inputs are actual nodes
+  auto aItr = Nodes.find(A);
+  auto bItr = Nodes.find(B);
+  if (aItr == Nodes.end() || bItr == Nodes.end()) return false;
 
-  const DominatorTreeNode* nodeA = &Nodes.find(A)->second;
-  const DominatorTreeNode* nodeB = &Nodes.find(B)->second;
+  // Node A dominates node B if they are the same.
+  if (A == B) return true;
+  const DominatorTreeNode* nodeA = &aItr->second;
+  const DominatorTreeNode* nodeB = &bItr->second;
 
   if (nodeA->DepthFirstInCount < nodeB->DepthFirstInCount &&
       nodeA->DepthFirstOutCount > nodeB->DepthFirstOutCount) {
@@ -219,8 +209,27 @@ bool DominatorTree::Dominates(const ir::BasicBlock* A,
   return Dominates(A->id(), B->id());
 }
 
+ir::BasicBlock* DominatorTree::ImmediateDominator(
+    const ir::BasicBlock* A) const {
+  return ImmediateDominator(A->id());
+}
+
+ir::BasicBlock* DominatorTree::ImmediateDominator(uint32_t A) const {
+  // Check that A is a valid node in the tree
+  auto aItr = Nodes.find(A);
+  if (aItr == Nodes.end()) return nullptr;
+
+  const DominatorTreeNode* nodeA = &aItr->second;
+
+  if (nodeA->Parent == nullptr || nodeA->Parent == Root) {
+    return nullptr;
+  }
+
+  return nodeA->Parent->BB;
+}
+
 DominatorTree::DominatorTreeNode* DominatorTree::GetOrInsertNode(
-    const ir::BasicBlock* BB) {
+    ir::BasicBlock* BB) {
   uint32_t id = BB->id();
   if (Nodes.find(id) == Nodes.end()) {
     Nodes[id] = {BB};
