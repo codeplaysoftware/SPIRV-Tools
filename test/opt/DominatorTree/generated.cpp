@@ -156,8 +156,24 @@ TEST_F(PassClassTest, DominatorSimpleCFG) {
   check_no_dominance(DomTree, TestFn, 12, 14);
   check_no_dominance(DomTree, TestFn, 13, 14);
 
+  // check with some invalid inputs
+  EXPECT_FALSE(DomTree.Dominates(nullptr, Entry));
+  EXPECT_FALSE(DomTree.Dominates(Entry, nullptr));
+  EXPECT_FALSE(DomTree.Dominates(nullptr, nullptr));
+  EXPECT_FALSE(DomTree.Dominates(10, 1));
+  EXPECT_FALSE(DomTree.Dominates(1, 10));
+  EXPECT_FALSE(DomTree.Dominates(1, 1));
+
+  EXPECT_FALSE(DomTree.StrictlyDominates(nullptr, Entry));
+  EXPECT_FALSE(DomTree.StrictlyDominates(Entry, nullptr));
+  EXPECT_FALSE(DomTree.StrictlyDominates(nullptr, nullptr));
+  EXPECT_FALSE(DomTree.StrictlyDominates(10, 1));
+  EXPECT_FALSE(DomTree.StrictlyDominates(1, 10));
+  EXPECT_FALSE(DomTree.StrictlyDominates(1, 1));
+
 #if 0
   EXPECT_EQ(DomTree.ImmediateDominator(Entry), nullptr);
+  EXPECT_EQ(DomTree.ImmediateDominator(nullptr), nullptr);
 
   EXPECT_TRUE(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)), getBasicBlock(TestFn, 10));
   EXPECT_TRUE(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)), getBasicBlock(TestFn, 11));
