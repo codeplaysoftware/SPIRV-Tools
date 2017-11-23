@@ -22,7 +22,7 @@
 #include "../pass_utils.h"
 #include "opt/dominator_analysis_pass.h"
 #include "opt/pass.h"
-#if 0
+
 namespace {
 
 using namespace spvtools;
@@ -55,8 +55,8 @@ const ir::BasicBlock* getBasicBlock(const ir::Function* fn, uint32_t id) {
 //      Y does not strictly dominate X
 //   if X == X then
 //      X does not strictly dominate itself
-void check_dominance(opt::DominatorAnalysis DomTree, const ir::Function* TestFn,
-                     uint32_t X, uint32_t Y) {
+void check_dominance(const opt::DominatorAnalysis& DomTree,
+                     const ir::Function* TestFn, uint32_t X, uint32_t Y) {
   SCOPED_TRACE("Check dominance properties for Basic Block " +
                std::to_string(X) + " and " + std::to_string(Y));
   EXPECT_TRUE(
@@ -69,6 +69,26 @@ void check_dominance(opt::DominatorAnalysis DomTree, const ir::Function* TestFn,
     EXPECT_FALSE(DomTree.Dominates(Y, X));
     EXPECT_FALSE(DomTree.StrictlyDominates(Y, X));
   }
+}
+
+// Check that X does not dominates Y and vise versa
+void check_no_dominance(const opt::DominatorAnalysis& DomTree,
+                        const ir::Function* TestFn, uint32_t X, uint32_t Y) {
+  SCOPED_TRACE("Check no domination for Basic Block " + std::to_string(X) +
+               " and " + std::to_string(Y));
+  EXPECT_FALSE(
+      DomTree.Dominates(getBasicBlock(TestFn, X), getBasicBlock(TestFn, Y)));
+  EXPECT_FALSE(DomTree.Dominates(X, Y));
+  EXPECT_FALSE(DomTree.StrictlyDominates(getBasicBlock(TestFn, X),
+                                         getBasicBlock(TestFn, Y)));
+  EXPECT_FALSE(DomTree.StrictlyDominates(X, Y));
+
+  EXPECT_FALSE(
+      DomTree.Dominates(getBasicBlock(TestFn, Y), getBasicBlock(TestFn, X)));
+  EXPECT_FALSE(DomTree.Dominates(Y, X));
+  EXPECT_FALSE(DomTree.StrictlyDominates(getBasicBlock(TestFn, Y),
+                                         getBasicBlock(TestFn, X)));
+  EXPECT_FALSE(DomTree.StrictlyDominates(Y, X));
 }
 
 TEST_F(PassClassTest, DominatorSimpleCFG) {
@@ -131,6 +151,10 @@ TEST_F(PassClassTest, DominatorSimpleCFG) {
   check_dominance(DomTree, TestFn, 11, 15);
 
   check_dominance(DomTree, TestFn, 14, 15);
+
+  check_no_dominance(DomTree, TestFn, 12, 13);
+  check_no_dominance(DomTree, TestFn, 12, 14);
+  check_no_dominance(DomTree, TestFn, 13, 14);
 
 #if 0
   EXPECT_EQ(DomTree.ImmediateDominator(Entry), nullptr);
@@ -198,6 +222,8 @@ TEST_F(PassClassTest, DominatorIrreducibleCFG) {
 
   check_dominance(DomTree, TestFn, 11, 12);
 
+  check_no_dominance(DomTree, TestFn, 10, 11);
+
 #if 0
   EXPECT_EQ(DomTree.ImmediateDominator(Entry), nullptr);
 
@@ -208,7 +234,7 @@ TEST_F(PassClassTest, DominatorIrreducibleCFG) {
 #endif
 }
 
-TEST_F(PassClassTest, DominatorUnreachableFromExit) {
+TEST_F(PassClassTest, DominatorUnreachableInLoop) {
   const std::string text = R"(
                OpCapability Addresses
                OpCapability Kernel
@@ -256,26 +282,34 @@ TEST_F(PassClassTest, DominatorUnreachableFromExit) {
   for (uint32_t id : {10, 11, 12, 13, 14, 15})
     check_dominance(DomTree, TestFn, id, id);
 
-  check_dominance(DomTree, TestFn, 10, 9);
-  check_dominance(DomTree, TestFn, 10, 10);
   check_dominance(DomTree, TestFn, 10, 11);
+  check_dominance(DomTree, TestFn, 10, 13);
   check_dominance(DomTree, TestFn, 10, 12);
-
-  check_dominance(DomTree, TestFn, 9, 10);
-  check_dominance(DomTree, TestFn, 9, 11);
-  check_dominance(DomTree, TestFn, 9, 12);
+  check_dominance(DomTree, TestFn, 10, 14);
+  check_dominance(DomTree, TestFn, 10, 15);
 
   check_dominance(DomTree, TestFn, 11, 12);
+  check_dominance(DomTree, TestFn, 11, 13);
+  check_dominance(DomTree, TestFn, 11, 14);
+  check_dominance(DomTree, TestFn, 11, 15);
+
+  check_dominance(DomTree, TestFn, 12, 14);
+  check_dominance(DomTree, TestFn, 12, 15);
+
+  check_dominance(DomTree, TestFn, 14, 15);
+
+  check_no_dominance(DomTree, TestFn, 13, 12);
+  check_no_dominance(DomTree, TestFn, 13, 14);
+  check_no_dominance(DomTree, TestFn, 13, 15);
 
 #if 0
   EXPECT_EQ(DomTree.ImmediateDominator(Entry), nullptr);
 
-  EXPECT_TRUE(DomTree.ImmediateDominator(getBasicBlock(TestFn, 9)), getBasicBlock(TestFn, 10));
-  EXPECT_TRUE(DomTree.ImmediateDominator(getBasicBlock(TestFn, 10)), getBasicBlock(TestFn, 9));
-  EXPECT_TRUE(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)), getBasicBlock(TestFn, 9));
+  EXPECT_TRUE(DomTree.ImmediateDominator(getBasicBlock(TestFn, 11)), getBasicBlock(TestFn, 10));
   EXPECT_TRUE(DomTree.ImmediateDominator(getBasicBlock(TestFn, 12)), getBasicBlock(TestFn, 11));
+  EXPECT_TRUE(DomTree.ImmediateDominator(getBasicBlock(TestFn, 13)), getBasicBlock(TestFn, 11));
+  EXPECT_TRUE(DomTree.ImmediateDominator(getBasicBlock(TestFn, 14)), getBasicBlock(TestFn, 12));
+  EXPECT_TRUE(DomTree.ImmediateDominator(getBasicBlock(TestFn, 15)), getBasicBlock(TestFn, 14));
 #endif
 }
 }  // namespace
-
-#endif
