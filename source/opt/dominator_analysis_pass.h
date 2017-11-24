@@ -14,7 +14,9 @@
 
 #ifndef DOMINATOR_ANALYSIS_PASS_H
 #define DOMINATOR_ANALYSIS_PASS_H
+
 #include <cstdint>
+
 #include "dominator_tree.h"
 #include "module.h"
 #include "pass.h"
@@ -24,10 +26,9 @@ namespace opt {
 
 class DominatorAnalysisBase {
  public:
-  DominatorAnalysisBase() : Tree(nullptr) {}
-  virtual ~DominatorAnalysisBase() {}
+  DominatorAnalysisBase(bool isPostDom) : Tree(isPostDom) {}
 
-  virtual void InitializeTree(const ir::Function* F) = 0;
+  void InitializeTree(const ir::Function* F);
   bool Dominates(const ir::BasicBlock* A, const ir::BasicBlock* B) const;
 
   bool Dominates(uint32_t A, uint32_t B) const;
@@ -42,29 +43,22 @@ class DominatorAnalysisBase {
   ir::BasicBlock* ImmediateDominator(const ir::BasicBlock*) const;
   ir::BasicBlock* ImmediateDominator(uint32_t) const;
 
+  bool isPostDominator() const { return Tree.isPostDominator(); }
+
  protected:
-  std::unique_ptr<DominatorTree> Tree;
+  DominatorTree Tree;
 };
 
 class DominatorAnalysis : public DominatorAnalysisBase {
  public:
-  DominatorAnalysis() : DominatorAnalysisBase() {}
-
-  ~DominatorAnalysis() {}
-
-  void InitializeTree(const ir::Function* f) override;
+  DominatorAnalysis() : DominatorAnalysisBase(false) {}
 };
 
 class PostDominatorAnalysis : public DominatorAnalysisBase {
  public:
-  PostDominatorAnalysis() : DominatorAnalysisBase(){};
-
-  ~PostDominatorAnalysis() {}
-
-  void InitializeTree(const ir::Function* f) override;
+  PostDominatorAnalysis() : DominatorAnalysisBase(true){}
 };
 
-// TODO: Decide if we want this to be a normal pass or not
 class DominatorAnalysisPass {
  public:
   DominatorAnalysisPass() {}
