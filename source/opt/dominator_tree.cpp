@@ -43,14 +43,14 @@ static void depthFirstSearchPostOrder(const BBType* BB,
 }
 
 // Small type trait to get the function class type
-template<typename BBType>
+template <typename BBType>
 struct GetFunctionClass {
   using FunctionType = ir::Function;
 };
 
 // This helper class is basically a massive workaround for the current way that
 // depth first is implemented.
-template<typename BBType>
+template <typename BBType>
 class BasicBlockSuccessorHelper {
   // This should eventually become const ir::BasicBlock
   using BasicBlock = BBType;
@@ -161,7 +161,7 @@ void BasicBlockSuccessorHelper<BBType>::CreateSuccessorMap(
   }
 }
 
-} // namespace
+}  // namespace
 
 namespace spvtools {
 namespace opt {
@@ -261,7 +261,7 @@ void DominatorTree::GetDominatorEdges(
   depthFirstSearchPostOrder(DummyStartNode, successorFunctor,
                             postorder_function);
   edges =
-    CFA<ir::BasicBlock>::CalculateDominators(postorder, predecessorFunctor);
+      CFA<ir::BasicBlock>::CalculateDominators(postorder, predecessorFunctor);
 }
 
 void DominatorTree::InitializeTree(const ir::Function* F) {
@@ -331,8 +331,7 @@ void DominatorTree::DumpTreeAsDot(std::ostream& OutStream) const {
     // Print the arrow from the parent to this node
     if (node->Parent) {
       OutStream << node->Parent->BB->id() << " -> " << node->BB->id();
-      if (!node->Parent->BB)
-        OutStream << "[style=dotted]";
+      if (!node->Parent->BB) OutStream << "[style=dotted]";
       OutStream << ";\n";
     }
   });
