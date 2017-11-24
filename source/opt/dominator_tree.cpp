@@ -23,23 +23,22 @@ using namespace spvtools::opt;
 
 namespace {
 
-template <typename SuccessorLambda, typename PreLambda, typename PostLambda>
-static void depthFirstSearch(const ir::BasicBlock* BB,
-                             SuccessorLambda successors, PreLambda pre,
-                             PostLambda post) {
+template <typename BBType, typename SuccessorLambda, typename PreLambda,
+          typename PostLambda>
+static void depthFirstSearch(const BBType* BB, SuccessorLambda successors,
+                             PreLambda pre, PostLambda post) {
   // Ignore backedge operation.
-  auto nop_backedge = [](const ir::BasicBlock*, const ir::BasicBlock*) {};
+  auto nop_backedge = [](const BBType*, const BBType*) {};
 
-  CFA<ir::BasicBlock>::DepthFirstTraversal(BB, successors, pre, post,
-                                           nop_backedge);
+  CFA<BBType>::DepthFirstTraversal(BB, successors, pre, post, nop_backedge);
 }
 
-template <typename SuccessorLambda, typename PostLambda>
-static void depthFirstSearchPostOrder(const ir::BasicBlock* BB,
+template <typename BBType, typename SuccessorLambda, typename PostLambda>
+static void depthFirstSearchPostOrder(const BBType* BB,
                                       SuccessorLambda successors,
                                       PostLambda post) {
   // Ignore preorder operation.
-  auto nop_preorder = [](const ir::BasicBlock*) {};
+  auto nop_preorder = [](const BBType*) {};
   depthFirstSearch(BB, successors, nop_preorder, post);
 }
 
@@ -321,11 +320,7 @@ void DominatorTree::InitializeTree(const ir::Function* F) {
 
   auto getSucc = [&](const DominatorTreeNode* node) { return &node->Children; };
 
-  // Ignore backedge operation
-  auto nop_backedge = [](const DominatorTreeNode*, const DominatorTreeNode*) {};
-
-  CFA<DominatorTreeNode>::DepthFirstTraversal(Root, getSucc, preFunc, postFunc,
-                                              nop_backedge);
+  depthFirstSearch(Root, getSucc, preFunc, postFunc);
 }
 
 void DominatorTree::DumpTreeAsDot(std::ostream& OutStream) const {
