@@ -96,8 +96,7 @@ class DominatorTree {
   // Wrapper functio which gets the list of BasicBlock->DominatingBasicBlock
   // from the CFA and stores it in the edges parameter.
   void GetDominatorEdges(
-      const ir::Function* F,
-      ir::BasicBlock* DummyStartNode,
+      const ir::Function* F, ir::BasicBlock* DummyStartNode,
       std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>& edges);
 
   // Pairs each basic block id to the tree node containing that basic block.

@@ -43,14 +43,14 @@ static void depthFirstSearchPostOrder(const BBType* BB,
 }
 
 // Small type trait to get the function class type
-template<typename BBType>
+template <typename BBType>
 struct GetFunctionClass {
   using FunctionType = ir::Function;
 };
 
 // This helper class is basically a massive workaround for the current way that
 // depth first is implemented.
-template<typename BBType>
+template <typename BBType>
 class BasicBlockSuccessorHelper {
   // This should eventually become const ir::BasicBlock
   using BasicBlock = BBType;
@@ -130,26 +130,18 @@ void BasicBlockSuccessorHelper<BBType>::CreateSuccessorMap(
     // An exiting basic block is a block with an OpKill, OpUnreachable,
     // OpReturn or OpReturnValue as terminator instruction.
     for (BasicBlock& BB : F) {
-      const auto& br = *BB.ctail();
-      switch (br.opcode()) {
-        case SpvOpKill:
-        case SpvOpUnreachable:
-        case SpvOpReturn:
-        case SpvOpReturnValue: {
-          // create a unique entry node
-          Successors[dummyStartNode].push_back(&BB);
-          Predecessors[&BB].push_back(dummyStartNode);
-        } break;
-        default: {
-          BasicBlockListTy& PredList = Predecessors[&BB];
-          BB.ForEachSuccessorLabel([&](const uint32_t successorID) {
-            BasicBlock* Succ = GetSuccessorBasicBlock(successorID);
-            // inverted graph, so our successor in the CFG
-            // is our predecessor in the inverted graph
-            Successors[Succ].push_back(&BB);
-            PredList.push_back(Succ);
-          });
-        } break;
+      if (BB.hasSuccessor()) {
+        BasicBlockListTy& PredList = Predecessors[&BB];
+        BB.ForEachSuccessorLabel([&](const uint32_t successorID) {
+          BasicBlock* Succ = GetSuccessorBasicBlock(successorID);
+          // inverted graph: our successors in the CFG
+          // are our predecessors in the inverted graph
+          Successors[Succ].push_back(&BB);
+          PredList.push_back(Succ);
+        });
+      } else {
+        Successors[dummyStartNode].push_back(&BB);
+        Predecessors[&BB].push_back(dummyStartNode);
       }
     }
   } else {
@@ -169,7 +161,7 @@ void BasicBlockSuccessorHelper<BBType>::CreateSuccessorMap(
   }
 }
 
-} // namespace
+}  // namespace
 
 namespace spvtools {
 namespace opt {
@@ -269,7 +261,7 @@ void DominatorTree::GetDominatorEdges(
   depthFirstSearchPostOrder(DummyStartNode, successorFunctor,
                             postorder_function);
   edges =
-    CFA<ir::BasicBlock>::CalculateDominators(postorder, predecessorFunctor);
+      CFA<ir::BasicBlock>::CalculateDominators(postorder, predecessorFunctor);
 }
 
 void DominatorTree::InitializeTree(const ir::Function* F) {
@@ -339,8 +331,7 @@ void DominatorTree::DumpTreeAsDot(std::ostream& OutStream) const {
     // Print the arrow from the parent to this node
     if (node->Parent) {
       OutStream << node->Parent->BB->id() << " -> " << node->BB->id();
-      if (!node->Parent->BB)
-        OutStream << "[style=dotted]";
+      if (!node->Parent->BB) OutStream << "[style=dotted]";
       OutStream << ";\n";
     }
   });
