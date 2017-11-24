@@ -28,9 +28,19 @@ add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_nested_ifs
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_nested_loops
-SRCS simple_glsl_nested_loops.cpp
-LIBS SPIRV-Tools-opt
+add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_nested_ifs_post
+    SRCS simple_glsl_nested_ifs_post.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET dominator_analysis_glsl_nested_loops
+    SRCS glsl_nested_loops.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET dominator_analysis_glsl_nested_loops_with_unreachables
+    SRCS glsl_nested_loops_with_unreachables.cpp
+    LIBS SPIRV-Tools-opt
 )
 
 add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_switch_case_fallthrough
@@ -43,9 +53,9 @@ add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_unreachable_for
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_nested_loops_with_unreachables
-SRCS simple_glsl_nested_loops_with_unreachables.cpp
-LIBS SPIRV-Tools-opt
+add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_unreachable_for_post
+    SRCS simple_glsl_unreachable_for_post.cpp
+    LIBS SPIRV-Tools-opt
 )
 
 add_spvtools_unittest(TARGET dominator_generated
