@@ -100,6 +100,14 @@ class BasicBlock {
     return --insts_.cend();
   }
 
+  // return if the basic block has at least one successor
+  inline bool hasSuccessor() const {
+    const auto br = &insts_.back();
+    return br->opcode() == SpvOpBranch ||
+           br->opcode() == SpvOpBranchConditional ||
+           br->opcode() == SpvOpSwitch;
+  }
+
   // Runs the given function |f| on each instruction in this basic block, and
   // optionally on the debug line instructions that might precede them.
   inline void ForEachInst(const std::function<void(Instruction*)>& f,
@@ -113,7 +121,7 @@ class BasicBlock {
                              bool run_on_debug_line_insts = false);
 
   // Runs the given function |f| on each label id of each successor block
-  void ForEachSuccessorLabel(const std::function<void(const uint32_t)>& f) const ;
+  void ForEachSuccessorLabel(const std::function<void(const uint32_t)>& f);
 
   // Runs the given function |f| on the merge and continue label, if any
   void ForMergeAndContinueLabel(const std::function<void(const uint32_t)>& f);
