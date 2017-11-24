@@ -161,7 +161,7 @@ void BasicBlockSuccessorHelper<BBType>::CreateSuccessorMap(
   }
 }
 
-}  // namespace
+} // namespace
 
 namespace spvtools {
 namespace opt {
@@ -184,8 +184,8 @@ bool DominatorTree::Dominates(uint32_t A, uint32_t B) const {
 
   // Node A dominates node B if they are the same.
   if (A == B) return true;
-  const DominatorTreeNode* nodeA = &aItr->second;
-  const DominatorTreeNode* nodeB = &bItr->second;
+  const DominatorTreeNode* nodeA = aItr->second;
+  const DominatorTreeNode* nodeB = bItr->second;
 
   if (nodeA->DepthFirstInCount < nodeB->DepthFirstInCount &&
       nodeA->DepthFirstOutCount > nodeB->DepthFirstOutCount) {
@@ -210,7 +210,7 @@ ir::BasicBlock* DominatorTree::ImmediateDominator(uint32_t A) const {
   auto aItr = Nodes.find(A);
   if (aItr == Nodes.end()) return nullptr;
 
-  const DominatorTreeNode* nodeA = &aItr->second;
+  const DominatorTreeNode* nodeA = aItr->second;
 
   if (nodeA->Parent == nullptr || nodeA->Parent == Root) {
     return nullptr;
@@ -221,12 +221,13 @@ ir::BasicBlock* DominatorTree::ImmediateDominator(uint32_t A) const {
 
 DominatorTree::DominatorTreeNode* DominatorTree::GetOrInsertNode(
     ir::BasicBlock* BB) {
-  uint32_t id = BB->id();
-  if (Nodes.find(id) == Nodes.end()) {
-    Nodes[id] = {BB};
+  DominatorTree::DominatorTreeNode*& DTN = Nodes[BB->id()];
+  if (!DTN) {
+    DomTreeNodePool.push_back({BB});
+    DTN = &DomTreeNodePool.back();
   }
 
-  return &Nodes[id];
+  return DTN;
 }
 
 void DominatorTree::GetDominatorEdges(
@@ -265,6 +266,8 @@ void DominatorTree::GetDominatorEdges(
 }
 
 void DominatorTree::InitializeTree(const ir::Function* F) {
+  ResetTree();
+
   // Skip over empty functions
   if (F->cbegin() == F->cend()) {
     return;
@@ -279,6 +282,9 @@ void DominatorTree::InitializeTree(const ir::Function* F) {
   // Get the immedate dominator for each node
   std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>> edges;
   GetDominatorEdges(F, &DummyStartNode, edges);
+
+  // reserve the required number of nodes (+ 1 for the dummy root
+  DomTreeNodePool.reserve(std::distance(F->cbegin(), F->cend()) + 1);
 
   // Transform the vector<pair> into the tree structure which we can use to
   // efficiently query dominace
@@ -315,6 +321,13 @@ void DominatorTree::InitializeTree(const ir::Function* F) {
   depthFirstSearch(Root, getSucc, preFunc, postFunc);
 }
 
+void DominatorTree::ResetTree() {
+  // reclaim memory
+  DomTreeNodePool.clear();
+  // clean up look-ups
+  Nodes.clear();
+}
+
 void DominatorTree::DumpTreeAsDot(std::ostream& OutStream) const {
   if (!Root) return;
 
@@ -325,14 +338,16 @@ void DominatorTree::DumpTreeAsDot(std::ostream& OutStream) const {
     if (node->BB) {
       OutStream << node->BB->id() << "[label=\"" << node->BB->id() << "\"];\n";
     } else {
-      OutStream << node->BB->id() << "[label=\"DummyEntryNode\"];\n";
+      OutStream << "Dummy [label=\"DummyEntryNode\"];\n";
     }
 
     // Print the arrow from the parent to this node
     if (node->Parent) {
-      OutStream << node->Parent->BB->id() << " -> " << node->BB->id();
-      if (!node->Parent->BB) OutStream << "[style=dotted]";
-      OutStream << ";\n";
+      if (node->Parent->BB) {
+        OutStream << node->Parent->BB->id() << " -> " << node->BB->id() << ";\n";
+      } else {
+        OutStream << "Dummy -> " << node->BB->id() << " [style=dotted];\n";
+      }
     }
   });
   OutStream << "}\n";

@@ -34,7 +34,9 @@ class DominatorTree {
   // Dumps the tree in the graphvis dot format into the stream.
   void DumpTreeAsDot(std::ostream& OutStream) const;
 
-  void InitializeTree(const ir::Function* M);
+  // Build the (post-)dominator tree for the function |F|
+  // Any existing data will be overwritten
+  void InitializeTree(const ir::Function* F);
 
   // Check if BasicBlock B is a dominator of BasicBlock A.
   bool Dominates(const ir::BasicBlock* A, const ir::BasicBlock* B) const;
@@ -56,6 +58,8 @@ class DominatorTree {
 
   bool Reachable(const ir::BasicBlock* A) const;
   bool Reachable(uint32_t A) const;
+
+  bool isPostDominator() const { return PostDominator; }
 
  private:
   struct DominatorTreeNode {
@@ -82,6 +86,9 @@ class DominatorTree {
     }
   };
 
+  // Clean up the tree
+  void ResetTree();
+
   // The root of the tree.
   DominatorTreeNode* Root;
 
@@ -99,13 +106,12 @@ class DominatorTree {
       const ir::Function* F, ir::BasicBlock* DummyStartNode,
       std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>& edges);
 
-  // Pairs each basic block id to the tree node containing that basic block.
-  std::map<uint32_t, DominatorTreeNode> Nodes;
+  // Memory poll for Dominator Tree Nodes,
+  // std::vector allow exact allocation of the memory and automatic reclaim
+  std::vector<DominatorTreeNode> DomTreeNodePool;
 
-  // The depth first implementation in cfa requires us to have access to a
-  // vector of each successor node from any give node.
-  std::map<const DominatorTreeNode*, std::vector<DominatorTreeNode*>>
-      Successors;
+  // Pairs each basic block id to the tree node containing that basic block.
+  std::map<uint32_t, DominatorTreeNode*> Nodes;
 
   // True if this is a post dominator tree.
   bool PostDominator;
