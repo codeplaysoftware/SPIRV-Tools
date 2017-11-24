@@ -161,7 +161,7 @@ void BasicBlockSuccessorHelper<BBType>::CreateSuccessorMap(
   }
 }
 
-}  // namespace
+} // namespace
 
 namespace spvtools {
 namespace opt {
@@ -338,14 +338,16 @@ void DominatorTree::DumpTreeAsDot(std::ostream& OutStream) const {
     if (node->BB) {
       OutStream << node->BB->id() << "[label=\"" << node->BB->id() << "\"];\n";
     } else {
-      OutStream << node->BB->id() << "[label=\"DummyEntryNode\"];\n";
+      OutStream << "Dummy [label=\"DummyEntryNode\"];\n";
     }
 
     // Print the arrow from the parent to this node
     if (node->Parent) {
-      OutStream << node->Parent->BB->id() << " -> " << node->BB->id();
-      if (!node->Parent->BB) OutStream << "[style=dotted]";
-      OutStream << ";\n";
+      if (node->Parent->BB) {
+        OutStream << node->Parent->BB->id() << " -> " << node->BB->id() << ";\n";
+      } else {
+        OutStream << "Dummy -> " << node->BB->id() << " [style=dotted];\n";
+      }
     }
   });
   OutStream << "}\n";
