@@ -20,8 +20,8 @@ namespace spvtools {
 namespace opt {
 
 DominatorAnalysis* DominatorAnalysisPass::GetDominatorAnalysis(
-    const ir::Function* f) {
-  if (DomTrees.find(f) == DomTrees.end()) {
+    const ir::Function* f, bool ClearCache) {
+  if (DomTrees.find(f) == DomTrees.end() || ClearCache) {
     DomTrees[f].InitializeTree(f);
   }
 
@@ -29,8 +29,8 @@ DominatorAnalysis* DominatorAnalysisPass::GetDominatorAnalysis(
 }
 
 PostDominatorAnalysis* DominatorAnalysisPass::GetPostDominatorAnalysis(
-    const ir::Function* f) {
-  if (PostDomTrees.find(f) == PostDomTrees.end()) {
+    const ir::Function* f, bool ClearCache) {
+  if (PostDomTrees.find(f) == PostDomTrees.end() || ClearCache) {
     PostDomTrees[f].InitializeTree(f);
   }
 

@@ -83,11 +83,17 @@ class DominatorAnalysisPass {
  public:
   DominatorAnalysisPass() {}
 
-  // Gets the dominator analysis for function F.
-  DominatorAnalysis* GetDominatorAnalysis(const ir::Function* F);
+  // Gets the dominator analysis for function F. Optional parameter ClearCache
+  // will rebuild the tree for Function F and will clear up the previous tree if
+  // set to true.
+  DominatorAnalysis* GetDominatorAnalysis(const ir::Function* F,
+                                          bool ClearCache = false);
 
-  // Gets the postdominator analysis for function F.
-  PostDominatorAnalysis* GetPostDominatorAnalysis(const ir::Function* F);
+  // Gets the postdominator analysis for function F. Optional parameter
+  // ClearCache will rebuild the tree for Function F and will clear up the
+  // previous tree if set to true.
+  PostDominatorAnalysis* GetPostDominatorAnalysis(const ir::Function* F,
+                                                  bool ClearCache = false);
 
  private:
   // Each function in the module will create its own dominator tree. We cache
