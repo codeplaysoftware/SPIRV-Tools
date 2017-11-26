@@ -29,8 +29,6 @@ class DominatorTree {
   DominatorTree() : Root(nullptr), PostDominator(false) {}
   DominatorTree(bool post) : Root(nullptr), PostDominator(post) {}
 
-  bool Validate() const;
-
   // Dumps the tree in the graphvis dot format into the stream.
   void DumpTreeAsDot(std::ostream& OutStream) const;
 
@@ -45,6 +43,7 @@ class DominatorTree {
   // the IDs of A and B.
   bool Dominates(uint32_t A, uint32_t B) const;
 
+  // Check if BasicBlock A strictly dominates B
   bool StrictlyDominates(const ir::BasicBlock* A,
                          const ir::BasicBlock* B) const;
 
@@ -56,37 +55,42 @@ class DominatorTree {
   // Returns the immediate dominator of basicblock A.
   ir::BasicBlock* ImmediateDominator(uint32_t A) const;
 
+  // Returns true if BasicBlock A is reachable by this tree. A node would be
+  // unreachable if it cannot be reached by traversal from the start node or for
+  // a postdominator tree, cannot be reached from the exit nodes.
   bool Reachable(const ir::BasicBlock* A) const;
+
+  // Same as the above method but takes in the ID of the BasicBlock rather than
+  // the BasicBlock itself.
   bool Reachable(uint32_t A) const;
 
+  // Returns true if this tree is a post dominator tree or not.
   bool isPostDominator() const { return PostDominator; }
 
- private:
+  // This helper struct forms the nodes in the tree, with links to the children
+  // in the tree. It also contains two values, one for the pre and post indexes
+  // in the tree which are used to compare two nodes
   struct DominatorTreeNode {
-    DominatorTreeNode(ir::BasicBlock* bb)
-        : BB(bb),
-          Parent(nullptr),
-          Children({}),
-          DepthFirstInCount(-1),
-          DepthFirstOutCount(-1) {}
-    DominatorTreeNode() : DominatorTreeNode(nullptr) {}
+    DominatorTreeNode(ir::BasicBlock* bb);
 
     ir::BasicBlock* BB;
     DominatorTreeNode* Parent;
     std::vector<DominatorTreeNode*> Children;
-    int DepthFirstInCount;
-    int DepthFirstOutCount;
 
-    uint32_t id() const {
-      if (BB) {
-        return BB->id();
-      } else {
-        return 0;
-      }
-    }
+    // These indexes are used to compare two given nodes. A node is a child or
+    // grandchild of another node if its preorder index is greater than the
+    // first nodes preorder index AND if its postorder index is less than the
+    // first nodes postorder index.
+    int DepthFirstPreOrderIndex;
+    int DepthFirstPostOrderIndex;
+
+    // Returns the ID of the basic block. We need this method to be able to use
+    // this struct in the cfa depth first traversal function.
+    uint32_t id() const;
   };
 
-  // Clean up the tree
+ private:
+  // Clean up the tree.
   void ResetTree();
 
   // The root of the tree.
