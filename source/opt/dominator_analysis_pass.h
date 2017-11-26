@@ -24,50 +24,74 @@
 namespace spvtools {
 namespace opt {
 
+// Interface to perform dominator or postdominator analysis on a given function.
 class DominatorAnalysisBase {
  public:
   DominatorAnalysisBase(bool isPostDom) : Tree(isPostDom) {}
 
+  // Calculate the dominator (or postdominator) tree for given function F.
   void InitializeTree(const ir::Function* F);
+
+  // Returns true if BasicBlock A dominates BasicBlock B.
   bool Dominates(const ir::BasicBlock* A, const ir::BasicBlock* B) const;
 
+  // Returns true if BasicBlock A dominates BasicBlock B. Same as above only
+  // using the BasicBlock IDs.
   bool Dominates(uint32_t A, uint32_t B) const;
 
+  // Returns true if BasicBlock A strictly dominates BasicBlock B.
   bool StrictlyDominates(const ir::BasicBlock* A,
                          const ir::BasicBlock* B) const;
 
+  // Returns true if BasicBlock A strictly dominates BasicBlock B. Same as above
+  // only
+  // using the BasicBlock IDs.
   bool StrictlyDominates(uint32_t A, uint32_t B) const;
 
+  // Dump the tree structure into the given stream in the dot format.
   void DumpAsDot(std::ostream& Out) const;
 
-  ir::BasicBlock* ImmediateDominator(const ir::BasicBlock*) const;
-  ir::BasicBlock* ImmediateDominator(uint32_t) const;
+  // Return the immediate dominator of node A or return NULL if it is an entry
+  // node.
+  ir::BasicBlock* ImmediateDominator(const ir::BasicBlock* A) const;
 
+  // Return the immediate dominator of node A or return NULL if it is an entry
+  // node. Same as above but operates on IDs.§
+  ir::BasicBlock* ImmediateDominator(uint32_t A) const;
+
+  // Returns true if this is a postdomiator tree.
   bool isPostDominator() const { return Tree.isPostDominator(); }
 
  protected:
   DominatorTree Tree;
 };
 
+// Derived class for normal dominator analysis.
 class DominatorAnalysis : public DominatorAnalysisBase {
  public:
   DominatorAnalysis() : DominatorAnalysisBase(false) {}
 };
 
+// Derived class for postdominator analysis.
 class PostDominatorAnalysis : public DominatorAnalysisBase {
  public:
-  PostDominatorAnalysis() : DominatorAnalysisBase(true){}
+  PostDominatorAnalysis() : DominatorAnalysisBase(true) {}
 };
 
+// A simple mechanism to cache the result for the dominator tree.
 class DominatorAnalysisPass {
  public:
   DominatorAnalysisPass() {}
 
-  DominatorAnalysis* GetDominatorAnalysis(const ir::Function* f);
-  PostDominatorAnalysis* GetPostDominatorAnalysis(const ir::Function* f);
+  // Gets the dominator analysis for function F.
+  DominatorAnalysis* GetDominatorAnalysis(const ir::Function* F);
+
+  // Gets the postdominator analysis for function F.
+  PostDominatorAnalysis* GetPostDominatorAnalysis(const ir::Function* F);
 
  private:
-  // Each function in the module will create its own dominator tree
+  // Each function in the module will create its own dominator tree. We cache
+  // the result so it doesn't need to be rebuilt each time.
   std::map<const ir::Function*, DominatorAnalysis> DomTrees;
   std::map<const ir::Function*, PostDominatorAnalysis> PostDomTrees;
 };

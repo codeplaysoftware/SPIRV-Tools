@@ -23,16 +23,37 @@ using namespace spvtools::opt;
 
 namespace {
 
+// Wrapper around CFA::DepthFirstTraversal to provide an interface to perform
+// depth first search on generic BasicBlock types. Will call post and pre order
+// user defined functions during traversal
+//
+// BBType - BasicBlock type. Will either be ir::BasicBlock or DominatorTreeNode
+// SuccessorLambda - Lamdba matching the signature of 'const
+// std::vector<BBType>*(const BBType *A)'. Will return a vector of the nodes
+// succeding BasicBlock A.
+// PostLambda - Lamdba matching the signature of 'void (const BBType*)' will be
+// called on each node traversed AFTER their children.
+// PreLambda - Lamdba matching the signature of 'void (const BBType*)' will be
+// called on each node traversed BEFORE their children.
 template <typename BBType, typename SuccessorLambda, typename PreLambda,
           typename PostLambda>
 static void depthFirstSearch(const BBType* BB, SuccessorLambda successors,
                              PreLambda pre, PostLambda post) {
   // Ignore backedge operation.
   auto nop_backedge = [](const BBType*, const BBType*) {};
-
   CFA<BBType>::DepthFirstTraversal(BB, successors, pre, post, nop_backedge);
 }
 
+// Wrapper around CFA::DepthFirstTraversal to provide an interface to perform
+// depth first search on generic BasicBlock types. This overload is for only
+// performing user defined post order.
+//
+// BBType - BasicBlock type. Will either be ir::BasicBlock or DominatorTreeNode
+// SuccessorLambda - Lamdba matching the signature of 'const
+// std::vector<BBType>*(const BBType *A)'. Will return a vector of the nodes
+// succeding BasicBlock A.
+// PostLambda - Lamdba matching the signature of 'void (const BBType*)' will be
+// called on each node traversed after their children.
 template <typename BBType, typename SuccessorLambda, typename PostLambda>
 static void depthFirstSearchPostOrder(const BBType* BB,
                                       SuccessorLambda successors,
@@ -42,7 +63,7 @@ static void depthFirstSearchPostOrder(const BBType* BB,
   depthFirstSearch(BB, successors, nop_preorder, post);
 }
 
-// Small type trait to get the function class type
+// Small type trait to get the function class type.
 template <typename BBType>
 struct GetFunctionClass {
   using FunctionType = ir::Function;
@@ -63,7 +84,7 @@ class BasicBlockSuccessorHelper {
   BasicBlockSuccessorHelper(Function& func, BasicBlock* dummyStartNode,
                             bool post);
 
-  // CFA::CalculateDominators requires std::vector<ir::BasicBlock*>
+  // CFA::CalculateDominators requires std::vector<BasicBlock*>
   using GetBlocksFunction =
       std::function<const std::vector<BasicBlock*>*(const BasicBlock*)>;
 
@@ -161,7 +182,7 @@ void BasicBlockSuccessorHelper<BBType>::CreateSuccessorMap(
   }
 }
 
-} // namespace
+}  // namespace
 
 namespace spvtools {
 namespace opt {
@@ -187,8 +208,8 @@ bool DominatorTree::Dominates(uint32_t A, uint32_t B) const {
   const DominatorTreeNode* nodeA = aItr->second;
   const DominatorTreeNode* nodeB = bItr->second;
 
-  if (nodeA->DepthFirstInCount < nodeB->DepthFirstInCount &&
-      nodeA->DepthFirstOutCount > nodeB->DepthFirstOutCount) {
+  if (nodeA->DepthFirstPreOrderIndex < nodeB->DepthFirstPreOrderIndex &&
+      nodeA->DepthFirstPostOrderIndex > nodeB->DepthFirstPostOrderIndex) {
     return true;
   }
 
@@ -308,12 +329,12 @@ void DominatorTree::InitializeTree(const ir::Function* F) {
   int index = 0;
   auto preFunc = [&](const DominatorTreeNode* node) {
     if (node != Root)
-      const_cast<DominatorTreeNode*>(node)->DepthFirstInCount = ++index;
+      const_cast<DominatorTreeNode*>(node)->DepthFirstPreOrderIndex = ++index;
   };
 
   auto postFunc = [&](const DominatorTreeNode* node) {
     if (node != Root)
-      const_cast<DominatorTreeNode*>(node)->DepthFirstOutCount = ++index;
+      const_cast<DominatorTreeNode*>(node)->DepthFirstPostOrderIndex = ++index;
   };
 
   auto getSucc = [&](const DominatorTreeNode* node) { return &node->Children; };
@@ -344,7 +365,8 @@ void DominatorTree::DumpTreeAsDot(std::ostream& OutStream) const {
     // Print the arrow from the parent to this node
     if (node->Parent) {
       if (node->Parent->BB) {
-        OutStream << node->Parent->BB->id() << " -> " << node->BB->id() << ";\n";
+        OutStream << node->Parent->BB->id() << " -> " << node->BB->id()
+                  << ";\n";
       } else {
         OutStream << "Dummy -> " << node->BB->id() << " [style=dotted];\n";
       }
@@ -362,6 +384,22 @@ void DominatorTree::Visit(
   // Apply the function to every child node
   for (const DominatorTreeNode* child : Node->Children) {
     Visit(child, func);
+  }
+}
+
+// Internal methods to the node helper struct.
+DominatorTree::DominatorTreeNode::DominatorTreeNode(ir::BasicBlock* bb)
+    : BB(bb),
+      Parent(nullptr),
+      Children({}),
+      DepthFirstPreOrderIndex(-1),
+      DepthFirstPostOrderIndex(-1) {}
+
+uint32_t DominatorTree::DominatorTreeNode::id() const {
+  if (BB) {
+    return BB->id();
+  } else {
+    return 0;
   }
 }
 
