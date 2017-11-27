@@ -92,7 +92,7 @@ TEST_F(PassClassTest, UnreachableNestedIfs) {
   std::unique_ptr<ir::IRContext> context =
       BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
                   SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
-  ir::Module *module = context->module();
+  ir::Module* module = context->module();
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
   opt::DominatorAnalysisPass pass;
@@ -112,7 +112,7 @@ TEST_F(PassClassTest, UnreachableNestedIfs) {
   EXPECT_TRUE(analysis->Dominates(10, 10));
   EXPECT_TRUE(analysis->Dominates(10, 5));
   EXPECT_TRUE(analysis->Dominates(5, 5));
-  
+
   EXPECT_TRUE(analysis->StrictlyDominates(12, 14));
   EXPECT_TRUE(analysis->StrictlyDominates(12, 11));
   EXPECT_TRUE(analysis->StrictlyDominates(12, 10));

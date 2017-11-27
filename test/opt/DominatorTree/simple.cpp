@@ -167,9 +167,9 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
 
   opt::DominatorAnalysis* analysis = pass.GetDominatorAnalysis(F);
 
-  opt::DominatorTree & Tree = analysis->GetDomTree();
+  opt::DominatorTree& Tree = analysis->GetDomTree();
 
-  EXPECT_EQ(Tree.GetRoot()->BB, getBasicBlock(F,5));
+  EXPECT_EQ(Tree.GetRoot()->BB, getBasicBlock(F, 5));
   EXPECT_TRUE(analysis->Dominates(5, 18));
   EXPECT_TRUE(analysis->Dominates(5, 53));
   EXPECT_TRUE(analysis->Dominates(5, 19));
