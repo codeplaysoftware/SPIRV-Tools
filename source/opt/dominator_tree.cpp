@@ -205,8 +205,8 @@ bool DominatorTree::Dominates(uint32_t A, uint32_t B) const {
 
   // Node A dominates node B if they are the same.
   if (A == B) return true;
-  const DominatorTreeNode* nodeA = aItr->second;
-  const DominatorTreeNode* nodeB = bItr->second;
+  const DominatorTreeNode* nodeA = &aItr->second;
+  const DominatorTreeNode* nodeB = &bItr->second;
 
   if (nodeA->DepthFirstPreOrderIndex < nodeB->DepthFirstPreOrderIndex &&
       nodeA->DepthFirstPostOrderIndex > nodeB->DepthFirstPostOrderIndex) {
@@ -231,22 +231,24 @@ ir::BasicBlock* DominatorTree::ImmediateDominator(uint32_t A) const {
   auto aItr = Nodes.find(A);
   if (aItr == Nodes.end()) return nullptr;
 
-  const DominatorTreeNode* nodeA = aItr->second;
+  const DominatorTreeNode* nodeA = &aItr->second;
 
-  if (nodeA->Parent == nullptr || nodeA->Parent == Root) {
+  if (nodeA->Parent == nullptr) {
     return nullptr;
   }
 
   return nodeA->Parent->BB;
 }
 
-DominatorTree::DominatorTreeNode* DominatorTree::GetOrInsertNode(
-    ir::BasicBlock* BB) {
-  DominatorTree::DominatorTreeNode*& DTN = Nodes[BB->id()];
-  if (!DTN) {
-    DomTreeNodePool.push_back({BB});
-    DTN = &DomTreeNodePool.back();
-  }
+DominatorTreeNode* DominatorTree::GetOrInsertNode(ir::BasicBlock* BB) {
+  DominatorTreeNode* DTN = nullptr;
+
+  std::map<uint32_t, DominatorTreeNode>::iterator ItNode = Nodes.find(BB->id());
+  if (ItNode == Nodes.end()) {
+    DTN = &Nodes.emplace(std::make_pair(BB->id(), DominatorTreeNode{BB}))
+               .first->second;
+  } else
+    DTN = &ItNode->second;
 
   return DTN;
 }
@@ -304,18 +306,18 @@ void DominatorTree::InitializeTree(const ir::Function* F) {
   std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>> edges;
   GetDominatorEdges(F, &DummyStartNode, edges);
 
-  // reserve the required number of nodes (+ 1 for the dummy root
-  DomTreeNodePool.reserve(std::distance(F->cbegin(), F->cend()) + 1);
-
   // Transform the vector<pair> into the tree structure which we can use to
   // efficiently query dominace
   for (auto edge : edges) {
-    uint32_t nodeID = edge.first->id();
-    uint32_t dominatorID = edge.second->id();
-
+    if (&DummyStartNode == edge.first)
+      continue;
     DominatorTreeNode* first = GetOrInsertNode(edge.first);
 
-    if (nodeID == dominatorID) continue;
+    if (&DummyStartNode == edge.second) {
+      if (std::find(Roots.begin(), Roots.end(), first) == Roots.end())
+        Roots.push_back(first);
+      continue;
+    }
 
     DominatorTreeNode* second = GetOrInsertNode(edge.second);
 
@@ -323,55 +325,47 @@ void DominatorTree::InitializeTree(const ir::Function* F) {
     second->Children.push_back(first);
   }
 
-  Root = GetOrInsertNode(&DummyStartNode);
-  Root->BB = nullptr;
-
   int index = 0;
   auto preFunc = [&](const DominatorTreeNode* node) {
-    if (node != Root)
-      const_cast<DominatorTreeNode*>(node)->DepthFirstPreOrderIndex = ++index;
+    const_cast<DominatorTreeNode*>(node)->DepthFirstPreOrderIndex = ++index;
   };
 
   auto postFunc = [&](const DominatorTreeNode* node) {
-    if (node != Root)
-      const_cast<DominatorTreeNode*>(node)->DepthFirstPostOrderIndex = ++index;
+    const_cast<DominatorTreeNode*>(node)->DepthFirstPostOrderIndex = ++index;
   };
 
   auto getSucc = [&](const DominatorTreeNode* node) { return &node->Children; };
 
-  depthFirstSearch(Root, getSucc, preFunc, postFunc);
+  for (auto Root : *this) depthFirstSearch(Root, getSucc, preFunc, postFunc);
 }
 
 void DominatorTree::ResetTree() {
-  // reclaim memory
-  DomTreeNodePool.clear();
   // clean up look-ups
   Nodes.clear();
+  Roots.clear();
 }
 
 void DominatorTree::DumpTreeAsDot(std::ostream& OutStream) const {
-  if (!Root) return;
-
   OutStream << "digraph {\n";
-  Visit(Root, [&](const DominatorTreeNode* node) {
+  OutStream << "Dummy [label=\"Entry\"];\n";
+  for (auto Root : *this) {
+    Visit(Root, [&](const DominatorTreeNode* node) {
 
-    // Print the node, note special case for the dummy entry node
-    if (node->BB) {
-      OutStream << node->BB->id() << "[label=\"" << node->BB->id() << "\"];\n";
-    } else {
-      OutStream << "Dummy [label=\"DummyEntryNode\"];\n";
-    }
+      // Print the node, note special case for the dummy entry node
+      if (node->BB) {
+        OutStream << node->BB->id() << "[label=\"" << node->BB->id()
+                  << "\"];\n";
+      }
 
-    // Print the arrow from the parent to this node
-    if (node->Parent) {
-      if (node->Parent->BB) {
+      // Print the arrow from the parent to this node
+      if (node->Parent) {
         OutStream << node->Parent->BB->id() << " -> " << node->BB->id()
                   << ";\n";
       } else {
         OutStream << "Dummy -> " << node->BB->id() << " [style=dotted];\n";
       }
-    }
-  });
+    });
+  }
   OutStream << "}\n";
 }
 
@@ -388,19 +382,15 @@ void DominatorTree::Visit(
 }
 
 // Internal methods to the node helper struct.
-DominatorTree::DominatorTreeNode::DominatorTreeNode(ir::BasicBlock* bb)
+DominatorTreeNode::DominatorTreeNode(ir::BasicBlock* bb)
     : BB(bb),
       Parent(nullptr),
       Children({}),
       DepthFirstPreOrderIndex(-1),
       DepthFirstPostOrderIndex(-1) {}
 
-uint32_t DominatorTree::DominatorTreeNode::id() const {
-  if (BB) {
-    return BB->id();
-  } else {
-    return 0;
-  }
+uint32_t DominatorTreeNode::id() const {
+  return BB->id();
 }
 
 }  // opt
