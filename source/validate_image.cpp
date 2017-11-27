@@ -587,6 +587,12 @@ spv_result_t ImagePass(ValidationState_t& _,
   const SpvOp opcode = static_cast<SpvOp>(inst->opcode);
   const uint32_t result_type = inst->type_id;
 
+  if (IsImplicitLod(opcode)) {
+    _.current_function().RegisterExecutionModelLimitation(
+        SpvExecutionModelFragment,
+        "ImplicitLod instructions require Fragment execution model");
+  }
+
   switch (opcode) {
     case SpvOpSampledImage: {
       if (_.GetIdOpcode(result_type) != SpvOpTypeSampledImage) {
@@ -948,18 +954,21 @@ spv_result_t ImagePass(ValidationState_t& _,
     }
 
     case SpvOpImageRead: {
-      if (!_.IsIntVectorType(result_type) &&
-          !_.IsFloatVectorType(result_type)) {
+      if (!_.IsIntScalarOrVectorType(result_type) &&
+          !_.IsFloatScalarOrVectorType(result_type)) {
         return _.diag(SPV_ERROR_INVALID_DATA)
-            << "Expected Result Type to be int or float vector type: "
+            << "Expected Result Type to be int or float scalar or vector type: "
             << spvOpcodeString(opcode);
       }
 
+#if 0
+      // TODO(atgoo@github.com) Disabled until the spec is clarified.
       if (_.GetDimension(result_type) != 4) {
         return _.diag(SPV_ERROR_INVALID_DATA)
             << "Expected Result Type to have 4 components: "
             << spvOpcodeString(opcode);
       }
+#endif
 
       const uint32_t image_type = _.GetOperandTypeId(inst, 2);
       if (_.GetIdOpcode(image_type) != SpvOpTypeImage) {
@@ -1059,19 +1068,24 @@ spv_result_t ImagePass(ValidationState_t& _,
             << spvOpcodeString(opcode);
       }
 
+      // TODO(atgoo@github.com) The spec doesn't explicitely say what the type
+      // of texel should be.
       const uint32_t texel_type = _.GetOperandTypeId(inst, 2);
-      if (!_.IsIntVectorType(texel_type) &&
-          !_.IsFloatVectorType(texel_type)) {
+      if (!_.IsIntScalarOrVectorType(texel_type) &&
+          !_.IsFloatScalarOrVectorType(texel_type)) {
         return _.diag(SPV_ERROR_INVALID_DATA)
             << "Expected Texel to be int or float vector or scalar: "
             << spvOpcodeString(opcode);
       }
 
+#if 0
+      // TODO: See above.
       if (_.GetDimension(texel_type) != 4) {
         return _.diag(SPV_ERROR_INVALID_DATA)
             << "Expected Texel to have 4 components: "
             << spvOpcodeString(opcode);
       }
+#endif
 
       if (_.GetIdOpcode(info.sampled_type) != SpvOpTypeVoid) {
         const uint32_t texel_component_type = _.GetComponentType(texel_type);
@@ -1276,6 +1290,10 @@ spv_result_t ImagePass(ValidationState_t& _,
     }
 
     case SpvOpImageQueryLod: {
+      _.current_function().RegisterExecutionModelLimitation(
+          SpvExecutionModelFragment,
+          "OpImageQueryLod requires Fragment execution model");
+
       if (!_.IsFloatVectorType(result_type)) {
         return _.diag(SPV_ERROR_INVALID_DATA)
             << "Expected Result Type to be float vector type: "
