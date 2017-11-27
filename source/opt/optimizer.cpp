@@ -66,6 +66,21 @@ Optimizer& Optimizer::RegisterPass(PassToken&& p) {
   return *this;
 }
 
+Optimizer& Optimizer::RegisterLegalizationPasses() {
+  return RegisterPass(CreateInlineExhaustivePass())
+      .RegisterPass(CreateLocalAccessChainConvertPass())
+      .RegisterPass(CreateLocalSingleBlockLoadStoreElimPass())
+      .RegisterPass(CreateLocalSingleStoreElimPass())
+      .RegisterPass(CreateInsertExtractElimPass())
+      .RegisterPass(CreateAggressiveDCEPass())
+      .RegisterPass(CreateDeadBranchElimPass())
+      .RegisterPass(CreateCFGCleanupPass())
+      .RegisterPass(CreateBlockMergePass())
+      .RegisterPass(CreateLocalMultiStoreElimPass())
+      .RegisterPass(CreateInsertExtractElimPass())
+      .RegisterPass(CreateAggressiveDCEPass());
+}
+
 Optimizer& Optimizer::RegisterPerformancePasses() {
   return RegisterPass(CreateMergeReturnPass())
       .RegisterPass(CreateInlineExhaustivePass())
@@ -79,6 +94,7 @@ Optimizer& Optimizer::RegisterPerformancePasses() {
       .RegisterPass(CreateBlockMergePass())
       .RegisterPass(CreateLocalMultiStoreElimPass())
       .RegisterPass(CreateInsertExtractElimPass())
+      .RegisterPass(CreateLocalRedundancyEliminationPass())
       // Currently exposing driver bugs resulting in crashes (#946)
       // .RegisterPass(CreateCommonUniformElimPass())
       .RegisterPass(CreateDeadVariableEliminationPass());
@@ -97,6 +113,7 @@ Optimizer& Optimizer::RegisterSizePasses() {
       .RegisterPass(CreateBlockMergePass())
       .RegisterPass(CreateLocalMultiStoreElimPass())
       .RegisterPass(CreateInsertExtractElimPass())
+      .RegisterPass(CreateLocalRedundancyEliminationPass())
       // Currently exposing driver bugs resulting in crashes (#946)
       // .RegisterPass(CreateCommonUniformElimPass())
       .RegisterPass(CreateDeadVariableEliminationPass());
@@ -261,4 +278,8 @@ Optimizer::PassToken CreateCFGCleanupPass() {
       MakeUnique<opt::CFGCleanupPass>());
 }
 
+Optimizer::PassToken CreateLocalRedundancyEliminationPass() {
+  return MakeUnique<Optimizer::PassToken::Impl>(
+      MakeUnique<opt::LocalRedundancyEliminationPass>());
+}
 }  // namespace spvtools

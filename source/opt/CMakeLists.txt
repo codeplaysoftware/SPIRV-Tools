@@ -25,6 +25,8 @@ add_library(SPIRV-Tools-opt
   dead_variable_elimination.h
   decoration_manager.h
   def_use_manager.h
+  dominator_analysis_pass.h
+  dominator_tree.h
   eliminate_dead_constant_pass.h
   flatten_decoration_pass.h
   function.h
@@ -39,6 +41,7 @@ add_library(SPIRV-Tools-opt
   ir_loader.h
   ir_context.h
   local_access_chain_convert_pass.h
+  local_redundancy_elimination.h
   local_single_block_elim_pass.h
   local_single_store_elim_pass.h
   local_ssa_elim_pass.h
@@ -59,8 +62,7 @@ add_library(SPIRV-Tools-opt
   types.h
   type_manager.h
   unify_const_pass.h
-  dominator_analysis_pass.h
-  dominator_tree.h
+  value_number_table.h
 
   aggressive_dead_code_elim_pass.cpp
   basic_block.cpp
@@ -74,6 +76,8 @@ add_library(SPIRV-Tools-opt
   def_use_manager.cpp
   dead_branch_elim_pass.cpp
   dead_variable_elimination.cpp
+  dominator_analysis_pass.cpp
+  dominator_tree.cpp
   eliminate_dead_constant_pass.cpp
   flatten_decoration_pass.cpp
   fold.cpp
@@ -85,9 +89,11 @@ add_library(SPIRV-Tools-opt
   inline_opaque_pass.cpp
   insert_extract_elim.cpp
   instruction.cpp
+  instruction_list.cpp
   ir_loader.cpp
   ir_context.cpp
   local_access_chain_convert_pass.cpp
+  local_redundancy_elimination.cpp
   local_single_block_elim_pass.cpp
   local_single_store_elim_pass.cpp
   local_ssa_elim_pass.cpp
@@ -105,9 +111,7 @@ add_library(SPIRV-Tools-opt
   types.cpp
   type_manager.cpp
   unify_const_pass.cpp
-  instruction_list.cpp
-  dominator_analysis_pass.cpp
-  dominator_tree.cpp
+  value_number_table.cpp
 )
 
 spvtools_default_compile_options(SPIRV-Tools-opt)
@@ -121,6 +125,7 @@ target_link_libraries(SPIRV-Tools-opt
   PUBLIC ${SPIRV_TOOLS})
 
 set_property(TARGET SPIRV-Tools-opt PROPERTY FOLDER "SPIRV-Tools libraries")
+spvtools_check_symbol_exports(SPIRV-Tools-opt)
 
 if(ENABLE_SPIRV_TOOLS_INSTALL)
   install(TARGETS SPIRV-Tools-opt

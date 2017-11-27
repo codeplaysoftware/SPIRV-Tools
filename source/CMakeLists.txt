@@ -260,6 +260,7 @@ set(SPIRV_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_conversion.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_datarules.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_decorations.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/validate_derivatives.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_id.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_image.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_instruction.cpp
@@ -296,6 +297,7 @@ target_include_directories(${SPIRV_TOOLS}
   PRIVATE ${SPIRV_HEADER_INCLUDE_DIR}
   )
 set_property(TARGET ${SPIRV_TOOLS} PROPERTY FOLDER "SPIRV-Tools libraries")
+spvtools_check_symbol_exports(${SPIRV_TOOLS})
 
 if(ENABLE_SPIRV_TOOLS_INSTALL)
   install(TARGETS ${SPIRV_TOOLS}

@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include "ir_context.h"
+#include <spirv/1.0/GLSL.std.450.h>
+#include <cstring>
 #include "log.h"
 #include "mem_pass.h"
 
@@ -46,6 +48,9 @@ void IRContext::InvalidateAnalyses(IRContext::Analysis analyses_to_invalidate) {
   }
   if (analyses_to_invalidate & kAnalysisDecorations) {
     decoration_mgr_.reset(nullptr);
+  }
+  if (analyses_to_invalidate & kAnalysisCombinators) {
+    combinator_ops_.clear();
   }
   valid_analyses_ = Analysis(valid_analyses_ & ~analyses_to_invalidate);
 }
@@ -86,25 +91,32 @@ bool IRContext::KillDef(uint32_t id) {
 
 bool IRContext::ReplaceAllUsesWith(uint32_t before, uint32_t after) {
   if (before == after) return false;
-  opt::analysis::UseList* uses = get_def_use_mgr()->GetUses(before);
-  if (uses == nullptr) return false;
 
-  std::vector<opt::analysis::Use> uses_to_update;
-  for (auto it = uses->cbegin(); it != uses->cend(); ++it) {
-    uses_to_update.push_back(*it);
-  }
+  // Ensure that |after| has been registered as def.
+  assert(get_def_use_mgr()->GetDef(after) && "'after' is not a registered def.");
 
-  for (opt::analysis::Use& use : uses_to_update) {
-    ForgetUses(use.inst);
+  std::vector<std::pair<ir::Instruction*,uint32_t>> uses_to_update;
+  get_def_use_mgr()->ForEachUse(before, [&uses_to_update](ir::Instruction* user, uint32_t index) {
+    uses_to_update.emplace_back(user, index);
+  });
+
+  ir::Instruction* prev = nullptr;
+  for (auto p : uses_to_update) {
+    ir::Instruction* user = p.first;
+    uint32_t index = p.second;
+    if (prev == nullptr || prev != user) {
+      ForgetUses(user);
+      prev = user;
+    }
     const uint32_t type_result_id_count =
-        (use.inst->result_id() != 0) + (use.inst->type_id() != 0);
+        (user->result_id() != 0) + (user->type_id() != 0);
 
-    if (use.operand_index < type_result_id_count) {
+    if (index < type_result_id_count) {
       // Update the type_id. Note that result id is immutable so it should
       // never be updated.
-      if (use.inst->type_id() != 0 && use.operand_index == 0) {
-        use.inst->SetResultType(after);
-      } else if (use.inst->type_id() == 0) {
+      if (user->type_id() != 0 && index == 0) {
+        user->SetResultType(after);
+      } else if (user->type_id() == 0) {
         SPIRV_ASSERT(consumer_, false,
                      "Result type id considered as use while the instruction "
                      "doesn't have a result type id.");
@@ -115,12 +127,13 @@ bool IRContext::ReplaceAllUsesWith(uint32_t before, uint32_t after) {
       }
     } else {
       // Update an in-operand.
-      uint32_t in_operand_pos = use.operand_index - type_result_id_count;
+      uint32_t in_operand_pos = index - type_result_id_count;
       // Make the modification in the instruction.
-      use.inst->SetInOperand(in_operand_pos, {after});
+      user->SetInOperand(in_operand_pos, {after});
     }
-    AnalyzeUses(use.inst);
-  }
+    AnalyzeUses(user);
+  };
+
   return true;
 }
 
@@ -183,5 +196,240 @@ void IRContext::KillNamesAndDecorates(Instruction* inst) {
   KillNamesAndDecorates(rId);
 }
 
+void IRContext::AddCombinatorsForCapability(uint32_t capability) {
+  if (capability == SpvCapabilityShader) {
+    combinator_ops_[0].insert({
+        SpvOpNop,
+        SpvOpUndef,
+        SpvOpVariable,
+        SpvOpImageTexelPointer,
+        SpvOpLoad,
+        SpvOpAccessChain,
+        SpvOpInBoundsAccessChain,
+        SpvOpArrayLength,
+        SpvOpVectorExtractDynamic,
+        SpvOpVectorInsertDynamic,
+        SpvOpVectorShuffle,
+        SpvOpCompositeConstruct,
+        SpvOpCompositeExtract,
+        SpvOpCompositeInsert,
+        SpvOpCopyObject,
+        SpvOpTranspose,
+        SpvOpSampledImage,
+        SpvOpImageSampleImplicitLod,
+        SpvOpImageSampleExplicitLod,
+        SpvOpImageSampleDrefImplicitLod,
+        SpvOpImageSampleDrefExplicitLod,
+        SpvOpImageSampleProjImplicitLod,
+        SpvOpImageSampleProjExplicitLod,
+        SpvOpImageSampleProjDrefImplicitLod,
+        SpvOpImageSampleProjDrefExplicitLod,
+        SpvOpImageFetch,
+        SpvOpImageGather,
+        SpvOpImageDrefGather,
+        SpvOpImageRead,
+        SpvOpImage,
+        SpvOpConvertFToU,
+        SpvOpConvertFToS,
+        SpvOpConvertSToF,
+        SpvOpConvertUToF,
+        SpvOpUConvert,
+        SpvOpSConvert,
+        SpvOpFConvert,
+        SpvOpQuantizeToF16,
+        SpvOpBitcast,
+        SpvOpSNegate,
+        SpvOpFNegate,
+        SpvOpIAdd,
+        SpvOpFAdd,
+        SpvOpISub,
+        SpvOpFSub,
+        SpvOpIMul,
+        SpvOpFMul,
+        SpvOpUDiv,
+        SpvOpSDiv,
+        SpvOpFDiv,
+        SpvOpUMod,
+        SpvOpSRem,
+        SpvOpSMod,
+        SpvOpFRem,
+        SpvOpFMod,
+        SpvOpVectorTimesScalar,
+        SpvOpMatrixTimesScalar,
+        SpvOpVectorTimesMatrix,
+        SpvOpMatrixTimesVector,
+        SpvOpMatrixTimesMatrix,
+        SpvOpOuterProduct,
+        SpvOpDot,
+        SpvOpIAddCarry,
+        SpvOpISubBorrow,
+        SpvOpUMulExtended,
+        SpvOpSMulExtended,
+        SpvOpAny,
+        SpvOpAll,
+        SpvOpIsNan,
+        SpvOpIsInf,
+        SpvOpLogicalEqual,
+        SpvOpLogicalNotEqual,
+        SpvOpLogicalOr,
+        SpvOpLogicalAnd,
+        SpvOpLogicalNot,
+        SpvOpSelect,
+        SpvOpIEqual,
+        SpvOpINotEqual,
+        SpvOpUGreaterThan,
+        SpvOpSGreaterThan,
+        SpvOpUGreaterThanEqual,
+        SpvOpSGreaterThanEqual,
+        SpvOpULessThan,
+        SpvOpSLessThan,
+        SpvOpULessThanEqual,
+        SpvOpSLessThanEqual,
+        SpvOpFOrdEqual,
+        SpvOpFUnordEqual,
+        SpvOpFOrdNotEqual,
+        SpvOpFUnordNotEqual,
+        SpvOpFOrdLessThan,
+        SpvOpFUnordLessThan,
+        SpvOpFOrdGreaterThan,
+        SpvOpFUnordGreaterThan,
+        SpvOpFOrdLessThanEqual,
+        SpvOpFUnordLessThanEqual,
+        SpvOpFOrdGreaterThanEqual,
+        SpvOpFUnordGreaterThanEqual,
+        SpvOpShiftRightLogical,
+        SpvOpShiftRightArithmetic,
+        SpvOpShiftLeftLogical,
+        SpvOpBitwiseOr,
+        SpvOpBitwiseXor,
+        SpvOpBitwiseAnd,
+        SpvOpNot,
+        SpvOpBitFieldInsert,
+        SpvOpBitFieldSExtract,
+        SpvOpBitFieldUExtract,
+        SpvOpBitReverse,
+        SpvOpBitCount,
+        SpvOpPhi,
+        SpvOpImageSparseSampleImplicitLod,
+        SpvOpImageSparseSampleExplicitLod,
+        SpvOpImageSparseSampleDrefImplicitLod,
+        SpvOpImageSparseSampleDrefExplicitLod,
+        SpvOpImageSparseSampleProjImplicitLod,
+        SpvOpImageSparseSampleProjExplicitLod,
+        SpvOpImageSparseSampleProjDrefImplicitLod,
+        SpvOpImageSparseSampleProjDrefExplicitLod,
+        SpvOpImageSparseFetch,
+        SpvOpImageSparseGather,
+        SpvOpImageSparseDrefGather,
+        SpvOpImageSparseTexelsResident,
+        SpvOpImageSparseRead,
+        SpvOpSizeOf
+        // TODO(dneto): Add instructions enabled by ImageQuery
+    });
+  }
+}
+
+void IRContext::AddCombinatorsForExtension(ir::Instruction* extension) {
+  assert(extension->opcode() == SpvOpExtInstImport &&
+         "Expecting an import of an extension's instruction set.");
+  const char* extension_name =
+      reinterpret_cast<const char*>(&extension->GetInOperand(0).words[0]);
+  if (!strcmp(extension_name, "GLSL.std.450")) {
+    combinator_ops_[extension->result_id()] = {GLSLstd450Round,
+                                               GLSLstd450RoundEven,
+                                               GLSLstd450Trunc,
+                                               GLSLstd450FAbs,
+                                               GLSLstd450SAbs,
+                                               GLSLstd450FSign,
+                                               GLSLstd450SSign,
+                                               GLSLstd450Floor,
+                                               GLSLstd450Ceil,
+                                               GLSLstd450Fract,
+                                               GLSLstd450Radians,
+                                               GLSLstd450Degrees,
+                                               GLSLstd450Sin,
+                                               GLSLstd450Cos,
+                                               GLSLstd450Tan,
+                                               GLSLstd450Asin,
+                                               GLSLstd450Acos,
+                                               GLSLstd450Atan,
+                                               GLSLstd450Sinh,
+                                               GLSLstd450Cosh,
+                                               GLSLstd450Tanh,
+                                               GLSLstd450Asinh,
+                                               GLSLstd450Acosh,
+                                               GLSLstd450Atanh,
+                                               GLSLstd450Atan2,
+                                               GLSLstd450Pow,
+                                               GLSLstd450Exp,
+                                               GLSLstd450Log,
+                                               GLSLstd450Exp2,
+                                               GLSLstd450Log2,
+                                               GLSLstd450Sqrt,
+                                               GLSLstd450InverseSqrt,
+                                               GLSLstd450Determinant,
+                                               GLSLstd450MatrixInverse,
+                                               GLSLstd450ModfStruct,
+                                               GLSLstd450FMin,
+                                               GLSLstd450UMin,
+                                               GLSLstd450SMin,
+                                               GLSLstd450FMax,
+                                               GLSLstd450UMax,
+                                               GLSLstd450SMax,
+                                               GLSLstd450FClamp,
+                                               GLSLstd450UClamp,
+                                               GLSLstd450SClamp,
+                                               GLSLstd450FMix,
+                                               GLSLstd450IMix,
+                                               GLSLstd450Step,
+                                               GLSLstd450SmoothStep,
+                                               GLSLstd450Fma,
+                                               GLSLstd450FrexpStruct,
+                                               GLSLstd450Ldexp,
+                                               GLSLstd450PackSnorm4x8,
+                                               GLSLstd450PackUnorm4x8,
+                                               GLSLstd450PackSnorm2x16,
+                                               GLSLstd450PackUnorm2x16,
+                                               GLSLstd450PackHalf2x16,
+                                               GLSLstd450PackDouble2x32,
+                                               GLSLstd450UnpackSnorm2x16,
+                                               GLSLstd450UnpackUnorm2x16,
+                                               GLSLstd450UnpackHalf2x16,
+                                               GLSLstd450UnpackSnorm4x8,
+                                               GLSLstd450UnpackUnorm4x8,
+                                               GLSLstd450UnpackDouble2x32,
+                                               GLSLstd450Length,
+                                               GLSLstd450Distance,
+                                               GLSLstd450Cross,
+                                               GLSLstd450Normalize,
+                                               GLSLstd450FaceForward,
+                                               GLSLstd450Reflect,
+                                               GLSLstd450Refract,
+                                               GLSLstd450FindILsb,
+                                               GLSLstd450FindSMsb,
+                                               GLSLstd450FindUMsb,
+                                               GLSLstd450InterpolateAtCentroid,
+                                               GLSLstd450InterpolateAtSample,
+                                               GLSLstd450InterpolateAtOffset,
+                                               GLSLstd450NMin,
+                                               GLSLstd450NMax,
+                                               GLSLstd450NClamp};
+  } else {
+    // Map the result id to the empty set.
+    combinator_ops_[extension->result_id()];
+  }
+}
+
+void IRContext::InitializeCombinators() {
+  for( auto& capability : module()->capabilities()) {
+    AddCombinatorsForCapability(capability.GetSingleWordInOperand(0));
+  }
+
+  for( auto& extension : module()->ext_inst_imports()) {
+    AddCombinatorsForExtension(&extension);
+  }
+
+  valid_analyses_ |= kAnalysisCombinators;
+}
 }  // namespace ir
 }  // namespace spvtools

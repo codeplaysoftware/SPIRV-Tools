@@ -181,6 +181,7 @@ spv_result_t ProcessInstruction(void* user_data,
   if (auto error = TypeUniquePass(_, inst)) return error;
   if (auto error = ArithmeticsPass(_, inst)) return error;
   if (auto error = ConversionPass(_, inst)) return error;
+  if (auto error = DerivativesPass(_, inst)) return error;
   if (auto error = LogicalsPass(_, inst)) return error;
   if (auto error = BitwisePass(_, inst)) return error;
   if (auto error = ImagePass(_, inst)) return error;
@@ -228,14 +229,6 @@ UNUSED(void PrintDotGraph(ValidationState_t& _, libspirv::Function func)) {
     PrintBlocks(_, func);
     printf("}\n");
   }
-}
-}  // anonymous namespace
-
-spv_result_t spvValidate(const spv_const_context context,
-                         const spv_const_binary binary,
-                         spv_diagnostic* pDiagnostic) {
-  return spvValidateBinary(context, binary->code, binary->wordCount,
-                           pDiagnostic);
 }
 
 spv_result_t ValidateBinaryUsingContextAndValidationState(
@@ -340,6 +333,14 @@ spv_result_t ValidateBinaryUsingContextAndValidationState(
   return spvValidateIDs(instructions.data(), instructions.size(),
                         context.opcode_table, context.operand_table,
                         context.ext_inst_table, *vstate, &position);
+}
+}  // anonymous namespace
+
+spv_result_t spvValidate(const spv_const_context context,
+                         const spv_const_binary binary,
+                         spv_diagnostic* pDiagnostic) {
+  return spvValidateBinary(context, binary->code, binary->wordCount,
+                           pDiagnostic);
 }
 
 spv_result_t spvValidateBinary(const spv_const_context context,
