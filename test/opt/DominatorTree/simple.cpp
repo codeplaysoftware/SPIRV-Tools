@@ -39,6 +39,15 @@ const ir::Function* getFromModule(ir::Module* module, uint32_t id) {
   return nullptr;
 }
 
+const ir::BasicBlock* getBasicBlock(const ir::Function* fn, uint32_t id) {
+  for (const ir::BasicBlock& BB : *fn) {
+    if (BB.id() == id) {
+      return &BB;
+    }
+  }
+  return nullptr;
+}
+
 /*
 Generated from the following GLSL
 #version 440 core
@@ -158,6 +167,9 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
 
   opt::DominatorAnalysis* analysis = pass.GetDominatorAnalysis(F);
 
+  opt::DominatorTree & Tree = analysis->GetDomTree();
+
+  EXPECT_EQ(Tree.GetRoot()->BB, getBasicBlock(F,5));
   EXPECT_TRUE(analysis->Dominates(5, 18));
   EXPECT_TRUE(analysis->Dominates(5, 53));
   EXPECT_TRUE(analysis->Dominates(5, 19));

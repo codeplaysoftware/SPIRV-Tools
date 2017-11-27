@@ -61,6 +61,11 @@ class DominatorAnalysisBase {
   // Returns true if this is a postdomiator tree.
   bool isPostDominator() const { return Tree.isPostDominator(); }
 
+  // Return the tree itself for manual operations, such as traversing the roots.
+  // For normal dominance relationships the methods above should be used.
+  DominatorTree& GetDomTree() { return Tree; }
+  const DominatorTree& GetDomTree() const { return Tree; }
+
  protected:
   DominatorTree Tree;
 };

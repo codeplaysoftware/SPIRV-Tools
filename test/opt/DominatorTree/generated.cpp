@@ -137,6 +137,10 @@ TEST_F(PassClassTest, DominatorSimpleCFG) {
     opt::DominatorAnalysis DomTree;
     DomTree.InitializeTree(TestFn);
 
+    // Inspect the actual tree
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    EXPECT_EQ(Tree.GetRoot()->BB, Entry);
+
     // (strict) dominance checks
     for (uint32_t id : {10, 11, 12, 13, 14, 15})
       check_dominance(DomTree, TestFn, id, id);
@@ -192,6 +196,11 @@ TEST_F(PassClassTest, DominatorSimpleCFG) {
   {
     opt::PostDominatorAnalysis DomTree;
     DomTree.InitializeTree(TestFn);
+
+    // Inspect the actual tree
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    EXPECT_EQ(Tree.GetRoot()->BB, getBasicBlock(TestFn, 15));
+
     // (strict) dominance checks
     for (uint32_t id : {10, 11, 12, 13, 14, 15})
       check_dominance(DomTree, TestFn, id, id);
@@ -284,6 +293,11 @@ TEST_F(PassClassTest, DominatorIrreducibleCFG) {
   {
     opt::DominatorAnalysis DomTree;
     DomTree.InitializeTree(TestFn);
+
+    // Inspect the actual tree
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    EXPECT_EQ(Tree.GetRoot()->BB, Entry);
+
     // (strict) dominance checks
     for (uint32_t id : {8, 9, 10, 11, 12})
       check_dominance(DomTree, TestFn, id, id);
@@ -317,6 +331,11 @@ TEST_F(PassClassTest, DominatorIrreducibleCFG) {
   {
     opt::PostDominatorAnalysis DomTree;
     DomTree.InitializeTree(TestFn);
+
+    // Inspect the actual tree
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    EXPECT_EQ(Tree.GetRoot()->BB, getBasicBlock(TestFn, 12));
+
     // (strict) dominance checks
     for (uint32_t id : {8, 9, 10, 11, 12})
       check_dominance(DomTree, TestFn, id, id);
@@ -386,6 +405,11 @@ TEST_F(PassClassTest, DominatorLoopToSelf) {
   {
     opt::DominatorAnalysis DomTree;
     DomTree.InitializeTree(TestFn);
+
+    // Inspect the actual tree
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    EXPECT_EQ(Tree.GetRoot()->BB, Entry);
+
     // (strict) dominance checks
     for (uint32_t id : {10, 11, 12}) check_dominance(DomTree, TestFn, id, id);
 
@@ -405,6 +429,11 @@ TEST_F(PassClassTest, DominatorLoopToSelf) {
   {
     opt::PostDominatorAnalysis DomTree;
     DomTree.InitializeTree(TestFn);
+
+    // Inspect the actual tree
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    EXPECT_EQ(Tree.GetRoot()->BB, getBasicBlock(TestFn, 12));
+
     // (strict) dominance checks
     for (uint32_t id : {10, 11, 12}) check_dominance(DomTree, TestFn, id, id);
 
@@ -469,6 +498,10 @@ TEST_F(PassClassTest, DominatorUnreachableInLoop) {
     opt::DominatorAnalysis DomTree;
     DomTree.InitializeTree(TestFn);
 
+    // Inspect the actual tree
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    EXPECT_EQ(Tree.GetRoot()->BB, Entry);
+
     // (strict) dominance checks
     for (uint32_t id : {10, 11, 12, 13, 14, 15})
       check_dominance(DomTree, TestFn, id, id);
@@ -511,6 +544,13 @@ TEST_F(PassClassTest, DominatorUnreachableInLoop) {
   {
     opt::PostDominatorAnalysis DomTree;
     DomTree.InitializeTree(TestFn);
+
+    std::set<uint32_t> exits{15, 13, 14, 11};
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    for (opt::DominatorTreeNode* node : Tree) {
+      EXPECT_TRUE(exits.count(node->id()) != 0);
+    }
+
     // (strict) dominance checks
     for (uint32_t id : {10, 11, 12, 13, 14, 15})
       check_dominance(DomTree, TestFn, id, id);
@@ -583,6 +623,11 @@ TEST_F(PassClassTest, DominatorInfinitLoop) {
   {
     opt::DominatorAnalysis DomTree;
     DomTree.InitializeTree(TestFn);
+
+    // Inspect the actual tree
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    EXPECT_EQ(Tree.GetRoot()->BB, Entry);
+
     // (strict) dominance checks
     for (uint32_t id : {10, 11, 12, 13})
       check_dominance(DomTree, TestFn, id, id);
@@ -610,6 +655,11 @@ TEST_F(PassClassTest, DominatorInfinitLoop) {
   {
     opt::PostDominatorAnalysis DomTree;
     DomTree.InitializeTree(TestFn);
+
+    // Inspect the actual tree
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    EXPECT_EQ(Tree.GetRoot()->BB, getBasicBlock(TestFn, 12));
+
     // (strict) dominance checks
     for (uint32_t id : {10, 11, 12}) check_dominance(DomTree, TestFn, id, id);
 
@@ -668,8 +718,12 @@ TEST_F(PassClassTest, DominatorUnreachableFromEntry) {
 
   // Check dominator tree
   {
-  opt::DominatorAnalysis DomTree;
-  DomTree.InitializeTree(TestFn);
+    opt::DominatorAnalysis DomTree;
+    DomTree.InitializeTree(TestFn);
+    // Inspect the actual tree
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    EXPECT_EQ(Tree.GetRoot()->BB, Entry);
+
     // (strict) dominance checks
     for (uint32_t id : {8, 9}) check_dominance(DomTree, TestFn, id, id);
 
@@ -689,6 +743,11 @@ TEST_F(PassClassTest, DominatorUnreachableFromEntry) {
   {
     opt::PostDominatorAnalysis DomTree;
     DomTree.InitializeTree(TestFn);
+
+    // Inspect the actual tree
+    opt::DominatorTree& Tree = DomTree.GetDomTree();
+    EXPECT_EQ(Tree.GetRoot()->BB, getBasicBlock(TestFn, 9));
+
     // (strict) dominance checks
     for (uint32_t id : {8, 9, 10}) check_dominance(DomTree, TestFn, id, id);
 
