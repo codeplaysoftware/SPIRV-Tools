@@ -18,10 +18,10 @@
 #include <gmock/gmock.h>
 
 #include "../assembly_builder.h"
-#include "opt/dominator_analysis_pass.h"
-#include "opt/pass.h"
 #include "../pass_fixture.h"
 #include "../pass_utils.h"
+#include "opt/dominator_analysis_pass.h"
+#include "opt/pass.h"
 
 namespace {
 
@@ -73,7 +73,7 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   std::unique_ptr<ir::IRContext> context =
       BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
                   SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
-  ir::Module *module = context->module();
+  ir::Module* module = context->module();
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
   opt::DominatorAnalysis testPass;

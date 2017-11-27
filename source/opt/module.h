@@ -201,12 +201,8 @@ class Module {
   // Iterators for functions contained in this module.
   iterator begin() { return iterator(&functions_, functions_.begin()); }
   iterator end() { return iterator(&functions_, functions_.end()); }
-  const_iterator begin() const {
-    return const_iterator(&functions_, functions_.cbegin());
-  }
-  const_iterator end() const {
-    return const_iterator(&functions_, functions_.cend());
-  }
+  const_iterator begin() const { return cbegin(); }
+  const_iterator end() const { return cend(); }
   inline const_iterator cbegin() const;
   inline const_iterator cend() const;
 

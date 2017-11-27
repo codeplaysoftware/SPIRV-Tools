@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "dominator_analysis_pass.h"
-#include <iostream>
 #include "cfa.h"
 
 namespace spvtools {
