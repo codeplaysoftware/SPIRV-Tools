@@ -40,6 +40,7 @@ SPVTOOLS_SRC_FILES := \
 		source/validate_conversion.cpp \
 		source/validate_datarules.cpp \
 		source/validate_decorations.cpp \
+		source/validate_derivatives.cpp \
 		source/validate_id.cpp \
 		source/validate_image.cpp \
 		source/validate_instruction.cpp \
@@ -76,10 +77,12 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/ir_context.cpp \
 		source/opt/ir_loader.cpp \
 		source/opt/local_access_chain_convert_pass.cpp \
+		source/opt/local_redundancy_elimination.cpp \
 		source/opt/local_single_block_elim_pass.cpp \
 		source/opt/local_single_store_elim_pass.cpp \
 		source/opt/local_ssa_elim_pass.cpp \
 		source/opt/mem_pass.cpp \
+		source/opt/merge_return_pass.cpp \
 		source/opt/module.cpp \
 		source/opt/optimizer.cpp \
 		source/opt/pass.cpp \
@@ -91,7 +94,7 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/type_manager.cpp \
 		source/opt/types.cpp \
 		source/opt/unify_const_pass.cpp \
-		source/opt/merge_return_pass.cpp
+		source/opt/value_number_table.cpp
 
 # Locations of grammar files.
 SPV_CORE10_GRAMMAR=$(SPVHEADERS_LOCAL_PATH)/include/spirv/1.0/spirv.core.grammar.json
