@@ -21,13 +21,58 @@
 
 namespace spvtools {
 namespace opt {
+// This helper struct forms the nodes in the tree, with links to the children
+// in the tree. It also contains two values, one for the pre and post indexes
+// in the tree which are used to compare two nodes
+struct DominatorTreeNode {
+  DominatorTreeNode(ir::BasicBlock* bb);
+
+  ir::BasicBlock* BB;
+  DominatorTreeNode* Parent;
+  std::vector<DominatorTreeNode*> Children;
+
+  // These indexes are used to compare two given nodes. A node is a child or
+  // grandchild of another node if its preorder index is greater than the
+  // first nodes preorder index AND if its postorder index is less than the
+  // first nodes postorder index.
+  int DepthFirstPreOrderIndex;
+  int DepthFirstPostOrderIndex;
+
+  // Returns the ID of the basic block. We need this method to be able to use
+  // this struct in the cfa depth first traversal function.
+  uint32_t id() const;
+};
 
 // A class representing a tree of BasicBlocks in a given function, where each
 // node is dominated by its parent.
 class DominatorTree {
  public:
-  DominatorTree() : Root(nullptr), PostDominator(false) {}
-  DominatorTree(bool post) : Root(nullptr), PostDominator(post) {}
+  using DominatorTreeNodeList = std::vector<DominatorTreeNode*>;
+  using iterator = DominatorTreeNodeList::iterator;
+  using const_iterator = DominatorTreeNodeList::const_iterator;
+
+  DominatorTree() : PostDominator(false) {}
+  DominatorTree(bool post) : PostDominator(post) {}
+
+  iterator begin() { return Roots.begin(); }
+  iterator end() { return Roots.end(); }
+  const_iterator begin() const { return cbegin(); }
+  const_iterator end() const { return cend(); }
+  const_iterator cbegin() const { return Roots.begin(); }
+  const_iterator cend() const { return Roots.end(); }
+
+  // Get the unique root of the tree
+  // It is guaranty to work on a dominator tree
+  // post-dominator might have a list
+  DominatorTreeNode* GetRoot() {
+    assert(Roots.size() == 1);
+    return *begin();
+  }
+
+  const DominatorTreeNode* GetRoot() const {
+    assert(Roots.size() == 1);
+    return *begin();
+  }
 
   // Dumps the tree in the graphvis dot format into the stream.
   void DumpTreeAsDot(std::ostream& OutStream) const;
@@ -67,34 +112,9 @@ class DominatorTree {
   // Returns true if this tree is a post dominator tree or not.
   bool isPostDominator() const { return PostDominator; }
 
-  // This helper struct forms the nodes in the tree, with links to the children
-  // in the tree. It also contains two values, one for the pre and post indexes
-  // in the tree which are used to compare two nodes
-  struct DominatorTreeNode {
-    DominatorTreeNode(ir::BasicBlock* bb);
-
-    ir::BasicBlock* BB;
-    DominatorTreeNode* Parent;
-    std::vector<DominatorTreeNode*> Children;
-
-    // These indexes are used to compare two given nodes. A node is a child or
-    // grandchild of another node if its preorder index is greater than the
-    // first nodes preorder index AND if its postorder index is less than the
-    // first nodes postorder index.
-    int DepthFirstPreOrderIndex;
-    int DepthFirstPostOrderIndex;
-
-    // Returns the ID of the basic block. We need this method to be able to use
-    // this struct in the cfa depth first traversal function.
-    uint32_t id() const;
-  };
-
  private:
   // Clean up the tree.
   void ResetTree();
-
-  // The root of the tree.
-  DominatorTreeNode* Root;
 
   // Adds the BasicBlock to the tree structure if it doesn't already exsist.
   DominatorTreeNode* GetOrInsertNode(ir::BasicBlock* BB);
@@ -110,12 +130,11 @@ class DominatorTree {
       const ir::Function* F, ir::BasicBlock* DummyStartNode,
       std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>& edges);
 
-  // Memory poll for Dominator Tree Nodes,
-  // std::vector allow exact allocation of the memory and automatic reclaim
-  std::vector<DominatorTreeNode> DomTreeNodePool;
+  // The root of the tree.
+  std::vector<DominatorTreeNode*> Roots;
 
   // Pairs each basic block id to the tree node containing that basic block.
-  std::map<uint32_t, DominatorTreeNode*> Nodes;
+  std::map<uint32_t, DominatorTreeNode> Nodes;
 
   // True if this is a post dominator tree.
   bool PostDominator;
