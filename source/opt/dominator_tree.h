@@ -21,9 +21,9 @@
 
 namespace spvtools {
 namespace opt {
-// This helper struct forms the nodes in the tree, with links to the children
-// in the tree. It also contains two values, one for the pre and post indexes
-// in the tree which are used to compare two nodes
+// This helper struct forms the nodes in the tree, with each node containing its
+// children. It also contains two values, for the pre and post indexes in the
+// tree which are used to compare two nodes.
 struct DominatorTreeNode {
   DominatorTreeNode(ir::BasicBlock* bb);
 
@@ -61,9 +61,9 @@ class DominatorTree {
   const_iterator cbegin() const { return Roots.begin(); }
   const_iterator cend() const { return Roots.end(); }
 
-  // Get the unique root of the tree
-  // It is guaranty to work on a dominator tree
-  // post-dominator might have a list
+  // Get the unique root of the tree.
+  // It is guaranteed to work on a dominator tree post-dominator might have a
+  // list.
   DominatorTreeNode* GetRoot() {
     assert(Roots.size() == 1);
     return *begin();
@@ -116,7 +116,7 @@ class DominatorTree {
   // Clean up the tree.
   void ResetTree();
 
-  // Adds the BasicBlock to the tree structure if it doesn't already exsist.
+  // Adds the BasicBlock to the tree structure if it doesn't already exist.
   DominatorTreeNode* GetOrInsertNode(ir::BasicBlock* BB);
 
   // Applies the std::function 'func' to 'node' then applies it to nodes
