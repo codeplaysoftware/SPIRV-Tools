@@ -13,48 +13,48 @@
 # limitations under the License.
 
 
-add_spvtools_unittest(TARGET dominator_analysis_simple_glsl
-    SRCS simple_glsl.cpp
+add_spvtools_unittest(TARGET dominator_analysis_simple
+    SRCS simple.cpp
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_post
-    SRCS simple_glsl_post.cpp
+add_spvtools_unittest(TARGET dominator_analysis_post
+    SRCS post.cpp
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_nested_ifs
-    SRCS simple_glsl_nested_ifs.cpp
+add_spvtools_unittest(TARGET dominator_analysis_nested_ifs
+    SRCS nested_ifs.cpp
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_nested_ifs_post
-    SRCS simple_glsl_nested_ifs_post.cpp
+add_spvtools_unittest(TARGET dominator_analysis_nested_ifs_post
+    SRCS nested_ifs_post.cpp
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET dominator_analysis_glsl_nested_loops
-    SRCS glsl_nested_loops.cpp
+add_spvtools_unittest(TARGET dominator_analysis_nested_loops
+    SRCS nested_loops.cpp
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET dominator_analysis_glsl_nested_loops_with_unreachables
-    SRCS glsl_nested_loops_with_unreachables.cpp
+add_spvtools_unittest(TARGET dominator_analysis_nested_loops_with_unreachables
+    SRCS nested_loops_with_unreachables.cpp
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_switch_case_fallthrough
-    SRCS simple_glsl_switch_case_fallthrough
+add_spvtools_unittest(TARGET dominator_analysis_switch_case_fallthrough
+    SRCS switch_case_fallthrough
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_unreachable_for
-    SRCS simple_glsl_unreachable_for.cpp
+add_spvtools_unittest(TARGET dominator_analysis_unreachable_for
+    SRCS unreachable_for.cpp
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET dominator_analysis_simple_glsl_unreachable_for_post
-    SRCS simple_glsl_unreachable_for_post.cpp
+add_spvtools_unittest(TARGET dominator_analysis_unreachable_for_post
+    SRCS unreachable_for_post.cpp
     LIBS SPIRV-Tools-opt
 )
 
