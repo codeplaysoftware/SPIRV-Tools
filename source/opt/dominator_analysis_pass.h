@@ -44,8 +44,7 @@ class DominatorAnalysisBase {
                          const ir::BasicBlock* B) const;
 
   // Returns true if BasicBlock A strictly dominates BasicBlock B. Same as above
-  // only
-  // using the BasicBlock IDs.
+  // only using the BasicBlock IDs.
   bool StrictlyDominates(uint32_t A, uint32_t B) const;
 
   // Dump the tree structure into the given stream in the dot format.
