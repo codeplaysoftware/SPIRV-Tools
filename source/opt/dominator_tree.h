@@ -93,9 +93,7 @@ class DominatorTree {
     return *roots_.begin();
   }
 
-  const DominatorTreeNodeList& Roots() const {
-    return roots_;
-  }
+  const DominatorTreeNodeList& Roots() const { return roots_; }
 
   // Dumps the tree in the graphvis dot format into the stream.
   void DumpTreeAsDot(std::ostream& OutStream) const;
