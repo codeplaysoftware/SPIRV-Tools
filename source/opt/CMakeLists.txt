@@ -76,7 +76,6 @@ add_library(SPIRV-Tools-opt
   def_use_manager.cpp
   dead_branch_elim_pass.cpp
   dead_variable_elimination.cpp
-  dominator_analysis_pass.cpp
   dominator_tree.cpp
   eliminate_dead_constant_pass.cpp
   flatten_decoration_pass.cpp
