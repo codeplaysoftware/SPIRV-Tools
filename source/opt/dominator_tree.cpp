@@ -70,8 +70,12 @@ struct GetFunctionClass {
   using FunctionType = ir::Function;
 };
 
-// This helper class is basically a massive workaround for the current way that
-// depth first is implemented.
+// This class is used to precompute the successors and predecessors of each
+// basic block. Through GetPredFunctor and GetSuccessorFunctor it provides an
+// interface to get those successors and predecessors lists for each basic
+// block. This is required by the DepthFirstTraversal and ComputeDominator
+// functions which take an std::function returning the successors and
+// predecessors respectively.
 template <typename BBType>
 class BasicBlockSuccessorHelper {
   // This should eventually become const ir::BasicBlock.

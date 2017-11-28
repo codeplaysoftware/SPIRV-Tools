@@ -28,32 +28,33 @@ namespace opt {
 // Interface to perform dominator or postdominator analysis on a given function.
 class DominatorAnalysisBase {
  public:
-  explicit DominatorAnalysisBase(bool isPostDom) : tree_(isPostDom) {}
+  explicit DominatorAnalysisBase(bool is_post_dom) : tree_(is_post_dom) {}
 
-  // Calculate the dominator (or postdominator) tree for given function F.
+  // Calculate the dominator (or postdominator) tree for given function |f|.
   inline void InitializeTree(const ir::Function* f) { tree_.InitializeTree(f); }
 
-  // Returns true if BasicBlock A dominates BasicBlock B.
+  // Returns true if BasicBlock |a| dominates BasicBlock |b|.
   inline bool Dominates(const ir::BasicBlock* a,
                         const ir::BasicBlock* b) const {
     if (!a || !b) return false;
     return Dominates(a->id(), b->id());
   }
 
-  // Returns true if BasicBlock A dominates BasicBlock B. Same as above only
+  // Returns true if BasicBlock |a| dominates BasicBlock |b|. Same as above only
   // using the BasicBlock IDs.
   inline bool Dominates(uint32_t a, uint32_t b) const {
     return tree_.Dominates(a, b);
   }
 
-  // Returns true if BasicBlock A strictly dominates BasicBlock B.
+  // Returns true if BasicBlock |a| strictly dominates BasicBlock |b|.
   inline bool StrictlyDominates(const ir::BasicBlock* a,
                                 const ir::BasicBlock* b) const {
     if (!a || !b) return false;
     return StrictlyDominates(a->id(), b->id());
   }
 
-  // Returns true if BasicBlock A strictly dominates BasicBlock B. Same as above
+  // Returns true if BasicBlock |a| strictly dominates BasicBlock |b|. Same as
+  // above
   // only using the BasicBlock IDs.
   inline bool StrictlyDominates(uint32_t a, uint32_t b) const {
     return tree_.StrictlyDominates(a, b);
@@ -72,13 +73,13 @@ class DominatorAnalysisBase {
     return tree_.ImmediateDominator(node_id);
   }
 
-  // Returns true if A is reachable from the entry.
+  // Returns true if |node| is reachable from the entry.
   inline bool IsReachable(const ir::BasicBlock* node) const {
     if (!node) return false;
     return tree_.ReachableFromRoots(node->id());
   }
 
-  // Returns true if A is reachable from the entry.
+  // Returns true if |node_id| is reachable from the entry.
   inline bool IsReachable(uint32_t node_id) const {
     return tree_.ReachableFromRoots(node_id);
   }
@@ -116,7 +117,7 @@ class PostDominatorAnalysis : public DominatorAnalysisBase {
 // A simple mechanism to cache the result for the dominator tree.
 class DominatorAnalysisPass {
  public:
-  // Gets the dominator analysis for function F.
+  // Gets the dominator analysis for function |f|.
   DominatorAnalysis* GetDominatorAnalysis(const ir::Function* f) {
     if (dominator_trees_.find(f) == dominator_trees_.end()) {
       dominator_trees_[f].InitializeTree(f);
@@ -125,7 +126,7 @@ class DominatorAnalysisPass {
     return &dominator_trees_[f];
   }
 
-  // Gets the postdominator analysis for function F.
+  // Gets the postdominator analysis for function |f|.
   PostDominatorAnalysis* GetPostDominatorAnalysis(const ir::Function* f) {
     if (post_dominator_trees_.find(f) == post_dominator_trees_.end()) {
       post_dominator_trees_[f].InitializeTree(f);
@@ -134,12 +135,12 @@ class DominatorAnalysisPass {
     return &post_dominator_trees_[f];
   }
 
-  // Remove the dominator tree of F from the cache.
+  // Remove the dominator tree of |f| from the cache.
   void RemoveDominatorAnalysis(const ir::Function* f) {
     dominator_trees_.erase(f);
   }
 
-  // Remove the postdominator tree of F from the cache.
+  // Remove the postdominator tree of |f| from the cache.
   void RemovePostDominatorAnalysis(const ir::Function* f) {
     post_dominator_trees_.erase(f);
   }
