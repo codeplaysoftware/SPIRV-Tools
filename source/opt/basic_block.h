@@ -100,9 +100,12 @@ class BasicBlock {
     return --insts_.cend();
   }
 
-  // Return if the basic block has at least one successor
+  // Return true if the basic block has at least one successor
   inline bool hasSuccessor() const {
-    return !IsReturn();
+    const auto br = &insts_.back();
+    return br->opcode() == SpvOpBranch ||
+           br->opcode() == SpvOpBranchConditional ||
+           br->opcode() == SpvOpSwitch;
   }
 
   // Runs the given function |f| on each instruction in this basic block, and
