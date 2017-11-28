@@ -24,10 +24,10 @@ using AggressiveDCETest = PassTest<::testing::Test>;
 
 TEST_F(AggressiveDCETest, EliminateExtendedInst) {
   //  #version 140
-  //  
+  //
   //  in vec4 BaseColor;
   //  in vec4 Dead;
-  //  
+  //
   //  void main()
   //  {
   //      vec4 v = BaseColor;
@@ -103,21 +103,20 @@ OpFunctionEnd
 )";
 
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      predefs1 + names_before + predefs2 + func_before, 
-      predefs1 + names_after + predefs2 + func_after, 
-      true, true);
+      predefs1 + names_before + predefs2 + func_before,
+      predefs1 + names_after + predefs2 + func_after, true, true);
 }
 
 TEST_F(AggressiveDCETest, NoEliminateFrexp) {
   // Note: SPIR-V hand-edited to utilize Frexp
   //
   // #version 450
-  // 
+  //
   // in vec4 BaseColor;
   // in vec4 Dead;
   // out vec4 Color;
   // out ivec4 iv2;
-  // 
+  //
   // void main()
   // {
   //     vec4 v = BaseColor;
@@ -204,19 +203,18 @@ OpFunctionEnd
 )";
 
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      predefs1 + names_before + predefs2 + func_before, 
-      predefs1 + names_after + predefs2 + func_after, 
-      true, true);
+      predefs1 + names_before + predefs2 + func_before,
+      predefs1 + names_after + predefs2 + func_after, true, true);
 }
 
 TEST_F(AggressiveDCETest, EliminateDecorate) {
   // Note: The SPIR-V was hand-edited to add the OpDecorate
   //
   // #version 140
-  // 
+  //
   // in vec4 BaseColor;
   // in vec4 Dead;
-  // 
+  //
   // void main()
   // {
   //     vec4 v = BaseColor;
@@ -294,17 +292,16 @@ OpFunctionEnd
 )";
 
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      predefs1 + names_before + predefs2 + func_before, 
-      predefs1 + names_after + predefs2 + func_after, 
-      true, true);
+      predefs1 + names_before + predefs2 + func_before,
+      predefs1 + names_after + predefs2 + func_after, true, true);
 }
 
 TEST_F(AggressiveDCETest, Simple) {
   //  #version 140
-  //  
+  //
   //  in vec4 BaseColor;
   //  in vec4 Dead;
-  //  
+  //
   //  void main()
   //  {
   //      vec4 v = BaseColor;
@@ -379,20 +376,19 @@ OpFunctionEnd
 )";
 
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      predefs1 + names_before + predefs2 + func_before, 
-      predefs1 + names_after + predefs2 + func_after, 
-      true, true);
+      predefs1 + names_before + predefs2 + func_before,
+      predefs1 + names_after + predefs2 + func_after, true, true);
 }
 
 TEST_F(AggressiveDCETest, DeadCycle) {
   // #version 140
   // in vec4 BaseColor;
-  // 
+  //
   // layout(std140) uniform U_t
   // {
   //     int g_I ;
   // } ;
-  // 
+  //
   // void main()
   // {
   //     vec4 v = BaseColor;
@@ -534,17 +530,16 @@ OpFunctionEnd
 )";
 
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      predefs1 + names_before + predefs2 + func_before, 
-      predefs1 + names_after + predefs2 + func_after, 
-      true, true);
+      predefs1 + names_before + predefs2 + func_before,
+      predefs1 + names_after + predefs2 + func_after, true, true);
 }
 
 TEST_F(AggressiveDCETest, OptWhitelistExtension) {
   //  #version 140
-  //  
+  //
   //  in vec4 BaseColor;
   //  in vec4 Dead;
-  //  
+  //
   //  void main()
   //  {
   //      vec4 v = BaseColor;
@@ -620,17 +615,16 @@ OpFunctionEnd
 )";
 
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      predefs1 + names_before + predefs2 + func_before, 
-      predefs1 + names_after + predefs2 + func_after, 
-      true, true);
+      predefs1 + names_before + predefs2 + func_before,
+      predefs1 + names_after + predefs2 + func_after, true, true);
 }
 
 TEST_F(AggressiveDCETest, NoOptBlacklistExtension) {
   //  #version 140
-  //  
+  //
   //  in vec4 BaseColor;
   //  in vec4 Dead;
-  //  
+  //
   //  void main()
   //  {
   //      vec4 v = BaseColor;
@@ -676,8 +670,7 @@ OpReturn
 OpFunctionEnd
 )";
 
-  SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      assembly, assembly, true, true);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(assembly, assembly, true, true);
 }
 
 TEST_F(AggressiveDCETest, ElimWithCall) {
@@ -686,11 +679,11 @@ TEST_F(AggressiveDCETest, ElimWithCall) {
   // #version 140
   // in vec4 i1;
   // in vec4 i2;
-  // 
+  //
   // void nothing(vec4 v)
   // {
   // }
-  // 
+  //
   // void main()
   // {
   //     vec4 v1 = i1;
@@ -811,15 +804,15 @@ TEST_F(AggressiveDCETest, NoParamElim) {
   // This demonstrates that unused parameters are not eliminated, but
   // dead uses of them are.
   // #version 140
-  // 
+  //
   // in vec4 BaseColor;
-  // 
+  //
   // vec4 foo(vec4 v1, vec4 v2)
   // {
   //     vec4 t = -v1;
   //     return v2;
   // }
-  // 
+  //
   // void main()
   // {
   //     vec4 dead;
@@ -1037,7 +1030,7 @@ OpFunctionEnd
 )";
 
   const std::string func_after =
-        R"(%main = OpFunction %void None %9
+      R"(%main = OpFunction %void None %9
 %25 = OpLabel
 %26 = OpLoad %v2float %texCoords
 %29 = OpLoad %15 %sampler15
@@ -1055,15 +1048,15 @@ TEST_F(AggressiveDCETest, NoParamStoreElim) {
   // Should not eliminate stores to params
   //
   // #version 450
-  // 
+  //
   // layout(location = 0) in vec4 BaseColor;
   // layout(location = 0) out vec4 OutColor;
-  // 
+  //
   // void foo(in vec4 v1, out vec4 v2)
   // {
   //     v2 = -v1;
   // }
-  // 
+  //
   // void main()
   // {
   //     foo(BaseColor, OutColor);
@@ -1118,8 +1111,7 @@ OpReturn
 OpFunctionEnd
 )";
 
-  SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      assembly, assembly, true, true);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(assembly, assembly, true, true);
 }
 
 TEST_F(AggressiveDCETest, PrivateStoreElimInEntryNoCalls) {
@@ -1131,7 +1123,7 @@ TEST_F(AggressiveDCETest, PrivateStoreElimInEntryNoCalls) {
   // layout(location = 0) out vec4 OutColor;
   //
   // private vec4 dv;
-  // 
+  //
   // void main()
   // {
   //     vec4 v = BaseColor;
@@ -1206,12 +1198,12 @@ TEST_F(AggressiveDCETest, NoPrivateStoreElimIfLoad) {
   // Note: Not legal GLSL
   //
   // #version 450
-  // 
+  //
   // layout(location = 0) in vec4 BaseColor;
   // layout(location = 0) out vec4 OutColor;
   //
   // private vec4 pv;
-  // 
+  //
   // void main()
   // {
   //     pv = BaseColor;
@@ -1252,8 +1244,7 @@ OpReturn
 OpFunctionEnd
 )";
 
-  SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      assembly, assembly, true, true);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(assembly, assembly, true, true);
 }
 
 TEST_F(AggressiveDCETest, NoPrivateStoreElimWithCall) {
@@ -1261,17 +1252,17 @@ TEST_F(AggressiveDCETest, NoPrivateStoreElimWithCall) {
   // Note: Not legal GLSL
   //
   // #version 450
-  // 
+  //
   // layout(location = 0) in vec4 BaseColor;
   // layout(location = 0) out vec4 OutColor;
   //
   // private vec4 v1;
-  // 
+  //
   // void foo()
   // {
   //     OutColor = -v1;
   // }
-  // 
+  //
   // void main()
   // {
   //     v1 = BaseColor;
@@ -1318,8 +1309,7 @@ OpReturn
 OpFunctionEnd
 )";
 
-  SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      assembly, assembly, true, true);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(assembly, assembly, true, true);
 }
 
 TEST_F(AggressiveDCETest, NoPrivateStoreElimInNonEntry) {
@@ -1327,17 +1317,17 @@ TEST_F(AggressiveDCETest, NoPrivateStoreElimInNonEntry) {
   // Note: Not legal GLSL
   //
   // #version 450
-  // 
+  //
   // layout(location = 0) in vec4 BaseColor;
   // layout(location = 0) out vec4 OutColor;
   //
   // private vec4 v1;
-  // 
+  //
   // void foo()
   // {
   //     v1 = BaseColor;
   // }
-  // 
+  //
   // void main()
   // {
   //     foo();
@@ -1384,16 +1374,15 @@ OpReturn
 OpFunctionEnd
 )";
 
-  SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      assembly, assembly, true, true);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(assembly, assembly, true, true);
 }
 
 TEST_F(AggressiveDCETest, EliminateDeadIfThenElse) {
   // #version 450
-  // 
+  //
   // layout(location = 0) in vec4 BaseColor;
   // layout(location = 0) out vec4 OutColor;
-  // 
+  //
   // void main()
   // {
   //     float d;
@@ -1505,17 +1494,15 @@ OpFunctionEnd
 )";
 
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      predefs_before + func_before, 
-      predefs_after + func_after, 
-      true, true);
+      predefs_before + func_before, predefs_after + func_after, true, true);
 }
 
 TEST_F(AggressiveDCETest, EliminateDeadIfThen) {
   // #version 450
-  // 
+  //
   // layout(location = 0) in vec4 BaseColor;
   // layout(location = 0) out vec4 OutColor;
-  // 
+  //
   // void main()
   // {
   //     float d;
@@ -1618,17 +1605,126 @@ OpFunctionEnd
 )";
 
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      predefs_before + func_before, 
-      predefs_after + func_after, 
-      true, true);
+      predefs_before + func_before, predefs_after + func_after, true, true);
+}
+
+// This test fails. OpSwitch is not handled by ADCE.
+// (https://github.com/KhronosGroup/SPIRV-Tools/issues/1021).
+TEST_F(AggressiveDCETest, DISABLED_EliminateDeadSwitch) {
+  // #version 450
+  //
+  // layout(location = 0) in vec4 BaseColor;
+  // layout(location = 1) in flat int x;
+  // layout(location = 0) out vec4 OutColor;
+  //
+  // void main()
+  // {
+  //     float d;
+  //     switch (x) {
+  //       case 0:
+  //         d = BaseColor.y;
+  //     }
+  //     OutColor = vec4(1.0,1.0,1.0,1.0);
+  // }
+  const std::string before =
+      R"(OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %main "main" %x %BaseColor %OutColor
+               OpExecutionMode %main OriginUpperLeft
+               OpSource GLSL 450
+               OpName %main "main"
+               OpName %x "x"
+               OpName %d "d"
+               OpName %BaseColor "BaseColor"
+               OpName %OutColor "OutColor"
+               OpDecorate %x Flat
+               OpDecorate %x Location 1
+               OpDecorate %BaseColor Location 0
+               OpDecorate %OutColor Location 0
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+        %int = OpTypeInt 32 1
+%_ptr_Input_int = OpTypePointer Input %int
+          %x = OpVariable %_ptr_Input_int Input
+      %float = OpTypeFloat 32
+%_ptr_Function_float = OpTypePointer Function %float
+    %v4float = OpTypeVector %float 4
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+  %BaseColor = OpVariable %_ptr_Input_v4float Input
+       %uint = OpTypeInt 32 0
+     %uint_1 = OpConstant %uint 1
+%_ptr_Input_float = OpTypePointer Input %float
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+   %OutColor = OpVariable %_ptr_Output_v4float Output
+    %float_1 = OpConstant %float 1
+         %27 = OpConstantComposite %v4float %float_1 %float_1 %float_1 %float_1
+       %main = OpFunction %void None %3
+          %5 = OpLabel
+          %d = OpVariable %_ptr_Function_float Function
+          %9 = OpLoad %int %x
+               OpSelectionMerge %11 None
+               OpSwitch %9 %11 0 %10
+         %10 = OpLabel
+         %21 = OpAccessChain %_ptr_Input_float %BaseColor %uint_1
+         %22 = OpLoad %float %21
+               OpStore %d %22
+               OpBranch %11
+         %11 = OpLabel
+               OpStore %OutColor %27
+               OpReturn
+               OpFunctionEnd)";
+
+  const std::string after =
+      R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %main "main" %x %BaseColor %OutColor
+OpExecutionMode %main OriginUpperLeft
+OpSource GLSL 450
+OpName %main "main"
+OpName %x "x"
+OpName %BaseColor "BaseColor"
+OpName %OutColor "OutColor"
+OpDecorate %x Flat
+OpDecorate %x Location 1
+OpDecorate %BaseColor Location 0
+OpDecorate %OutColor Location 0
+%void = OpTypeVoid
+%8 = OpTypeFunction %void
+%int = OpTypeInt 32 1
+%_ptr_Input_int = OpTypePointer Input %int
+%x = OpVariable %_ptr_Input_int Input
+%float = OpTypeFloat 32
+%_ptr_Function_float = OpTypePointer Function %float
+%v4float = OpTypeVector %float 4
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+%BaseColor = OpVariable %_ptr_Input_v4float Input
+%uint = OpTypeInt 32 0
+%uint_1 = OpConstant %uint 1
+%_ptr_Input_float = OpTypePointer Input %float
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+%OutColor = OpVariable %_ptr_Output_v4float Output
+%float_1 = OpConstant %float 1
+%20 = OpConstantComposite %v4float %float_1 %float_1 %float_1 %float_1
+%main = OpFunction %void None %8
+%21 = OpLabel
+OpBranch %11
+%11 = OpLabel
+OpStore %OutColor %27
+OpReturn
+OpFunctionEnd
+)";
+
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(before, after, true, true);
 }
 
 TEST_F(AggressiveDCETest, EliminateDeadIfThenElseNested) {
   // #version 450
-  // 
+  //
   // layout(location = 0) in vec4 BaseColor;
   // layout(location = 0) out vec4 OutColor;
-  // 
+  //
   // void main()
   // {
   //     float d;
@@ -1768,17 +1864,15 @@ OpFunctionEnd
 )";
 
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      predefs_before + func_before, 
-      predefs_after + func_after, 
-      true, true);
+      predefs_before + func_before, predefs_after + func_after, true, true);
 }
 
 TEST_F(AggressiveDCETest, NoEliminateLiveIfThenElse) {
   // #version 450
-  // 
+  //
   // layout(location = 0) in vec4 BaseColor;
   // layout(location = 0) out vec4 OutColor;
-  // 
+  //
   // void main()
   // {
   //     float t;
@@ -1844,16 +1938,15 @@ OpReturn
 OpFunctionEnd
 )";
 
-  SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      assembly, assembly, true, true);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(assembly, assembly, true, true);
 }
 
 TEST_F(AggressiveDCETest, NoEliminateLiveIfThenElseNested) {
   // #version 450
-  // 
+  //
   // layout(location = 0) in vec4 BaseColor;
   // layout(location = 0) out vec4 OutColor;
-  // 
+  //
   // void main()
   // {
   //     float t;
@@ -1945,18 +2038,17 @@ OpReturn
 OpFunctionEnd
 )";
 
-  SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      assembly, assembly, true, true);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(assembly, assembly, true, true);
 }
 
 TEST_F(AggressiveDCETest, NoEliminateIfWithPhi) {
   // Note: Assembly hand-optimized from GLSL
   //
   // #version 450
-  // 
+  //
   // layout(location = 0) in vec4 BaseColor;
   // layout(location = 0) out vec4 OutColor;
-  // 
+  //
   // void main()
   // {
   //     float t;
@@ -2013,16 +2105,15 @@ OpReturn
 OpFunctionEnd
 )";
 
-  SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      assembly, assembly, true, true);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(assembly, assembly, true, true);
 }
 
 TEST_F(AggressiveDCETest, EliminateEntireFunctionBody) {
   // #version 450
-  // 
+  //
   // layout(location = 0) in vec4 BaseColor;
   // layout(location = 0) out vec4 OutColor;
-  // 
+  //
   // void main()
   // {
   //     float d;
@@ -2127,11 +2218,8 @@ OpFunctionEnd
 )";
 
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(
-      predefs_before + func_before, 
-      predefs_after + func_after, 
-      true, true);
+      predefs_before + func_before, predefs_after + func_after, true, true);
 }
-
 
 // TODO(greg-lunarg): Add tests to verify handling of these cases:
 //

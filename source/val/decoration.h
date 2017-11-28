@@ -15,8 +15,11 @@
 #ifndef LIBSPIRV_VAL_DECORATION_H_
 #define LIBSPIRV_VAL_DECORATION_H_
 
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
+
+#include "spirv/1.2/spirv.h"
 
 namespace libspirv {
 
