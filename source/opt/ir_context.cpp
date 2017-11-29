@@ -433,5 +433,26 @@ void IRContext::InitializeCombinators() {
 
   valid_analyses_ |= kAnalysisCombinators;
 }
+
+// Gets the dominator analysis for function |f|.
+opt::DominatorAnalysis* IRContext::GetDominatorAnalysis(const ir::Function* f) {
+  if (dominator_trees_.find(f) == dominator_trees_.end() ||
+      !AreAnalysesValid(kAnalysisDominatorAnalysis)) {
+    dominator_trees_[f].InitializeTree(f);
+  }
+
+  return &dominator_trees_[f];
+}
+
+// Gets the postdominator analysis for function |f|.
+opt::PostDominatorAnalysis* IRContext::GetPostDominatorAnalysis(const ir::Function* f) {
+  if (post_dominator_trees_.find(f) == post_dominator_trees_.end() ||
+      !AreAnalysesValid(kAnalysisDominatorAnalysis)) {
+    post_dominator_trees_[f].InitializeTree(f);
+  }
+
+  return &post_dominator_trees_[f];
+}
+
 }  // namespace ir
 }  // namespace spvtools

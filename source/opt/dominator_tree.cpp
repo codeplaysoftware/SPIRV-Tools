@@ -17,6 +17,7 @@
 #include <set>
 
 #include "cfa.h"
+#include "cfg.h"
 #include "dominator_tree.h"
 
 using namespace spvtools;
@@ -70,12 +71,11 @@ struct GetFunctionClass {
   using FunctionType = ir::Function;
 };
 
-// This class is used to precompute the successors and predecessors of each
-// basic block. Through GetPredFunctor and GetSuccessorFunctor it provides an
-// interface to get those successors and predecessors lists for each basic
-// block. This is required by the DepthFirstTraversal and ComputeDominator
-// functions which take an std::function returning the successors and
-// predecessors respectively.
+// Helper class to compute predecessors and successors
+// for each Basic Block in a function.
+//
+// When computing the post-dominator tree, all edges are inverted. So successors
+// returned by this class will be predecessors in the original CFG.
 template <typename BBType>
 class BasicBlockSuccessorHelper {
   // This should eventually become const ir::BasicBlock.
@@ -86,6 +86,8 @@ class BasicBlockSuccessorHelper {
   using BasicBlockMapTy = std::map<const BasicBlock*, BasicBlockListTy>;
 
  public:
+  // For compliance with the dominance tree computation, entry nodes are
+  // connected to a single dummy node.
   BasicBlockSuccessorHelper(Function& func, BasicBlock* dummy_start_node,
                             bool post);
 
@@ -116,7 +118,7 @@ class BasicBlockSuccessorHelper {
 
   // Build a bi-directional graph from the CFG of F.
   // If invert_graph_ is true, all edge are reverted (successors becomes
-  // predecessors and vise versa).
+  // predecessors and vice versa).
   // For convenience, the start of the graph is dummyStartNode. The dominator
   // tree construction requires a unique entry node, which cannot be guarantied
   // for the postdominator graph. The dummyStartNode BB is here to gather all
@@ -302,23 +304,23 @@ void DominatorTree::InitializeTree(const ir::Function* f) {
     return;
   }
 
-  std::unique_ptr<ir::Instruction> dummy_label{new ir::Instruction(
-      f->GetParent()->context(), SpvOp::SpvOpLabel, 0, -1, {})};
-  // Create a dummy start node which will point to all of the roots of the tree
-  // to allow us to work with a singular root.
-  ir::BasicBlock dummy_start_node(std::move(dummy_label));
+  ir::CFG cfg(f->GetParent());
+
+  ir::BasicBlock* dummy_start_node = postdominator_
+                                         ? cfg.pseudo_exit_block()
+                                         : cfg.pseudo_entry_block();
 
   // Get the immedate dominator for each node.
   std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>> edges;
-  GetDominatorEdges(f, &dummy_start_node, edges);
+  GetDominatorEdges(f, dummy_start_node, edges);
 
   // Transform the vector<pair> into the tree structure which we can use to
   // efficiently query dominace.
   for (auto edge : edges) {
-    if (&dummy_start_node == edge.first) continue;
+    if (dummy_start_node == edge.first) continue;
     DominatorTreeNode* first = GetOrInsertNode(edge.first);
 
-    if (&dummy_start_node == edge.second) {
+    if (dummy_start_node == edge.second) {
       if (std::find(roots_.begin(), roots_.end(), first) == roots_.end())
         roots_.push_back(first);
       continue;

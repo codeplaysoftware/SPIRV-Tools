@@ -20,7 +20,6 @@
 
 #include "dominator_tree.h"
 #include "module.h"
-#include "pass.h"
 
 namespace spvtools {
 namespace opt {
@@ -54,21 +53,20 @@ class DominatorAnalysisBase {
   }
 
   // Returns true if BasicBlock |a| strictly dominates BasicBlock |b|. Same as
-  // above
-  // only using the BasicBlock IDs.
+  // above only using the BasicBlock IDs.
   inline bool StrictlyDominates(uint32_t a, uint32_t b) const {
     return tree_.StrictlyDominates(a, b);
   }
 
-  // Return the immediate dominator of node A or return NULL if it is an entry
-  // node.
+  // Return the immediate dominator of |node| or return nullptr if it is has no
+  // dominator.
   inline ir::BasicBlock* ImmediateDominator(const ir::BasicBlock* node) const {
     if (!node) return nullptr;
     return tree_.ImmediateDominator(node);
   }
 
-  // Return the immediate dominator of node A or return NULL if it is an entry
-  // node. Same as above but operates on IDs.
+  // Return the immediate dominator of |node_id| or return nullptr if it is has
+  // no dominator. Same as above but operates on IDs.
   inline ir::BasicBlock* ImmediateDominator(uint32_t node_id) const {
     return tree_.ImmediateDominator(node_id);
   }
@@ -84,7 +82,7 @@ class DominatorAnalysisBase {
     return tree_.ReachableFromRoots(node_id);
   }
 
-  // Dump the tree structure into the given stream in the dot format.
+  // Dump the tree structure into the given |out| stream in the dot format.
   inline void DumpAsDot(std::ostream& out) const { tree_.DumpTreeAsDot(out); }
 
   // Returns true if this is a postdomiator tree.
@@ -112,44 +110,6 @@ class DominatorAnalysis : public DominatorAnalysisBase {
 class PostDominatorAnalysis : public DominatorAnalysisBase {
  public:
   PostDominatorAnalysis() : DominatorAnalysisBase(true) {}
-};
-
-// A simple mechanism to cache the result for the dominator tree.
-class DominatorAnalysisPass {
- public:
-  // Gets the dominator analysis for function |f|.
-  DominatorAnalysis* GetDominatorAnalysis(const ir::Function* f) {
-    if (dominator_trees_.find(f) == dominator_trees_.end()) {
-      dominator_trees_[f].InitializeTree(f);
-    }
-
-    return &dominator_trees_[f];
-  }
-
-  // Gets the postdominator analysis for function |f|.
-  PostDominatorAnalysis* GetPostDominatorAnalysis(const ir::Function* f) {
-    if (post_dominator_trees_.find(f) == post_dominator_trees_.end()) {
-      post_dominator_trees_[f].InitializeTree(f);
-    }
-
-    return &post_dominator_trees_[f];
-  }
-
-  // Remove the dominator tree of |f| from the cache.
-  void RemoveDominatorAnalysis(const ir::Function* f) {
-    dominator_trees_.erase(f);
-  }
-
-  // Remove the postdominator tree of |f| from the cache.
-  void RemovePostDominatorAnalysis(const ir::Function* f) {
-    post_dominator_trees_.erase(f);
-  }
-
- private:
-  // Each function in the module will create its own dominator tree. We cache
-  // the result so it doesn't need to be rebuilt each time.
-  std::map<const ir::Function*, DominatorAnalysis> dominator_trees_;
-  std::map<const ir::Function*, PostDominatorAnalysis> post_dominator_trees_;
 };
 
 }  // namespace opt

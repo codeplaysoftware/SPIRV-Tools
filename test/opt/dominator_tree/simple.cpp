@@ -146,9 +146,8 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
   const ir::Function* f = spvtest::GetFunction(module, 4);
-  opt::DominatorAnalysisPass pass;
 
-  opt::DominatorAnalysis* analysis = pass.GetDominatorAnalysis(f);
+  opt::DominatorAnalysis* analysis = context->GetDominatorAnalysis(f);
 
   opt::DominatorTree& tree = analysis->GetDomTree();
 

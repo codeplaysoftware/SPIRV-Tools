@@ -88,10 +88,8 @@ TEST_F(PassClassTest, UnreachableNestedIfs) {
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
 
-  opt::DominatorAnalysisPass pass;
-
   const ir::Function* f = spvtest::GetFunction(module, 4);
-  opt::DominatorAnalysis* analysis = pass.GetDominatorAnalysis(f);
+  opt::DominatorAnalysis* analysis = context->GetDominatorAnalysis(f);
   EXPECT_TRUE(analysis->Dominates(5, 5));
   EXPECT_TRUE(analysis->Dominates(5, 10));
   EXPECT_TRUE(analysis->Dominates(5, 14));
