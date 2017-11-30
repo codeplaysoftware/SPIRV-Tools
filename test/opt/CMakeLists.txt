@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+add_subdirectory(dominator_tree)
+
 add_spvtools_unittest(TARGET instruction
   SRCS instruction_test.cpp
   LIBS SPIRV-Tools-opt
@@ -216,5 +218,10 @@ add_spvtools_unittest(TARGET value_table
 
 add_spvtools_unittest(TARGET local_redundancy_elimination
   SRCS local_redundancy_elimination_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET propagator
+  SRCS propagator_test.cpp
   LIBS SPIRV-Tools-opt
 )

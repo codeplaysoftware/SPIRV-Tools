@@ -81,6 +81,8 @@ class BasicBlock {
 
   iterator begin() { return insts_.begin(); }
   iterator end() { return insts_.end(); }
+  const_iterator begin() const { return insts_.cbegin(); }
+  const_iterator end() const { return insts_.cend(); }
   const_iterator cbegin() const { return insts_.cbegin(); }
   const_iterator cend() const { return insts_.cend(); }
 
@@ -96,6 +98,14 @@ class BasicBlock {
   const_iterator ctail() const {
     assert(!insts_.empty());
     return --insts_.cend();
+  }
+
+  // return if the basic block has at least one successor
+  inline bool hasSuccessor() const {
+    const auto br = &insts_.back();
+    return br->opcode() == SpvOpBranch ||
+           br->opcode() == SpvOpBranchConditional ||
+           br->opcode() == SpvOpSwitch;
   }
 
   // Runs the given function |f| on each instruction in this basic block, and
@@ -137,6 +147,10 @@ class BasicBlock {
   // Returns the ID of the continue block declared by a merge instruction in
   // this block, if any.  If none, returns zero.
   uint32_t ContinueBlockIdIfAny() const;
+
+  // Returns true if this basic block exits this function and returns to its
+  // caller.
+  bool IsReturn() const { return ctail()->IsReturn(); }
 
  private:
   // The enclosing function.
