@@ -17,7 +17,7 @@
 
 #include "decoration_manager.h"
 #include "def_use_manager.h"
-#include "dominator_analysis_pass.h"
+#include "dominator_analysis.h"
 #include "module.h"
 
 #include <algorithm>

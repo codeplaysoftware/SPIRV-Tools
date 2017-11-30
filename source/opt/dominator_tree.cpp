@@ -22,6 +22,23 @@
 using namespace spvtools;
 using namespace spvtools::opt;
 
+// Calculates the dominator or postdominator tree for a given function.
+// 1 - Compute the successors and predecessors for each BasicBlock. We add a
+// dummy node for the start node or for postdominators the exit. This node will
+// point to all entry or all exit nodes.
+// 2 - Using the CFA::DepthFirstTraversal get a depth first postordered list of
+// all BasicBlocks. Using the successors (or for postdominator, predecessors)
+// calculated in step 1 to traverse the tree.
+// 3 - Pass the list calculated in step 2 to the CFA::CalculateDominators using
+// the predecessors list (or for postdominator, successors). This will give us a
+// vector of BB pairs. Each BB and its immediate dominator.
+// 4 - Using the list from 3 use those edges to build a tree of
+// DominatorTreeNodes. Each node containing a link to the parent dominator and
+// children which are dominated.
+// 5 - Using the tree from 4, perform a depth first traversal to calculate the
+// preorder and postorder index of each node. We use these indexes to compare
+// nodes against each other for domination checks.
+
 namespace {
 
 // Wrapper around CFA::DepthFirstTraversal to provide an interface to perform
@@ -96,16 +113,16 @@ class BasicBlockSuccessorHelper {
 
   // Returns the list of predecessor functions.
   GetBlocksFunction GetPredFunctor() {
-    return [&](const BasicBlock* bb) {
-      BasicBlockListTy* v = &predecessors_[bb];
+    return [this](const BasicBlock* bb) {
+      BasicBlockListTy* v = &this->predecessors_[bb];
       return v;
     };
   }
 
   // Returns a vector of the list of successor nodes from a given node.
   GetBlocksFunction GetSuccessorFunctor() {
-    return [&](const BasicBlock* bb) {
-      BasicBlockListTy* v = &successors_[bb];
+    return [this](const BasicBlock* bb) {
+      BasicBlockListTy* v = &this->successors_[bb];
       return v;
     };
   }
@@ -136,7 +153,7 @@ template <typename BBType>
 void BasicBlockSuccessorHelper<BBType>::CreateSuccessorMap(
     Function& f, const BasicBlock* dummy_start_node) {
   std::map<uint32_t, BasicBlock*> id_to_BB_map;
-  auto GetSuccessorBasicBlock = [&](uint32_t successor_id) {
+  auto GetSuccessorBasicBlock = [&f, &id_to_BB_map](uint32_t successor_id) {
     BasicBlock*& Succ = id_to_BB_map[successor_id];
     if (!Succ) {
       for (BasicBlock& BBIt : f) {
@@ -159,13 +176,15 @@ void BasicBlockSuccessorHelper<BBType>::CreateSuccessorMap(
     for (BasicBlock& bb : f) {
       if (bb.hasSuccessor()) {
         BasicBlockListTy& pred_list = predecessors_[&bb];
-        bb.ForEachSuccessorLabel([&](const uint32_t successor_id) {
-          BasicBlock* succ = GetSuccessorBasicBlock(successor_id);
-          // Inverted graph: our successors in the CFG
-          // are our predecessors in the inverted graph.
-          successors_[succ].push_back(&bb);
-          pred_list.push_back(succ);
-        });
+        bb.ForEachSuccessorLabel(
+            [this, &pred_list, &bb,
+             &GetSuccessorBasicBlock](const uint32_t successor_id) {
+              BasicBlock* succ = GetSuccessorBasicBlock(successor_id);
+              // Inverted graph: our successors in the CFG
+              // are our predecessors in the inverted graph.
+              this->successors_[succ].push_back(&bb);
+              pred_list.push_back(succ);
+            });
       } else {
         successors_[dummy_start_node].push_back(&bb);
         predecessors_[&bb].push_back(const_cast<BasicBlock*>(dummy_start_node));
@@ -330,15 +349,15 @@ void DominatorTree::InitializeTree(const ir::Function* f, const ir::CFG& cfg) {
   }
 
   int index = 0;
-  auto preFunc = [&](const DominatorTreeNode* node) {
+  auto preFunc = [&index](const DominatorTreeNode* node) {
     const_cast<DominatorTreeNode*>(node)->dfs_num_pre_ = ++index;
   };
 
-  auto postFunc = [&](const DominatorTreeNode* node) {
+  auto postFunc = [&index](const DominatorTreeNode* node) {
     const_cast<DominatorTreeNode*>(node)->dfs_num_post_ = ++index;
   };
 
-  auto getSucc = [&](const DominatorTreeNode* node) {
+  auto getSucc = [](const DominatorTreeNode* node) {
     return &node->childrens_;
   };
 
@@ -349,7 +368,7 @@ void DominatorTree::DumpTreeAsDot(std::ostream& out_stream) const {
   out_stream << "digraph {\n";
   out_stream << "Dummy [label=\"Entry\"];\n";
   for (auto Root : roots_) {
-    Visit(Root, [&](const DominatorTreeNode* node) {
+    Visit(Root, [&out_stream](const DominatorTreeNode* node) {
 
       // Print the node.
       if (node->bb_) {

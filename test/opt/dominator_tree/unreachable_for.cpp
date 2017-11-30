@@ -21,7 +21,7 @@
 #include "../function_utils.h"
 #include "../pass_fixture.h"
 #include "../pass_utils.h"
-#include "opt/dominator_analysis_pass.h"
+#include "opt/dominator_analysis.h"
 #include "opt/pass.h"
 
 namespace {
