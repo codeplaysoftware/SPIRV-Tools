@@ -17,7 +17,6 @@
 #include <set>
 
 #include "cfa.h"
-#include "cfg.h"
 #include "dominator_tree.h"
 
 using namespace spvtools;
@@ -88,7 +87,7 @@ class BasicBlockSuccessorHelper {
  public:
   // For compliance with the dominance tree computation, entry nodes are
   // connected to a single dummy node.
-  BasicBlockSuccessorHelper(Function& func, BasicBlock* dummy_start_node,
+  BasicBlockSuccessorHelper(Function& func, const BasicBlock* dummy_start_node,
                             bool post);
 
   // CFA::CalculateDominators requires std::vector<BasicBlock*>.
@@ -123,19 +122,19 @@ class BasicBlockSuccessorHelper {
   // tree construction requires a unique entry node, which cannot be guarantied
   // for the postdominator graph. The dummyStartNode BB is here to gather all
   // entry nodes.
-  void CreateSuccessorMap(Function& f, BasicBlock* dummy_start_node);
+  void CreateSuccessorMap(Function& f, const BasicBlock* dummy_start_node);
 };
 
 template <typename BBType>
 BasicBlockSuccessorHelper<BBType>::BasicBlockSuccessorHelper(
-    Function& func, BasicBlock* dummy_start_node, bool invert)
+    Function& func, const BasicBlock* dummy_start_node, bool invert)
     : invert_graph_(invert) {
   CreateSuccessorMap(func, dummy_start_node);
 }
 
 template <typename BBType>
 void BasicBlockSuccessorHelper<BBType>::CreateSuccessorMap(
-    Function& f, BasicBlock* dummy_start_node) {
+    Function& f, const BasicBlock* dummy_start_node) {
   std::map<uint32_t, BasicBlock*> id_to_BB_map;
   auto GetSuccessorBasicBlock = [&](uint32_t successor_id) {
     BasicBlock*& Succ = id_to_BB_map[successor_id];
@@ -169,14 +168,15 @@ void BasicBlockSuccessorHelper<BBType>::CreateSuccessorMap(
         });
       } else {
         successors_[dummy_start_node].push_back(&bb);
-        predecessors_[&bb].push_back(dummy_start_node);
+        predecessors_[&bb].push_back(const_cast<BasicBlock*>(dummy_start_node));
       }
     }
   } else {
     // Technically, this is not needed, but it unifies
     // the handling of dominator and postdom tree later on.
     successors_[dummy_start_node].push_back(f.entry().get());
-    predecessors_[f.entry().get()].push_back(dummy_start_node);
+    predecessors_[f.entry().get()].push_back(
+        const_cast<BasicBlock*>(dummy_start_node));
     for (BasicBlock& bb : f) {
       BasicBlockListTy& succ_list = successors_[&bb];
 
@@ -262,7 +262,7 @@ DominatorTreeNode* DominatorTree::GetOrInsertNode(ir::BasicBlock* bb) {
 }
 
 void DominatorTree::GetDominatorEdges(
-    const ir::Function* f, ir::BasicBlock* dummy_start_node,
+    const ir::Function* f, const ir::BasicBlock* dummy_start_node,
     std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>& edges) {
   // Each time the depth first traversal calls the postorder callback
   // std::function we push that node into the postorder vector to create our
@@ -296,7 +296,7 @@ void DominatorTree::GetDominatorEdges(
       CFA<ir::BasicBlock>::CalculateDominators(postorder, predecessor_functor);
 }
 
-void DominatorTree::InitializeTree(const ir::Function* f) {
+void DominatorTree::InitializeTree(const ir::Function* f, const ir::CFG& cfg) {
   ClearTree();
 
   // Skip over empty functions.
@@ -304,11 +304,8 @@ void DominatorTree::InitializeTree(const ir::Function* f) {
     return;
   }
 
-  ir::CFG cfg(f->GetParent());
-
-  ir::BasicBlock* dummy_start_node = postdominator_
-                                         ? cfg.pseudo_exit_block()
-                                         : cfg.pseudo_entry_block();
+  const ir::BasicBlock* dummy_start_node =
+      postdominator_ ? cfg.pseudo_exit_block() : cfg.pseudo_entry_block();
 
   // Get the immedate dominator for each node.
   std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>> edges;

@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "cfg.h"
 #include "module.h"
 
 namespace spvtools {
@@ -100,7 +101,7 @@ class DominatorTree {
 
   // Build the (post-)dominator tree for the function |f|
   // Any existing data will be overwritten
-  void InitializeTree(const ir::Function* f);
+  void InitializeTree(const ir::Function* f, const ir::CFG& cfg);
 
   // Check if the basic block |a| dominates the basic block |b|.
   bool Dominates(const ir::BasicBlock* a, const ir::BasicBlock* b) const;
@@ -142,7 +143,8 @@ class DominatorTree {
   }
 
  private:
-  // Adds the basic block |bb| to the tree structure if it doesn't already exist.
+  // Adds the basic block |bb| to the tree structure if it doesn't already
+  // exist.
   DominatorTreeNode* GetOrInsertNode(ir::BasicBlock* bb);
 
   // Applies the std::function |func| to |node| then applies it to nodes
@@ -153,7 +155,7 @@ class DominatorTree {
   // Wrapper functio which gets the list of BasicBlock->DominatingBasicBlock
   // from the CFA and stores it in the edges parameter.
   void GetDominatorEdges(
-      const ir::Function* F, ir::BasicBlock* DummyStartNode,
+      const ir::Function* F, const ir::BasicBlock* DummyStartNode,
       std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>& edges);
 
   // The roots of the tree.

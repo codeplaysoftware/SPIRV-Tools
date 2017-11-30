@@ -30,7 +30,9 @@ class DominatorAnalysisBase {
   explicit DominatorAnalysisBase(bool is_post_dom) : tree_(is_post_dom) {}
 
   // Calculate the dominator (or postdominator) tree for given function |f|.
-  inline void InitializeTree(const ir::Function* f) { tree_.InitializeTree(f); }
+  inline void InitializeTree(const ir::Function* f, const ir::CFG& cfg) {
+    tree_.InitializeTree(f, cfg);
+  }
 
   // Returns true if BasicBlock |a| dominates BasicBlock |b|.
   inline bool Dominates(const ir::BasicBlock* a,
