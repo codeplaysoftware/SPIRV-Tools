@@ -47,6 +47,7 @@ add_library(SPIRV-Tools-opt
   local_single_store_elim_pass.h
   local_ssa_elim_pass.h
   log.h
+  loop_descriptor.h
   mem_pass.h
   merge_return_pass.h
   module.h
