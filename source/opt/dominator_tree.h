@@ -32,7 +32,7 @@ struct DominatorTreeNode {
   explicit DominatorTreeNode(ir::BasicBlock* bb)
       : bb_(bb),
         parent_(nullptr),
-        childrens_({}),
+        children_({}),
         dfs_num_pre_(-1),
         dfs_num_post_(-1) {}
 
@@ -40,7 +40,7 @@ struct DominatorTreeNode {
 
   ir::BasicBlock* bb_;
   DominatorTreeNode* parent_;
-  std::vector<DominatorTreeNode*> childrens_;
+  std::vector<DominatorTreeNode*> children_;
 
   // These indexes are used to compare two given nodes. A node is a child or
   // grandchild of another node if its preorder index is greater than the
@@ -142,15 +142,36 @@ class DominatorTree {
     roots_.clear();
   }
 
+  // Applies the std::function |func| to all nodes in the dominator tree.
+  bool Visit(std::function<bool(DominatorTreeNode*)> func) {
+    for (auto n : roots_) {
+      if (!Visit(n, func)) return false;
+    }
+    return true;
+  }
+
+  // Applies the std::function |func| to all nodes in the dominator tree.
+  bool Visit(std::function<bool(const DominatorTreeNode*)> func) const {
+    for (auto n : roots_) {
+      if (!Visit(n, func)) return false;
+    }
+    return true;
+  }
+
+  // Applies the std::function |func| to |node| then applies it to nodes
+  // children.
+  bool Visit(DominatorTreeNode* node,
+             std::function<bool(DominatorTreeNode*)> func);
+
+  // Applies the std::function |func| to |node| then applies it to nodes
+  // children.
+  bool Visit(const DominatorTreeNode* node,
+             std::function<bool(const DominatorTreeNode*)> func) const;
+
  private:
   // Adds the basic block |bb| to the tree structure if it doesn't already
   // exist.
   DominatorTreeNode* GetOrInsertNode(ir::BasicBlock* bb);
-
-  // Applies the std::function |func| to |node| then applies it to nodes
-  // children.
-  void Visit(const DominatorTreeNode* node,
-             std::function<void(const DominatorTreeNode*)> func) const;
 
   // Wrapper functio which gets the list of BasicBlock->DominatingBasicBlock
   // from the CFA and stores it in the edges parameter.

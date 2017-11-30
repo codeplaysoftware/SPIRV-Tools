@@ -345,7 +345,7 @@ void DominatorTree::InitializeTree(const ir::Function* f, const ir::CFG& cfg) {
     DominatorTreeNode* second = GetOrInsertNode(edge.second);
 
     first->parent_ = second;
-    second->childrens_.push_back(first);
+    second->children_.push_back(first);
   }
 
   int index = 0;
@@ -358,7 +358,7 @@ void DominatorTree::InitializeTree(const ir::Function* f, const ir::CFG& cfg) {
   };
 
   auto getSucc = [](const DominatorTreeNode* node) {
-    return &node->childrens_;
+    return &node->children_;
   };
 
   for (auto root : roots_) DepthFirstSearch(root, getSucc, preFunc, postFunc);
@@ -367,38 +367,54 @@ void DominatorTree::InitializeTree(const ir::Function* f, const ir::CFG& cfg) {
 void DominatorTree::DumpTreeAsDot(std::ostream& out_stream) const {
   out_stream << "digraph {\n";
   out_stream << "Dummy [label=\"Entry\"];\n";
-  for (auto Root : roots_) {
-    Visit(Root, [&out_stream](const DominatorTreeNode* node) {
+  Visit([&out_stream](const DominatorTreeNode* node) {
 
-      // Print the node.
-      if (node->bb_) {
-        out_stream << node->bb_->id() << "[label=\"" << node->bb_->id()
-                   << "\"];\n";
-      }
+    // Print the node.
+    if (node->bb_) {
+      out_stream << node->bb_->id() << "[label=\"" << node->bb_->id()
+                 << "\"];\n";
+    }
 
-      // Print the arrow from the parent to this node. Entry nodes will not have
-      // parents so draw them as children from the dummy node.
-      if (node->parent_) {
-        out_stream << node->parent_->bb_->id() << " -> " << node->bb_->id()
-                   << ";\n";
-      } else {
-        out_stream << "Dummy -> " << node->bb_->id() << " [style=dotted];\n";
-      }
-    });
-  }
+    // Print the arrow from the parent to this node. Entry nodes will not have
+    // parents so draw them as children from the dummy node.
+    if (node->parent_) {
+      out_stream << node->parent_->bb_->id() << " -> " << node->bb_->id()
+                 << ";\n";
+    } else {
+      out_stream << "Dummy -> " << node->bb_->id() << " [style=dotted];\n";
+    }
+
+    return true;
+  });
   out_stream << "}\n";
 }
 
-void DominatorTree::Visit(
-    const DominatorTreeNode* node,
-    std::function<void(const DominatorTreeNode*)> func) const {
+bool DominatorTree::Visit(
+    DominatorTreeNode* node,
+    std::function<bool(DominatorTreeNode*)> func) {
   // Apply the function to the node.
-  func(node);
+  if (!func(node)) return false;
 
   // Apply the function to every child node.
-  for (const DominatorTreeNode* child : node->childrens_) {
-    Visit(child, func);
+  for (DominatorTreeNode* child : node->children_) {
+    if (!Visit(child, func)) return false;
   }
+
+  return true;
+}
+
+bool DominatorTree::Visit(
+    const DominatorTreeNode* node,
+    std::function<bool(const DominatorTreeNode*)> func) const {
+  // Apply the function to the node.
+  if (!func(node)) return false;
+
+  // Apply the function to every child node.
+  for (const DominatorTreeNode* child : node->children_) {
+    if (!Visit(child, func)) return false;
+  }
+
+  return true;
 }
 
 }  // namespace opt
