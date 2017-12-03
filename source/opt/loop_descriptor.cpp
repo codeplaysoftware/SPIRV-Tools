@@ -32,7 +32,9 @@ static const spvtools::ir::BasicBlock* GetBasicBlock(
 }
 }
 
-LoopDescriptor::LoopDescriptor(const ir::Function* f) {
+LoopDescriptor::LoopDescriptor(const ir::Function* f) { PopulateList(f); }
+
+void LoopDescriptor::PopulateList(const ir::Function* f) {
   ir::IRContext* context = f->GetParent()->context();
 
   ir::CFG cfg{f->GetParent()};
@@ -76,7 +78,44 @@ LoopDescriptor::LoopDescriptor(const ir::Function* f) {
 
     // The basicblock containing the merge instruction.
     const ir::BasicBlock* start_bb = context->get_instr_block(merge_inst);
-    loops_.push_back({start_bb, continue_bb, merge_bb});
+
+    bool is_nested = false;
+
+    // The index of the top most parent loop of a nested loop.
+    signed long parent_loop_index = -1;
+
+    // If this is the first loop don't check for dominating nesting loop.
+    // Otherwise, move through the loops in reverse order to check if this is a
+    // nested loop. If it isn't a nested loop this for will exit on the first
+    // iteration.
+    for (signed long i = loops_.size() - 1; i >= 0; --i) {
+      Loop& previous_loop = loops_[i];
+
+      // If this loop is dominated by the entry of the previous loop it could be
+      // a nested loop of that loop or a nested loop of a parent of that loop.
+      // Otherwise it's not nested at all.
+      if (!dom_analysis->Dominates(previous_loop.GetStartBB(), start_bb)) break;
+
+      // If this loop is dominated by the merge block of the previous loop it's
+      // a nested loop of the parent of the previous loop. Otherwise it's just a
+      // nested loop of the parent.
+      if (dom_analysis->Dominates(previous_loop.GetMergeBB(), start_bb)) {
+        continue;
+      } else {
+        parent_loop_index = i;
+        is_nested = true;
+        break;
+      }
+    }
+
+    // Add the loop the list of all the loops in the function.
+    loops_.push_back({is_nested, start_bb, continue_bb, merge_bb});
+
+    // If it's nested add a reference to it to the parent loop.
+    if (is_nested) {
+      assert(parent_loop_index != -1);
+      loops_[parent_loop_index].AddNestedLoop(&loops_.back());
+    }
   }
 }
 

@@ -27,21 +27,34 @@ namespace opt {
 // A class to represent a loop.
 class Loop {
  public:
-  Loop(const ir::BasicBlock* begin, const ir::BasicBlock* continue_target,
+  Loop(bool is_nested, const ir::BasicBlock* begin,
+       const ir::BasicBlock* continue_target,
        const ir::BasicBlock* merge_target)
       : loop_start_(begin),
         loop_continue_(continue_target),
-        loop_merge_(merge_target){};
+        loop_merge_(merge_target),
+        is_nested_(is_nested){};
 
+  // Get the BasicBlock containing the original OpLoopMerge instruction.
   inline const ir::BasicBlock* GetStartBB() const { return loop_start_; }
 
+  // Get the BasicBlock which is the start of the body of the loop.
   inline const ir::BasicBlock* GetContinueBB() const { return loop_continue_; }
 
+  // Get the BasicBlock which marks the end of the loop.
   inline const ir::BasicBlock* GetMergeBB() const { return loop_merge_; }
 
+  // Return true if this loop contains any nested loops.
   inline bool HasNestedLoops() const { return nested_loops_.size() != 0; };
 
+  // Return the number of nested loops this loop contains.
   inline size_t GetNumNestedLoops() const { return nested_loops_.size(); };
+
+  // Add a nested loop to this loop.
+  inline void AddNestedLoop(Loop* nested) { nested_loops_.push_back(nested); };
+
+  // Return true if this loop is itself nested within another loop.
+  inline bool IsNested() const { return is_nested_; }
 
  private:
   // The block which marks the start of the loop.
@@ -55,6 +68,9 @@ class Loop {
 
   // Nested child loops of this loop.
   std::vector<Loop*> nested_loops_;
+
+  // True if this loop is nested within another.
+  bool is_nested_;
 };
 
 class LoopDescriptor {
@@ -74,6 +90,9 @@ class LoopDescriptor {
   }
 
  private:
+  void PopulateList(const ir::Function* f);
+
+  // A list of all the loops in the function.
   std::vector<Loop> loops_;
 };
 

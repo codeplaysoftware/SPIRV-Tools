@@ -13,9 +13,15 @@
 # limitations under the License.
 
 
-add_spvtools_unittest(TARGET loop_descriptor
+add_spvtools_unittest(TARGET loop_descriptor_simple
     SRCS ../function_utils.h
         loop_descriptions.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET loop_descriptor_nested
+    SRCS ../function_utils.h
+        nested_loops.cpp
     LIBS SPIRV-Tools-opt
 )
 
