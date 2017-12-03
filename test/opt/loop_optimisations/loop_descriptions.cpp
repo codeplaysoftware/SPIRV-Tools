@@ -43,51 +43,51 @@ void main() {
 */
 TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   const std::string text = R"(
-               OpCapability Shader
+                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %main "main" %c
-               OpExecutionMode %main OriginUpperLeft
+               OpEntryPoint Fragment %2 "main" %3
+               OpExecutionMode %4 OriginUpperLeft
                OpSource GLSL 330
-               OpName %main "main"
-               OpName %i "i"
-               OpName %c "c"
-               OpDecorate %c Location 0
-       %void = OpTypeVoid
-          %3 = OpTypeFunction %void
-        %int = OpTypeInt 32 1
-%_ptr_Function_int = OpTypePointer Function %int
-      %int_0 = OpConstant %int 0
-     %int_10 = OpConstant %int 10
-       %bool = OpTypeBool
-      %int_1 = OpConstant %int 1
-      %float = OpTypeFloat 32
-    %v4float = OpTypeVector %float 4
-%_ptr_Output_v4float = OpTypePointer Output %v4float
-          %c = OpVariable %_ptr_Output_v4float Output
-       %main = OpFunction %void None %3
-          %5 = OpLabel
-          %i = OpVariable %_ptr_Function_int Function
-               OpStore %i %int_0
-               OpBranch %10
-         %10 = OpLabel
-               OpLoopMerge %12 %13 None
-               OpBranch %14
-         %14 = OpLabel
-         %15 = OpLoad %int %i
-         %18 = OpSLessThan %bool %15 %int_10
-               OpBranchConditional %18 %11 %12
-         %11 = OpLabel
-               OpBranch %13
-         %13 = OpLabel
-         %19 = OpLoad %int %i
-         %21 = OpIAdd %int %19 %int_1
-               OpStore %i %21
-               OpBranch %10
-         %12 = OpLabel
+               OpName %2 "main"
+               OpName %5 "i"
+               OpName %3 "c"
+               OpDecorate %3 Location 0
+          %6 = OpTypeVoid
+          %7 = OpTypeFunction %6
+          %8 = OpTypeInt 32 1
+          %9 = OpTypePointer Function %8
+         %10 = OpConstant %8 0
+         %11 = OpConstant %8 10
+         %12 = OpTypeBool
+         %13 = OpConstant %8 1
+         %14 = OpTypeFloat 32
+         %15 = OpTypeVector %14 4
+         %16 = OpTypePointer Output %15
+          %3 = OpVariable %16 Output
+          %2 = OpFunction %6 None %7
+         %17 = OpLabel
+          %5 = OpVariable %9 Function
+               OpStore %5 %10
+               OpBranch %18
+         %18 = OpLabel
+               OpLoopMerge %19 %20 None
+               OpBranch %21
+         %21 = OpLabel
+         %22 = OpLoad %8 %5
+         %23 = OpSLessThan %12 %22 %11
+               OpBranchConditional %23 %24 %19
+         %24 = OpLabel
+               OpBranch %20
+         %20 = OpLabel
+         %25 = OpLoad %8 %5
+         %26 = OpIAdd %8 %25 %13
+               OpStore %5 %26
+               OpBranch %18
+         %19 = OpLabel
                OpReturn
                OpFunctionEnd
-    )";
+  )";
   // clang-format on
   std::unique_ptr<ir::IRContext> context =
       BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
@@ -95,7 +95,18 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   ir::Module* module = context->module();
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
-  const ir::Function* f = spvtest::GetFunction(module, 4);
+  const ir::Function* f = spvtest::GetFunction(module, 2);
+  opt::LoopDescriptor ld{f};
+
+  EXPECT_EQ(ld.NumLoops(), 1u);
+
+  const opt::Loop& loop = ld.GetLoop(0);
+  EXPECT_EQ(loop.GetStartBB(), spvtest::GetBasicBlock(f, 18));
+  EXPECT_EQ(loop.GetContinueBB(), spvtest::GetBasicBlock(f, 20));
+  EXPECT_EQ(loop.GetMergeBB(), spvtest::GetBasicBlock(f, 19));
+
+  EXPECT_FALSE(loop.HasNestedLoops());
+  EXPECT_EQ(loop.GetNumNestedLoops(), 0u);
 }
 
 }  // namespace

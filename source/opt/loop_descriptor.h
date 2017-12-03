@@ -26,17 +26,58 @@ namespace opt {
 
 // A class to represent a loop.
 class Loop {
-  public:
-    Loop(const ir::BasicBlock *bb);
+ public:
+  Loop(const ir::BasicBlock* begin, const ir::BasicBlock* continue_target,
+       const ir::BasicBlock* merge_target)
+      : loop_start_(begin),
+        loop_continue_(continue_target),
+        loop_merge_(merge_target){};
+
+  inline const ir::BasicBlock* GetStartBB() const { return loop_start_; }
+
+  inline const ir::BasicBlock* GetContinueBB() const { return loop_continue_; }
+
+  inline const ir::BasicBlock* GetMergeBB() const { return loop_merge_; }
+
+  inline bool HasNestedLoops() const { return nested_loops_.size() != 0; };
+
+  inline size_t GetNumNestedLoops() const { return nested_loops_.size(); };
+
+ private:
+  // The block which marks the start of the loop.
+  const ir::BasicBlock* loop_start_;
+
+  // The block which begins the body of the loop.
+  const ir::BasicBlock* loop_continue_;
+
+  // The block which marks the end of the loop.
+  const ir::BasicBlock* loop_merge_;
+
+  // Nested child loops of this loop.
+  std::vector<Loop*> nested_loops_;
 };
 
 class LoopDescriptor {
  public:
   // Creates a loop object for all loops found in |f|.
   LoopDescriptor(const ir::Function* f);
+
+  // Return the number of loops found in the function.
+  size_t NumLoops() const { return loops_.size(); }
+
+  // Return the loop at a particular |index|. The |index| must be in bounds,
+  // check with NumLoops before calling.
+  inline const Loop& GetLoop(size_t index) const {
+    assert(loops_.size() > index &&
+           "Index out of range (larger than loop count)");
+    return loops_[index];
+  }
+
+ private:
+  std::vector<Loop> loops_;
 };
 
 }  // namespace opt
 }  // namespace spvtools
 
-#endif // LIBSPIRV_OPT_LOOP_DESCRIPTORS_H_
+#endif  // LIBSPIRV_OPT_LOOP_DESCRIPTORS_H_

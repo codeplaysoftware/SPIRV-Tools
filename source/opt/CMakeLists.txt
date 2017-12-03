@@ -99,6 +99,7 @@ add_library(SPIRV-Tools-opt
   local_single_block_elim_pass.cpp
   local_single_store_elim_pass.cpp
   local_ssa_elim_pass.cpp
+  loop_descriptor.cpp
   mem_pass.cpp
   merge_return_pass.cpp
   module.cpp
