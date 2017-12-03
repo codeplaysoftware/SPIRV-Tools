@@ -15,8 +15,10 @@
 #ifndef SPIRV_TOOLS_IR_CONTEXT_H
 #define SPIRV_TOOLS_IR_CONTEXT_H
 
+#include "cfg.h"
 #include "decoration_manager.h"
 #include "def_use_manager.h"
+#include "dominator_analysis.h"
 #include "module.h"
 
 #include <algorithm>
@@ -39,8 +41,7 @@ class IRContext {
   // 2. Make sure it gets invalidated or preserved by IRContext methods that add
   //    or remove IR elements (e.g., KillDef, KillInst, ReplaceAllUsesWith).
   //
-  // 3. Add handling code in BuildInvalidAnalyses and
-  //    InvalidateAnalysesExceptFor.
+  // 3. Add handling code in BuildInvalidAnalyses and InvalidateAnalyses
   enum Analysis {
     kAnalysisNone = 0 << 0,
     kAnalysisBegin = 1 << 0,
@@ -48,7 +49,9 @@ class IRContext {
     kAnalysisInstrToBlockMapping = 1 << 1,
     kAnalysisDecorations = 1 << 2,
     kAnalysisCombinators = 1 << 3,
-    kAnalysisEnd = 1 << 4
+	kAnalysisCFG = 1 << 4,
+    kAnalysisDominatorAnalysis = 1 << 5,
+    kAnalysisEnd = 1 << 6
   };
 
   friend inline Analysis operator|(Analysis lhs, Analysis rhs);
@@ -284,6 +287,32 @@ class IRContext {
     }
   }
 
+  // Returns a pointer to the CFG for all the functions in |module_|.
+  ir::CFG* cfg() {
+    if (!AreAnalysesValid(kAnalysisCFG)) {
+      BuildCFG();
+    }
+    return cfg_.get();
+  }
+
+  // Gets the dominator analysis for function |f|.
+  opt::DominatorAnalysis* GetDominatorAnalysis(const ir::Function* f,
+                                               const ir::CFG&);
+
+  // Gets the postdominator analysis for function |f|.
+  opt::PostDominatorAnalysis* GetPostDominatorAnalysis(const ir::Function* f,
+                                                       const ir::CFG&);
+
+  // Remove the dominator tree of |f| from the cache.
+  inline void RemoveDominatorAnalysis(const ir::Function* f) {
+    dominator_trees_.erase(f);
+  }
+
+  // Remove the postdominator tree of |f| from the cache.
+  inline void RemovePostDominatorAnalysis(const ir::Function* f) {
+    post_dominator_trees_.erase(f);
+  }
+
  private:
   // Builds the def-use manager from scratch, even if it was already valid.
   void BuildDefUseManager() {
@@ -307,6 +336,11 @@ class IRContext {
   void BuildDecorationManager() {
     decoration_mgr_.reset(new opt::analysis::DecorationManager(module()));
     valid_analyses_ = valid_analyses_ | kAnalysisDecorations;
+  }
+
+  void BuildCFG() {
+    cfg_.reset(new ir::CFG(module()));
+    valid_analyses_ = valid_analyses_ | kAnalysisCFG;
   }
 
   // Scans a module looking for it capabilities, and initializes combinator_ops_
@@ -344,6 +378,15 @@ class IRContext {
   // Opcodes of shader capability core executable instructions
   // without side-effect.
   std::unordered_map<uint32_t, std::unordered_set<uint32_t>> combinator_ops_;
+
+  // The CFG for all the functions in |module_|.
+  std::unique_ptr<ir::CFG> cfg_;
+
+  // Each function in the module will create its own dominator tree. We cache
+  // the result so it doesn't need to be rebuilt each time.
+  std::map<const ir::Function*, opt::DominatorAnalysis> dominator_trees_;
+  std::map<const ir::Function*, opt::PostDominatorAnalysis>
+      post_dominator_trees_;
 };
 
 inline ir::IRContext::Analysis operator|(ir::IRContext::Analysis lhs,
