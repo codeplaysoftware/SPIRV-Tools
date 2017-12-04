@@ -429,6 +429,33 @@ TEST_F(PassClassTest, DominatorLoopToSelf) {
               spvtest::GetBasicBlock(fn, 10));
     EXPECT_EQ(dom_tree.ImmediateDominator(spvtest::GetBasicBlock(fn, 12)),
               spvtest::GetBasicBlock(fn, 11));
+
+    {
+      // Test dominator tree iteration order.
+      opt::DominatorTree::iterator node_it = dom_tree.GetDomTree().begin();
+      opt::DominatorTree::iterator node_end = dom_tree.GetDomTree().end();
+      for (uint32_t id : std::initializer_list<uint32_t>{
+               cfg.pseudo_entry_block()->id(), 10, 11, 12}) {
+        EXPECT_NE(node_it, node_end);
+        EXPECT_EQ(node_it->id(), id);
+        node_it++;
+      }
+      EXPECT_EQ(node_it, node_end);
+    }
+    {
+      // same as above, but with const iterators.
+      opt::DominatorTree::const_iterator node_it =
+          dom_tree.GetDomTree().cbegin();
+      opt::DominatorTree::const_iterator node_end =
+          dom_tree.GetDomTree().cend();
+      for (uint32_t id : std::initializer_list<uint32_t>{
+               cfg.pseudo_entry_block()->id(), 10, 11, 12}) {
+        EXPECT_NE(node_it, node_end);
+        EXPECT_EQ(node_it->id(), id);
+        node_it++;
+      }
+      EXPECT_EQ(node_it, node_end);
+    }
   }
 
   // Check post dominator tree
@@ -459,6 +486,31 @@ TEST_F(PassClassTest, DominatorLoopToSelf) {
 
     EXPECT_EQ(dom_tree.ImmediateDominator(spvtest::GetBasicBlock(fn, 12)),
               cfg.pseudo_exit_block());
+
+    {
+      // Test dominator tree iteration order.
+      opt::DominatorTree::iterator node_it = tree.begin();
+      opt::DominatorTree::iterator node_end = tree.end();
+      for (uint32_t id : std::initializer_list<uint32_t>{
+               cfg.pseudo_exit_block()->id(), 12, 11, 10}) {
+        EXPECT_NE(node_it, node_end);
+        EXPECT_EQ(node_it->id(), id);
+        node_it++;
+      }
+      EXPECT_EQ(node_it, node_end);
+    }
+    {
+      // same as above, but with const iterators.
+      opt::DominatorTree::const_iterator node_it = tree.cbegin();
+      opt::DominatorTree::const_iterator node_end = tree.cend();
+      for (uint32_t id : std::initializer_list<uint32_t>{
+               cfg.pseudo_exit_block()->id(), 12, 11, 10}) {
+        EXPECT_NE(node_it, node_end);
+        EXPECT_EQ(node_it->id(), id);
+        node_it++;
+      }
+      EXPECT_EQ(node_it, node_end);
+    }
   }
 }
 
