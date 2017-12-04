@@ -47,7 +47,7 @@ namespace {
 //
 // BBType - BasicBlock type. Will either be ir::BasicBlock or DominatorTreeNode
 // SuccessorLambda - Lamdba matching the signature of 'const
-// std::vector<BBType>*(const BBType *A)'. Will return a vector of the nodes
+// std::vector<BBType>*(const BBType *A)'. Will returns a vector of the nodes
 // succeding BasicBlock A.
 // PostLambda - Lamdba matching the signature of 'void (const BBType*)' will be
 // called on each node traversed AFTER their children.
@@ -132,13 +132,13 @@ class BasicBlockSuccessorHelper {
   BasicBlockMapTy successors_;
   BasicBlockMapTy predecessors_;
 
-  // Build a bi-directional graph from the CFG of F.
-  // If invert_graph_ is true, all edge are reverted (successors becomes
+  // Build the successors and predecessors map for each basic blocks |f|.
+  // If |invert_graph_| is true, all edges are reversed (successors becomes
   // predecessors and vice versa).
-  // For convenience, the start of the graph is dummyStartNode. The dominator
-  // tree construction requires a unique entry node, which cannot be guarantied
-  // for the postdominator graph. The dummyStartNode BB is here to gather all
-  // entry nodes.
+  // For convenience, the start of the graph is |dummy_start_node|.
+  // The dominator tree construction requires a unique entry node, which cannot
+  // be guaranteed for the postdominator graph. The |dummy_start_node| BB is
+  // here to gather all entry nodes.
   void CreateSuccessorMap(Function& f, const BasicBlock* dummy_start_node);
 };
 
