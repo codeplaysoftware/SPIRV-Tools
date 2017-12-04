@@ -176,6 +176,31 @@ TEST_F(PassClassTest, DominatorSimpleCFG) {
               spvtest::GetBasicBlock(fn, 11));
     EXPECT_EQ(dom_tree.ImmediateDominator(spvtest::GetBasicBlock(fn, 15)),
               spvtest::GetBasicBlock(fn, 14));
+
+    {
+      // Test dominator tree iteration order.
+      opt::DominatorTree::iterator node_it = dom_tree.GetDomTree().begin();
+      opt::DominatorTree::iterator node_end = dom_tree.GetDomTree().end();
+      for (uint32_t id : {10, 11, 14, 15, 13, 12}) {
+        EXPECT_NE(node_it, node_end);
+        EXPECT_EQ((*node_it)->id(), id);
+        node_it++;
+      }
+      EXPECT_EQ(node_it, node_end);
+    }
+    {
+      // same as above, but with const iterators.
+      opt::DominatorTree::const_iterator node_it =
+          dom_tree.GetDomTree().cbegin();
+      opt::DominatorTree::const_iterator node_end =
+          dom_tree.GetDomTree().cend();
+      for (uint32_t id : {10, 11, 14, 15, 13, 12}) {
+        EXPECT_NE(node_it, node_end);
+        EXPECT_EQ((*node_it)->id(), id);
+        node_it++;
+      }
+      EXPECT_EQ(node_it, node_end);
+    }
   }
 
   // Test post dominator tree
