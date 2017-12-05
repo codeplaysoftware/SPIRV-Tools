@@ -31,6 +31,9 @@ void IRContext::BuildInvalidAnalyses(IRContext::Analysis set) {
   if (set & kAnalysisDecorations) {
     BuildDecorationManager();
   }
+  if (set & kAnalysisCFG) {
+    BuildCFG();
+  }
   if (set & kAnalysisDominatorAnalysis) {
     // An invalid dominator tree analysis will be empty so rebuilding it just
     // means marking it as valid. Each tree will be initalisalised when
@@ -57,6 +60,9 @@ void IRContext::InvalidateAnalyses(IRContext::Analysis analyses_to_invalidate) {
   }
   if (analyses_to_invalidate & kAnalysisCombinators) {
     combinator_ops_.clear();
+  }
+  if (analyses_to_invalidate & kAnalysisCFG) {
+    cfg_.reset(nullptr);
   }
   if (analyses_to_invalidate & kAnalysisDominatorAnalysis) {
     dominator_trees_.clear();
@@ -447,10 +453,10 @@ void IRContext::InitializeCombinators() {
 
 // Gets the dominator analysis for function |f|.
 opt::DominatorAnalysis* IRContext::GetDominatorAnalysis(const ir::Function* f,
-                                                        const ir::CFG& cfg) {
+                                                        const ir::CFG& in_cfg) {
   if (dominator_trees_.find(f) == dominator_trees_.end() ||
       !AreAnalysesValid(kAnalysisDominatorAnalysis)) {
-    dominator_trees_[f].InitializeTree(f, cfg);
+    dominator_trees_[f].InitializeTree(f, in_cfg);
   }
 
   return &dominator_trees_[f];
@@ -458,10 +464,10 @@ opt::DominatorAnalysis* IRContext::GetDominatorAnalysis(const ir::Function* f,
 
 // Gets the postdominator analysis for function |f|.
 opt::PostDominatorAnalysis* IRContext::GetPostDominatorAnalysis(
-    const ir::Function* f, const ir::CFG& cfg) {
+    const ir::Function* f, const ir::CFG& in_cfg) {
   if (post_dominator_trees_.find(f) == post_dominator_trees_.end() ||
       !AreAnalysesValid(kAnalysisDominatorAnalysis)) {
-    post_dominator_trees_[f].InitializeTree(f, cfg);
+    post_dominator_trees_[f].InitializeTree(f, in_cfg);
   }
 
   return &post_dominator_trees_[f];

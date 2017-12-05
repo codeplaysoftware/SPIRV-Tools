@@ -47,7 +47,7 @@ namespace {
 //
 // BBType - BasicBlock type. Will either be ir::BasicBlock or DominatorTreeNode
 // SuccessorLambda - Lamdba matching the signature of 'const
-// std::vector<BBType>*(const BBType *A)'. Will returns a vector of the nodes
+// std::vector<BBType>*(const BBType *A)'. Will return a vector of the nodes
 // succeding BasicBlock A.
 // PostLambda - Lamdba matching the signature of 'void (const BBType*)' will be
 // called on each node traversed AFTER their children.
@@ -63,7 +63,7 @@ static void DepthFirstSearch(const BBType* bb, SuccessorLambda successors,
 }
 
 // Wrapper around CFA::DepthFirstTraversal to provide an interface to perform
-// depth first search on generic BasicBlock types. This overload is for only
+// depth first search on generic BasicBlock types. This overload is only
 // performing user defined post order.
 //
 // BBType - BasicBlock type. Will either be ir::BasicBlock or DominatorTreeNode
@@ -87,8 +87,12 @@ struct GetFunctionClass {
   using FunctionType = ir::Function;
 };
 
-// Helper class to compute predecessors and successors
-// for each Basic Block in a function.
+// Helper class to compute predecessors and successors for each Basic Block in a
+// function. Through GetPredFunctor and GetSuccessorFunctor it provides an
+// interface to get the successor and predecessor lists for each basic
+// block. This is required by the DepthFirstTraversal and ComputeDominator
+// functions which take as parameter an std::function returning the successors
+// and predecessors respectively.
 //
 // When computing the post-dominator tree, all edges are inverted. So successors
 // returned by this class will be predecessors in the original CFG.
@@ -111,7 +115,7 @@ class BasicBlockSuccessorHelper {
   using GetBlocksFunction =
       std::function<const std::vector<BasicBlock*>*(const BasicBlock*)>;
 
-  // Returns the list of predecessor functions.
+  // Return the list of predecessor functions.
   GetBlocksFunction GetPredFunctor() {
     return [this](const BasicBlock* bb) {
       BasicBlockListTy* v = &this->predecessors_[bb];
@@ -119,7 +123,7 @@ class BasicBlockSuccessorHelper {
     };
   }
 
-  // Returns a vector of the list of successor nodes from a given node.
+  // Return a vector of the list of successor nodes from a given node.
   GetBlocksFunction GetSuccessorFunctor() {
     return [this](const BasicBlock* bb) {
       BasicBlockListTy* v = &this->successors_[bb];
@@ -282,7 +286,7 @@ DominatorTreeNode* DominatorTree::GetOrInsertNode(ir::BasicBlock* bb) {
 
 void DominatorTree::GetDominatorEdges(
     const ir::Function* f, const ir::BasicBlock* dummy_start_node,
-    std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>& edges) {
+    std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>>* edges) {
   // Each time the depth first traversal calls the postorder callback
   // std::function we push that node into the postorder vector to create our
   // postorder list.
@@ -302,8 +306,8 @@ void DominatorTree::GetDominatorEdges(
   // given node.
   auto successor_functor = helper.GetSuccessorFunctor();
 
-  // PredecessorFunctor does the same as the successor functor but for all nodes
-  // preceding a given node.
+  // The predecessor functor does the same as the successor functor
+  // but for all nodes preceding a given node.
   auto predecessor_functor = helper.GetPredFunctor();
 
   // If we're building a post dominator tree we traverse the tree in reverse
@@ -311,7 +315,7 @@ void DominatorTree::GetDominatorEdges(
   // versa.
   DepthFirstSearchPostOrder(dummy_start_node, successor_functor,
                             postorder_function);
-  edges =
+  *edges =
       CFA<ir::BasicBlock>::CalculateDominators(postorder, predecessor_functor);
 }
 
@@ -326,12 +330,12 @@ void DominatorTree::InitializeTree(const ir::Function* f, const ir::CFG& cfg) {
   const ir::BasicBlock* dummy_start_node =
       postdominator_ ? cfg.pseudo_exit_block() : cfg.pseudo_entry_block();
 
-  // Get the immedate dominator for each node.
+  // Get the immediate dominator for each node.
   std::vector<std::pair<ir::BasicBlock*, ir::BasicBlock*>> edges;
-  GetDominatorEdges(f, dummy_start_node, edges);
+  GetDominatorEdges(f, dummy_start_node, &edges);
 
   // Transform the vector<pair> into the tree structure which we can use to
-  // efficiently query dominace.
+  // efficiently query dominance.
   for (auto edge : edges) {
     if (dummy_start_node == edge.first) continue;
     DominatorTreeNode* first = GetOrInsertNode(edge.first);
@@ -357,9 +361,7 @@ void DominatorTree::InitializeTree(const ir::Function* f, const ir::CFG& cfg) {
     const_cast<DominatorTreeNode*>(node)->dfs_num_post_ = ++index;
   };
 
-  auto getSucc = [](const DominatorTreeNode* node) {
-    return &node->children_;
-  };
+  auto getSucc = [](const DominatorTreeNode* node) { return &node->children_; };
 
   for (auto root : roots_) DepthFirstSearch(root, getSucc, preFunc, postFunc);
 }
@@ -384,6 +386,7 @@ void DominatorTree::DumpTreeAsDot(std::ostream& out_stream) const {
       out_stream << "Dummy -> " << node->bb_->id() << " [style=dotted];\n";
     }
 
+    // Return true to continue the traversal.
     return true;
   });
   out_stream << "}\n";
