@@ -60,7 +60,3 @@ after_test:
   # Zip build artifacts for uploading and deploying
   - cd install
   - 7z a SPIRV-Tools-master-windows-"%PLATFORM%"-"%CONFIGURATION%".zip *\*
-
-artifacts:
-  - path: build\install\*.zip
-    name: artifacts-zip
