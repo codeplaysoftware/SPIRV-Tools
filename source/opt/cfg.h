@@ -40,9 +40,7 @@ class CFG {
   // |blk_id|.
   ir::BasicBlock* block(uint32_t blk_id) const { return id2block_.at(blk_id); }
 
-  // Return the pseudo entry and exit blocks. TODO(dnovillo): Remove when
-  // LocalSingleStoreElimPass::CalculateImmediateDominators() is moved into this
-  // class.
+  // Return the pseudo entry and exit blocks.
   const ir::BasicBlock* pseudo_entry_block() const {
     return &pseudo_entry_block_;
   }
@@ -63,10 +61,10 @@ class CFG {
     return block_ptr == &pseudo_exit_block_;
   }
 
-  // Compute structured block order into |structuredOrder| for |func| starting
-  // at |root|. This order has the property that dominators come before all
-  // blocks they dominate and merge blocks come after all blocks that are in
-  // the control constructs of their header.
+  // Compute structured block order into |order| for |func| starting at |root|.
+  // This order has the property that dominators come before all blocks they
+  // dominate and merge blocks come after all blocks that are in the control
+  // constructs of their header.
   void ComputeStructuredOrder(ir::Function* func, ir::BasicBlock* root,
                               std::list<ir::BasicBlock*>* order);
 
@@ -91,10 +89,10 @@ class CFG {
       block2structured_succs_;
 
   // Extra block whose successors are all blocks with no predecessors
-  // in function. TODO(dnovillo): Needed?
+  // in function.
   ir::BasicBlock pseudo_entry_block_;
 
-  // Augmented CFG Exit Block. TODO(dnovillo): Needed?
+  // Augmented CFG Exit Block.
   ir::BasicBlock pseudo_exit_block_;
 
   // Map from block's label id to its predecessor blocks ids
@@ -104,7 +102,7 @@ class CFG {
   std::unordered_map<uint32_t, ir::BasicBlock*> id2block_;
 };
 
-}  // namespace opt
+}  // namespace ir
 }  // namespace spvtools
 
 #endif  // LIBSPIRV_OPT_CFG_H_

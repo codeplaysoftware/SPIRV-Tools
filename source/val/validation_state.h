@@ -69,6 +69,9 @@ class ValidationState_t {
     // Allow functionalities enabled by VariablePointersStorageBuffer
     // capability.
     bool variable_pointers_storage_buffer = false;
+
+    // Permit group oerations Reduce, InclusiveScan, ExclusiveScan
+    bool group_ops_reduce_and_scans = false;
   };
 
   ValidationState_t(const spv_const_context context,
@@ -505,6 +508,6 @@ class ValidationState_t {
   std::unordered_map<uint32_t, Function*> id_to_function_;
 };
 
-}  /// namespace libspirv
+}  // namespace libspirv
 
 #endif  /// LIBSPIRV_VAL_VALIDATIONSTATE_H_

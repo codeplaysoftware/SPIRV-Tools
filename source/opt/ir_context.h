@@ -15,8 +15,10 @@
 #ifndef SPIRV_TOOLS_IR_CONTEXT_H
 #define SPIRV_TOOLS_IR_CONTEXT_H
 
+#include "cfg.h"
 #include "decoration_manager.h"
 #include "def_use_manager.h"
+#include "dominator_analysis.h"
 #include "module.h"
 
 #include <algorithm>
@@ -39,8 +41,7 @@ class IRContext {
   // 2. Make sure it gets invalidated or preserved by IRContext methods that add
   //    or remove IR elements (e.g., KillDef, KillInst, ReplaceAllUsesWith).
   //
-  // 3. Add handling code in BuildInvalidAnalyses and
-  //    InvalidateAnalysesExceptFor.
+  // 3. Add handling code in BuildInvalidAnalyses and InvalidateAnalyses
   enum Analysis {
     kAnalysisNone = 0 << 0,
     kAnalysisBegin = 1 << 0,
@@ -48,7 +49,9 @@ class IRContext {
     kAnalysisInstrToBlockMapping = 1 << 1,
     kAnalysisDecorations = 1 << 2,
     kAnalysisCombinators = 1 << 3,
-    kAnalysisEnd = 1 << 4
+    kAnalysisCFG = 1 << 4,
+    kAnalysisDominatorAnalysis = 1 << 5,
+    kAnalysisEnd = 1 << 6
   };
 
   friend inline Analysis operator|(Analysis lhs, Analysis rhs);
@@ -106,6 +109,8 @@ class IRContext {
   // Iterators for extension instructions contained in this module.
   inline Module::inst_iterator ext_inst_import_begin();
   inline Module::inst_iterator ext_inst_import_end();
+  inline IteratorRange<Module::inst_iterator> ext_inst_imports();
+  inline IteratorRange<Module::const_inst_iterator> ext_inst_imports() const;
 
   // There are several kinds of debug instructions, according to where they can
   // appear in the logical layout of a module:
@@ -217,16 +222,28 @@ class IRContext {
   // Invalidates the analyses marked in |analyses_to_invalidate|.
   void InvalidateAnalyses(Analysis analyses_to_invalidate);
 
-  // Turns the instruction defining the given |id| into a Nop. Returns true on
+  // Deletes the instruction defining the given |id|. Returns true on
   // success, false if the given |id| is not defined at all. This method also
-  // erases both the uses of |id| and the information of this |id|-generating
-  // instruction's uses of its operands.
+  // erases the name, decorations, and defintion of |id|.
+  //
+  // Pointers and iterators pointing to the deleted instructions become invalid.
+  // However other pointers and iterators are still valid.
   bool KillDef(uint32_t id);
 
-  // Turns the given instruction |inst| to a Nop. This method erases the
+  // Deletes the given instruction |inst|. This method erases the
   // information of the given instruction's uses of its operands. If |inst|
-  // defines an result id, the uses of the result id will also be erased.
-  void KillInst(ir::Instruction* inst);
+  // defines a result id, its name and decorations will also be deleted.
+  //
+  // Pointer and iterator pointing to the deleted instructions become invalid.
+  // However other pointers and iterators are still valid.
+  //
+  // Note that if an instruction is not in an instruction list, the memory may
+  // not be safe to delete, so the instruction is turned into a OpNop instead.
+  // This can happen with OpLabel.
+  //
+  // Returns a pointer to the instruction after |inst| or |nullptr| if no such
+  // instruction exists.
+  Instruction* KillInst(ir::Instruction* inst);
 
   // Returns true if all of the given analyses are valid.
   bool AreAnalysesValid(Analysis set) { return (set & valid_analyses_) == set; }
@@ -284,6 +301,32 @@ class IRContext {
     }
   }
 
+  // Returns a pointer to the CFG for all the functions in |module_|.
+  ir::CFG* cfg() {
+    if (!AreAnalysesValid(kAnalysisCFG)) {
+      BuildCFG();
+    }
+    return cfg_.get();
+  }
+
+  // Gets the dominator analysis for function |f|.
+  opt::DominatorAnalysis* GetDominatorAnalysis(const ir::Function* f,
+                                               const ir::CFG&);
+
+  // Gets the postdominator analysis for function |f|.
+  opt::PostDominatorAnalysis* GetPostDominatorAnalysis(const ir::Function* f,
+                                                       const ir::CFG&);
+
+  // Remove the dominator tree of |f| from the cache.
+  inline void RemoveDominatorAnalysis(const ir::Function* f) {
+    dominator_trees_.erase(f);
+  }
+
+  // Remove the postdominator tree of |f| from the cache.
+  inline void RemovePostDominatorAnalysis(const ir::Function* f) {
+    post_dominator_trees_.erase(f);
+  }
+
  private:
   // Builds the def-use manager from scratch, even if it was already valid.
   void BuildDefUseManager() {
@@ -307,6 +350,11 @@ class IRContext {
   void BuildDecorationManager() {
     decoration_mgr_.reset(new opt::analysis::DecorationManager(module()));
     valid_analyses_ = valid_analyses_ | kAnalysisDecorations;
+  }
+
+  void BuildCFG() {
+    cfg_.reset(new ir::CFG(module()));
+    valid_analyses_ = valid_analyses_ | kAnalysisCFG;
   }
 
   // Scans a module looking for it capabilities, and initializes combinator_ops_
@@ -343,7 +391,16 @@ class IRContext {
 
   // Opcodes of shader capability core executable instructions
   // without side-effect.
-  std::unordered_map<uint32_t, std::unordered_set<uint32_t>>  combinator_ops_;
+  std::unordered_map<uint32_t, std::unordered_set<uint32_t>> combinator_ops_;
+
+  // The CFG for all the functions in |module_|.
+  std::unique_ptr<ir::CFG> cfg_;
+
+  // Each function in the module will create its own dominator tree. We cache
+  // the result so it doesn't need to be rebuilt each time.
+  std::map<const ir::Function*, opt::DominatorAnalysis> dominator_trees_;
+  std::map<const ir::Function*, opt::PostDominatorAnalysis>
+      post_dominator_trees_;
 };
 
 inline ir::IRContext::Analysis operator|(ir::IRContext::Analysis lhs,
@@ -436,6 +493,14 @@ Module::inst_iterator IRContext::ext_inst_import_begin() {
 
 Module::inst_iterator IRContext::ext_inst_import_end() {
   return module()->ext_inst_import_end();
+}
+
+IteratorRange<Module::inst_iterator> IRContext::ext_inst_imports() {
+  return module()->ext_inst_imports();
+}
+
+IteratorRange<Module::const_inst_iterator> IRContext::ext_inst_imports() const {
+  return ((const Module*)module_.get())->ext_inst_imports();
 }
 
 Module::inst_iterator IRContext::debug1_begin() {

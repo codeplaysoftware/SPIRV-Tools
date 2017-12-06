@@ -34,11 +34,10 @@ using namespace spvtools;
 using spvtools::opt::analysis::DefUseManager;
 
 // Returns the number of uses of |id|.
-uint32_t NumUses(const std::unique_ptr<ir::IRContext> &context, uint32_t id) {
+uint32_t NumUses(const std::unique_ptr<ir::IRContext>& context, uint32_t id) {
   uint32_t count = 0;
-  context->get_def_use_mgr()->ForEachUse(id, [&count](ir::Instruction*, uint32_t) {
-    ++count;
-  });
+  context->get_def_use_mgr()->ForEachUse(
+      id, [&count](ir::Instruction*, uint32_t) { ++count; });
   return count;
 }
 
@@ -46,11 +45,13 @@ uint32_t NumUses(const std::unique_ptr<ir::IRContext> &context, uint32_t id) {
 //
 // If |id| is used multiple times in a single instruction, that instruction's
 // opcode will appear a corresponding number of times.
-std::vector<SpvOp> GetUseOpcodes(const std::unique_ptr<ir::IRContext> &context, uint32_t id) {
+std::vector<SpvOp> GetUseOpcodes(const std::unique_ptr<ir::IRContext>& context,
+                                 uint32_t id) {
   std::vector<SpvOp> opcodes;
-  context->get_def_use_mgr()->ForEachUse(id, [&opcodes](ir::Instruction* user, uint32_t) {
-    opcodes.push_back(user->opcode());
-  });
+  context->get_def_use_mgr()->ForEachUse(
+      id, [&opcodes](ir::Instruction* user, uint32_t) {
+        opcodes.push_back(user->opcode());
+      });
   return opcodes;
 }
 
@@ -109,7 +110,7 @@ UserMap BuildAllUsers(const DefUseManager* mgr, uint32_t idBound) {
   UserMap userMap;
   for (uint32_t id = 0; id != idBound; ++id) {
     if (mgr->GetDef(id)) {
-      mgr->ForEachUser(id, [id,&userMap](ir::Instruction* user) {
+      mgr->ForEachUser(id, [id, &userMap](ir::Instruction* user) {
         if (user->opcode() != SpvOpConstant) {
           userMap[id].push_back(user);
         }
@@ -121,8 +122,7 @@ UserMap BuildAllUsers(const DefUseManager* mgr, uint32_t idBound) {
 
 // Constants don't disassemble properly without a full context, so skip them as
 // checks.
-void CheckUse(const InstDefUse& expected_defs_uses,
-              const DefUseManager* mgr,
+void CheckUse(const InstDefUse& expected_defs_uses, const DefUseManager* mgr,
               uint32_t idBound) {
   UserMap actual_uses = BuildAllUsers(mgr, idBound);
   // Check uses.
@@ -1014,11 +1014,8 @@ INSTANTIATE_TEST_CASE_P(
         "%5 = OpTypeMatrix %3 3 "
         "%6 = OpTypeMatrix %2 3",
         {1, 3, 5, 10}, // ids to kill
-        "OpNop\n"
         "%2 = OpTypeVector %1 2\n"
-        "OpNop\n"
         "%4 = OpTypeVector %1 4\n"
-        "OpNop\n"
         "%6 = OpTypeMatrix %2 3",
         {
           { // defs
@@ -1049,8 +1046,6 @@ INSTANTIATE_TEST_CASE_P(
 
          "%5 = OpLabel\n"
          "%7 = OpPhi %6 %8 %4 %9 %5\n"
-              "OpNop\n"
-              "OpNop\n"
         "%13 = OpFAdd %10 %11 %12\n"
         "%17 = OpSLessThan %16 %7 %18\n"
               "OpLoopMerge %19 %5 None\n"
@@ -1164,7 +1159,6 @@ INSTANTIATE_TEST_CASE_P(
         "%6 = OpLabel\n"
              "OpBranch %7\n"
         "%7 = OpLabel\n"
-             "OpNop\n"
              "OpBranch %7\n"
              "OpFunctionEnd",
         {
@@ -1252,9 +1246,9 @@ TEST(DefUseTest, OpSwitch) {
   (void)context->get_def_use_mgr();
 
   // Do a bunch replacements.
-  context->ReplaceAllUsesWith(11, 7);     // to existing id
+  context->ReplaceAllUsesWith(11, 7);   // to existing id
   context->ReplaceAllUsesWith(10, 11);  // to existing id
-  context->ReplaceAllUsesWith(9, 10);    // to existing id
+  context->ReplaceAllUsesWith(9, 10);   // to existing id
 
   // clang-format off
   const char modified_text[] =
@@ -1340,7 +1334,7 @@ TEST_P(AnalyzeInstDefUseTest, Case) {
 
   CheckDef(tc.expected_define_use, manager.id_to_defs());
   CheckUse(tc.expected_define_use, &manager, context->module()->IdBound());
-  //CheckUse(tc.expected_define_use, manager.id_to_uses());
+  // CheckUse(tc.expected_define_use, manager.id_to_uses());
 }
 
 // clang-format off
@@ -1387,14 +1381,13 @@ TEST(AnalyzeInstDefUse, UseWithNoResultId) {
   manager.AnalyzeInstDefUse(&branch);
   context.module()->SetIdBound(3);
 
-  InstDefUse expected =
-  {
-    // defs
-    {
-      {2, "%2 = OpLabel"},
-    },
-    // uses
-    {{2, {"OpBranch %2"}}},
+  InstDefUse expected = {
+      // defs
+      {
+          {2, "%2 = OpLabel"},
+      },
+      // uses
+      {{2, {"OpBranch %2"}}},
   };
 
   CheckDef(expected, manager.id_to_defs());
@@ -1415,15 +1408,16 @@ TEST(AnalyzeInstDefUse, AddNewInstruction) {
   ir::Instruction newInst(context.get(), SpvOpConstantTrue, 1, 2, {});
   manager.AnalyzeInstDefUse(&newInst);
 
-  InstDefUse expected =
-  {
-    { // defs
-      {1, "%1 = OpTypeBool"},
-      {2, "%2 = OpConstantTrue %1"},
-    },
-    { // uses
-      {1, {"%2 = OpConstantTrue %1"}},
-    },
+  InstDefUse expected = {
+      {
+          // defs
+          {1, "%1 = OpTypeBool"},
+          {2, "%2 = OpConstantTrue %1"},
+      },
+      {
+          // uses
+          {1, {"%2 = OpConstantTrue %1"}},
+      },
   };
 
   CheckDef(expected, manager.id_to_defs());
@@ -1461,7 +1455,8 @@ TEST_P(KillInstTest, Case) {
 
   EXPECT_EQ(tc.after, DisassembleModule(context->module()));
   CheckDef(tc.expected_define_use, context->get_def_use_mgr()->id_to_defs());
-  CheckUse(tc.expected_define_use, context->get_def_use_mgr(), context->module()->IdBound());
+  CheckUse(tc.expected_define_use, context->get_def_use_mgr(),
+           context->module()->IdBound());
 }
 
 // clang-format off
@@ -1483,7 +1478,6 @@ INSTANTIATE_TEST_CASE_P(
         "     OpReturn "
         "     OpFunctionEnd",
         {3, 5, 7},
-        "OpNop\n"
         "%1 = OpTypeFunction %3\n"
         "%2 = OpFunction %1 None %3\n"
         "%4 = OpLabel\n"

@@ -81,6 +81,8 @@ class BasicBlock {
 
   iterator begin() { return insts_.begin(); }
   iterator end() { return insts_.end(); }
+  const_iterator begin() const { return insts_.cbegin(); }
+  const_iterator end() const { return insts_.cend(); }
   const_iterator cbegin() const { return insts_.cbegin(); }
   const_iterator cend() const { return insts_.cend(); }
 
@@ -97,6 +99,9 @@ class BasicBlock {
     assert(!insts_.empty());
     return --insts_.cend();
   }
+
+  // Returns true if the basic block has at least one successor.
+  inline bool hasSuccessor() const { return ctail()->IsBranch(); }
 
   // Runs the given function |f| on each instruction in this basic block, and
   // optionally on the debug line instructions that might precede them.
@@ -138,6 +143,10 @@ class BasicBlock {
   // this block, if any.  If none, returns zero.
   uint32_t ContinueBlockIdIfAny() const;
 
+  // Returns true if this basic block exits this function and returns to its
+  // caller.
+  bool IsReturn() const { return ctail()->IsReturn(); }
+
  private:
   // The enclosing function.
   Function* function_;
@@ -162,7 +171,16 @@ inline void BasicBlock::AddInstructions(BasicBlock* bp) {
 inline void BasicBlock::ForEachInst(const std::function<void(Instruction*)>& f,
                                     bool run_on_debug_line_insts) {
   if (label_) label_->ForEachInst(f, run_on_debug_line_insts);
-  for (auto& inst : insts_) inst.ForEachInst(f, run_on_debug_line_insts);
+  if (insts_.empty()) {
+    return;
+  }
+
+  Instruction* inst = &insts_.front();
+  while (inst != nullptr) {
+    Instruction* next_instruction = inst->NextNode();
+    inst->ForEachInst(f, run_on_debug_line_insts);
+    inst = next_instruction;
+  }
 }
 
 inline void BasicBlock::ForEachInst(

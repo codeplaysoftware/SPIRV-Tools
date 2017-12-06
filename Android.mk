@@ -37,6 +37,7 @@ SPVTOOLS_SRC_FILES := \
 		source/validate_bitwise.cpp \
 		source/validate_capability.cpp \
 		source/validate_cfg.cpp \
+		source/validate_composites.cpp \
 		source/validate_conversion.cpp \
 		source/validate_datarules.cpp \
 		source/validate_decorations.cpp \
@@ -61,6 +62,7 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/dead_variable_elimination.cpp \
 		source/opt/decoration_manager.cpp \
 		source/opt/def_use_manager.cpp \
+		source/opt/dominator_tree.cpp \
 		source/opt/eliminate_dead_constant_pass.cpp \
 		source/opt/eliminate_dead_functions_pass.cpp \
 		source/opt/flatten_decoration_pass.cpp \
@@ -87,6 +89,7 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/optimizer.cpp \
 		source/opt/pass.cpp \
 		source/opt/pass_manager.cpp \
+		source/opt/propagator.cpp \
 		source/opt/remove_duplicates_pass.cpp \
 		source/opt/set_spec_constant_default_value_pass.cpp \
 		source/opt/strength_reduction_pass.cpp \

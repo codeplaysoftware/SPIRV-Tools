@@ -16,8 +16,8 @@
 
 #include "local_access_chain_convert_pass.h"
 
-#include "iterator.h"
 #include "ir_context.h"
+#include "iterator.h"
 
 namespace spvtools {
 namespace opt {
@@ -30,14 +30,6 @@ const uint32_t kConstantValueInIdx = 0;
 const uint32_t kTypeIntWidthInIdx = 0;
 
 }  // anonymous namespace
-
-void LocalAccessChainConvertPass::DeleteIfUseless(ir::Instruction* inst) {
-  const uint32_t resId = inst->result_id();
-  assert(resId != 0);
-  if (HasOnlyNamesAndDecorates(resId)) {
-    context()->KillInst(inst);
-  }
-}
 
 void LocalAccessChainConvertPass::BuildAndAppendInst(
     SpvOp opcode, uint32_t typeId, uint32_t resultId,
@@ -139,17 +131,18 @@ bool LocalAccessChainConvertPass::IsConstantIndexAccessChain(
 bool LocalAccessChainConvertPass::HasOnlySupportedRefs(uint32_t ptrId) {
   if (supported_ref_ptrs_.find(ptrId) != supported_ref_ptrs_.end()) return true;
   bool hasOnlySupportedRefs = true;
-  get_def_use_mgr()->ForEachUser(ptrId, [this,&hasOnlySupportedRefs](ir::Instruction* user) {
-    SpvOp op = user->opcode();
-    if (IsNonPtrAccessChain(op) || op == SpvOpCopyObject) {
-      if (!HasOnlySupportedRefs(user->result_id())) {
-        hasOnlySupportedRefs = false;
-      }
-    } else if (op != SpvOpStore && op != SpvOpLoad && op != SpvOpName &&
-               !IsNonTypeDecorate(op)) {
-      hasOnlySupportedRefs = false;
-    }
-  });
+  get_def_use_mgr()->ForEachUser(
+      ptrId, [this, &hasOnlySupportedRefs](ir::Instruction* user) {
+        SpvOp op = user->opcode();
+        if (IsNonPtrAccessChain(op) || op == SpvOpCopyObject) {
+          if (!HasOnlySupportedRefs(user->result_id())) {
+            hasOnlySupportedRefs = false;
+          }
+        } else if (op != SpvOpStore && op != SpvOpLoad && op != SpvOpName &&
+                   !IsNonTypeDecorate(op)) {
+          hasOnlySupportedRefs = false;
+        }
+      });
   if (hasOnlySupportedRefs) {
     supported_ref_ptrs_.insert(ptrId);
   }
@@ -174,9 +167,8 @@ void LocalAccessChainConvertPass::FindTargetVars(ir::Function* func) {
           }
           // Rule out variables with nested access chains
           // TODO(): Convert nested access chains
-          if (IsNonPtrAccessChain(op) &&
-              ptrInst->GetSingleWordInOperand(kAccessChainPtrIdInIdx) !=
-                  varId) {
+          if (IsNonPtrAccessChain(op) && ptrInst->GetSingleWordInOperand(
+                                             kAccessChainPtrIdInIdx) != varId) {
             seen_non_target_vars_.insert(varId);
             seen_target_vars_.erase(varId);
             break;
@@ -201,6 +193,7 @@ bool LocalAccessChainConvertPass::ConvertLocalAccessChains(ir::Function* func) {
   // extract and insert sequences
   bool modified = false;
   for (auto bi = func->begin(); bi != func->end(); ++bi) {
+    std::vector<ir::Instruction*> dead_instructions;
     for (auto ii = bi->begin(); ii != bi->end(); ++ii) {
       switch (ii->opcode()) {
         case SpvOpLoad: {
@@ -210,7 +203,9 @@ bool LocalAccessChainConvertPass::ConvertLocalAccessChains(ir::Function* func) {
           if (!IsTargetVar(varId)) break;
           std::vector<std::unique_ptr<ir::Instruction>> newInsts;
           uint32_t replId = GenAccessChainLoadReplacement(ptrInst, &newInsts);
-          ReplaceAndDeleteLoad(&*ii, replId);
+          context()->KillNamesAndDecorates(&*ii);
+          context()->ReplaceAllUsesWith(ii->result_id(), replId);
+          dead_instructions.push_back(&*ii);
           ++ii;
           ii = ii.InsertBefore(std::move(newInsts));
           ++ii;
@@ -224,8 +219,7 @@ bool LocalAccessChainConvertPass::ConvertLocalAccessChains(ir::Function* func) {
           std::vector<std::unique_ptr<ir::Instruction>> newInsts;
           uint32_t valId = ii->GetSingleWordInOperand(kStoreValIdInIdx);
           GenAccessChainStoreReplacement(ptrInst, valId, &newInsts);
-          context()->KillInst(&*ii);
-          DeleteIfUseless(ptrInst);
+          dead_instructions.push_back(&*ii);
           ++ii;
           ii = ii.InsertBefore(std::move(newInsts));
           ++ii;
@@ -235,6 +229,18 @@ bool LocalAccessChainConvertPass::ConvertLocalAccessChains(ir::Function* func) {
         default:
           break;
       }
+    }
+
+    while (!dead_instructions.empty()) {
+      ir::Instruction* inst = dead_instructions.back();
+      dead_instructions.pop_back();
+      DCEInst(inst, [&dead_instructions](ir::Instruction* other_inst) {
+        auto i = std::find(dead_instructions.begin(), dead_instructions.end(),
+                           other_inst);
+        if (i != dead_instructions.end()) {
+          dead_instructions.erase(i);
+        }
+      });
     }
   }
   return modified;
@@ -298,18 +304,27 @@ void LocalAccessChainConvertPass::InitExtensions() {
   extensions_whitelist_.clear();
   extensions_whitelist_.insert({
       "SPV_AMD_shader_explicit_vertex_parameter",
-      "SPV_AMD_shader_trinary_minmax", "SPV_AMD_gcn_shader",
-      "SPV_KHR_shader_ballot", "SPV_AMD_shader_ballot",
-      "SPV_AMD_gpu_shader_half_float", "SPV_KHR_shader_draw_parameters",
-      "SPV_KHR_subgroup_vote", "SPV_KHR_16bit_storage", "SPV_KHR_device_group",
-      "SPV_KHR_multiview", "SPV_NVX_multiview_per_view_attributes",
-      "SPV_NV_viewport_array2", "SPV_NV_stereo_view_rendering",
+      "SPV_AMD_shader_trinary_minmax",
+      "SPV_AMD_gcn_shader",
+      "SPV_KHR_shader_ballot",
+      "SPV_AMD_shader_ballot",
+      "SPV_AMD_gpu_shader_half_float",
+      "SPV_KHR_shader_draw_parameters",
+      "SPV_KHR_subgroup_vote",
+      "SPV_KHR_16bit_storage",
+      "SPV_KHR_device_group",
+      "SPV_KHR_multiview",
+      "SPV_NVX_multiview_per_view_attributes",
+      "SPV_NV_viewport_array2",
+      "SPV_NV_stereo_view_rendering",
       "SPV_NV_sample_mask_override_coverage",
-      "SPV_NV_geometry_shader_passthrough", "SPV_AMD_texture_gather_bias_lod",
+      "SPV_NV_geometry_shader_passthrough",
+      "SPV_AMD_texture_gather_bias_lod",
       "SPV_KHR_storage_buffer_storage_class",
       // SPV_KHR_variable_pointers
       //   Currently do not support extended pointer expressions
-      "SPV_AMD_gpu_shader_int16", "SPV_KHR_post_depth_coverage",
+      "SPV_AMD_gpu_shader_int16",
+      "SPV_KHR_post_depth_coverage",
       "SPV_KHR_shader_atomic_counter_ops",
   });
 }

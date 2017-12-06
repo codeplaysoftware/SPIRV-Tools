@@ -42,18 +42,18 @@
 
 using std::function;
 using std::ostream_iterator;
-using std::placeholders::_1;
 using std::string;
 using std::stringstream;
 using std::transform;
 using std::vector;
+using std::placeholders::_1;
 
 using libspirv::CfgPass;
+using libspirv::DataRulesPass;
 using libspirv::Extension;
+using libspirv::IdPass;
 using libspirv::InstructionPass;
 using libspirv::ModuleLayoutPass;
-using libspirv::DataRulesPass;
-using libspirv::IdPass;
 using libspirv::ValidationState_t;
 
 spv_result_t spvValidateIDs(const spv_instruction_t* pInsts,
@@ -180,6 +180,7 @@ spv_result_t ProcessInstruction(void* user_data,
   if (auto error = InstructionPass(_, inst)) return error;
   if (auto error = TypeUniquePass(_, inst)) return error;
   if (auto error = ArithmeticsPass(_, inst)) return error;
+  if (auto error = CompositesPass(_, inst)) return error;
   if (auto error = ConversionPass(_, inst)) return error;
   if (auto error = DerivativesPass(_, inst)) return error;
   if (auto error = LogicalsPass(_, inst)) return error;

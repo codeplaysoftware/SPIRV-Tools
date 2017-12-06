@@ -29,14 +29,27 @@ bool LocalMultiStoreElimPass::EliminateMultiStoreLocal(ir::Function* func) {
   // Remove all target variable stores.
   bool modified = false;
   for (auto bi = func->begin(); bi != func->end(); ++bi) {
+    std::vector<ir::Instruction*> dead_instructions;
     for (auto ii = bi->begin(); ii != bi->end(); ++ii) {
       if (ii->opcode() != SpvOpStore) continue;
       uint32_t varId;
       (void)GetPtr(&*ii, &varId);
       if (!IsTargetVar(varId)) continue;
       assert(!HasLoads(varId));
-      DCEInst(&*ii);
+      dead_instructions.push_back(&*ii);
       modified = true;
+    }
+
+    while (!dead_instructions.empty()) {
+      ir::Instruction* inst = dead_instructions.back();
+      dead_instructions.pop_back();
+      DCEInst(inst, [&dead_instructions](ir::Instruction* other_inst) {
+        auto i = std::find(dead_instructions.begin(), dead_instructions.end(),
+                           other_inst);
+        if (i != dead_instructions.end()) {
+          dead_instructions.erase(i);
+        }
+      });
     }
   }
 
@@ -96,18 +109,27 @@ void LocalMultiStoreElimPass::InitExtensions() {
   extensions_whitelist_.clear();
   extensions_whitelist_.insert({
       "SPV_AMD_shader_explicit_vertex_parameter",
-      "SPV_AMD_shader_trinary_minmax", "SPV_AMD_gcn_shader",
-      "SPV_KHR_shader_ballot", "SPV_AMD_shader_ballot",
-      "SPV_AMD_gpu_shader_half_float", "SPV_KHR_shader_draw_parameters",
-      "SPV_KHR_subgroup_vote", "SPV_KHR_16bit_storage", "SPV_KHR_device_group",
-      "SPV_KHR_multiview", "SPV_NVX_multiview_per_view_attributes",
-      "SPV_NV_viewport_array2", "SPV_NV_stereo_view_rendering",
+      "SPV_AMD_shader_trinary_minmax",
+      "SPV_AMD_gcn_shader",
+      "SPV_KHR_shader_ballot",
+      "SPV_AMD_shader_ballot",
+      "SPV_AMD_gpu_shader_half_float",
+      "SPV_KHR_shader_draw_parameters",
+      "SPV_KHR_subgroup_vote",
+      "SPV_KHR_16bit_storage",
+      "SPV_KHR_device_group",
+      "SPV_KHR_multiview",
+      "SPV_NVX_multiview_per_view_attributes",
+      "SPV_NV_viewport_array2",
+      "SPV_NV_stereo_view_rendering",
       "SPV_NV_sample_mask_override_coverage",
-      "SPV_NV_geometry_shader_passthrough", "SPV_AMD_texture_gather_bias_lod",
+      "SPV_NV_geometry_shader_passthrough",
+      "SPV_AMD_texture_gather_bias_lod",
       "SPV_KHR_storage_buffer_storage_class",
       // SPV_KHR_variable_pointers
       //   Currently do not support extended pointer expressions
-      "SPV_AMD_gpu_shader_int16", "SPV_KHR_post_depth_coverage",
+      "SPV_AMD_gpu_shader_int16",
+      "SPV_KHR_post_depth_coverage",
       "SPV_KHR_shader_atomic_counter_ops",
   });
 }

@@ -31,6 +31,15 @@ void IRContext::BuildInvalidAnalyses(IRContext::Analysis set) {
   if (set & kAnalysisDecorations) {
     BuildDecorationManager();
   }
+  if (set & kAnalysisCFG) {
+    BuildCFG();
+  }
+  if (set & kAnalysisDominatorAnalysis) {
+    // An invalid dominator tree analysis will be empty so rebuilding it just
+    // means marking it as valid. Each tree will be initalisalised when
+    // requested on a per function basis.
+    valid_analyses_ |= kAnalysisDominatorAnalysis;
+  }
 }
 
 void IRContext::InvalidateAnalysesExceptFor(
@@ -52,12 +61,20 @@ void IRContext::InvalidateAnalyses(IRContext::Analysis analyses_to_invalidate) {
   if (analyses_to_invalidate & kAnalysisCombinators) {
     combinator_ops_.clear();
   }
+  if (analyses_to_invalidate & kAnalysisCFG) {
+    cfg_.reset(nullptr);
+  }
+  if (analyses_to_invalidate & kAnalysisDominatorAnalysis) {
+    dominator_trees_.clear();
+    post_dominator_trees_.clear();
+  }
+
   valid_analyses_ = Analysis(valid_analyses_ & ~analyses_to_invalidate);
 }
 
-void IRContext::KillInst(ir::Instruction* inst) {
+Instruction* IRContext::KillInst(ir::Instruction* inst) {
   if (!inst) {
-    return;
+    return nullptr;
   }
 
   KillNamesAndDecorates(inst);
@@ -77,7 +94,17 @@ void IRContext::KillInst(ir::Instruction* inst) {
     }
   }
 
-  inst->ToNop();
+  Instruction* next_instruction = nullptr;
+  if (inst->IsInAList()) {
+    next_instruction = inst->NextNode();
+    inst->RemoveFromList();
+    delete inst;
+  } else {
+    // Needed for instructions that are not part of a list like OpLabels,
+    // OpFunction, OpFunctionEnd, etc..
+    inst->ToNop();
+  }
+  return next_instruction;
 }
 
 bool IRContext::KillDef(uint32_t id) {
@@ -93,12 +120,14 @@ bool IRContext::ReplaceAllUsesWith(uint32_t before, uint32_t after) {
   if (before == after) return false;
 
   // Ensure that |after| has been registered as def.
-  assert(get_def_use_mgr()->GetDef(after) && "'after' is not a registered def.");
+  assert(get_def_use_mgr()->GetDef(after) &&
+         "'after' is not a registered def.");
 
-  std::vector<std::pair<ir::Instruction*,uint32_t>> uses_to_update;
-  get_def_use_mgr()->ForEachUse(before, [&uses_to_update](ir::Instruction* user, uint32_t index) {
-    uses_to_update.emplace_back(user, index);
-  });
+  std::vector<std::pair<ir::Instruction*, uint32_t>> uses_to_update;
+  get_def_use_mgr()->ForEachUse(
+      before, [&uses_to_update](ir::Instruction* user, uint32_t index) {
+        uses_to_update.emplace_back(user, index);
+      });
 
   ir::Instruction* prev = nullptr;
   for (auto p : uses_to_update) {
@@ -181,11 +210,18 @@ void IRContext::KillNamesAndDecorates(uint32_t id) {
     KillInst(inst);
   }
 
-  for (auto& di : debugs2()) {
-    if (di.opcode() == SpvOpMemberName || di.opcode() == SpvOpName) {
-      if (di.GetSingleWordInOperand(0) == id) {
-        KillInst(&di);
+  Instruction* debug_inst = &*debug2_begin();
+  while (debug_inst) {
+    bool killed_inst = false;
+    if (debug_inst->opcode() == SpvOpMemberName ||
+        debug_inst->opcode() == SpvOpName) {
+      if (debug_inst->GetSingleWordInOperand(0) == id) {
+        debug_inst = KillInst(debug_inst);
+        killed_inst = true;
       }
+    }
+    if (!killed_inst) {
+      debug_inst = debug_inst->NextNode();
     }
   }
 }
@@ -421,15 +457,38 @@ void IRContext::AddCombinatorsForExtension(ir::Instruction* extension) {
 }
 
 void IRContext::InitializeCombinators() {
-  for( auto& capability : module()->capabilities()) {
+  for (auto& capability : module()->capabilities()) {
     AddCombinatorsForCapability(capability.GetSingleWordInOperand(0));
   }
 
-  for( auto& extension : module()->ext_inst_imports()) {
+  for (auto& extension : module()->ext_inst_imports()) {
     AddCombinatorsForExtension(&extension);
   }
 
   valid_analyses_ |= kAnalysisCombinators;
 }
+
+// Gets the dominator analysis for function |f|.
+opt::DominatorAnalysis* IRContext::GetDominatorAnalysis(const ir::Function* f,
+                                                        const ir::CFG& in_cfg) {
+  if (dominator_trees_.find(f) == dominator_trees_.end() ||
+      !AreAnalysesValid(kAnalysisDominatorAnalysis)) {
+    dominator_trees_[f].InitializeTree(f, in_cfg);
+  }
+
+  return &dominator_trees_[f];
+}
+
+// Gets the postdominator analysis for function |f|.
+opt::PostDominatorAnalysis* IRContext::GetPostDominatorAnalysis(
+    const ir::Function* f, const ir::CFG& in_cfg) {
+  if (post_dominator_trees_.find(f) == post_dominator_trees_.end() ||
+      !AreAnalysesValid(kAnalysisDominatorAnalysis)) {
+    post_dominator_trees_[f].InitializeTree(f, in_cfg);
+  }
+
+  return &post_dominator_trees_[f];
+}
+
 }  // namespace ir
 }  // namespace spvtools

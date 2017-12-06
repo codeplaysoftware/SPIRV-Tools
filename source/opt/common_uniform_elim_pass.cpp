@@ -99,10 +99,11 @@ ir::Instruction* CommonUniformElimPass::GetPtr(ir::Instruction* ip,
 bool CommonUniformElimPass::IsVolatileStruct(uint32_t type_id) {
   assert(get_def_use_mgr()->GetDef(type_id)->opcode() == SpvOpTypeStruct);
   bool has_volatile_deco = false;
-  get_decoration_mgr()->ForEachDecoration(type_id, SpvDecorationVolatile,
-                              [&has_volatile_deco](const ir::Instruction&) {
-                                has_volatile_deco = true;
-                              });
+  get_decoration_mgr()->ForEachDecoration(
+      type_id, SpvDecorationVolatile,
+      [&has_volatile_deco](const ir::Instruction&) {
+        has_volatile_deco = true;
+      });
   return has_volatile_deco;
 }
 
@@ -206,16 +207,16 @@ void CommonUniformElimPass::DeleteIfUseless(ir::Instruction* inst) {
   }
 }
 
-void CommonUniformElimPass::ReplaceAndDeleteLoad(ir::Instruction* loadInst,
-                                                 uint32_t replId,
-                                                 ir::Instruction* ptrInst) {
+ir::Instruction* CommonUniformElimPass::ReplaceAndDeleteLoad(
+    ir::Instruction* loadInst, uint32_t replId, ir::Instruction* ptrInst) {
   const uint32_t loadId = loadInst->result_id();
   context()->KillNamesAndDecorates(loadId);
   (void)context()->ReplaceAllUsesWith(loadId, replId);
   // remove load instruction
-  context()->KillInst(loadInst);
+  ir::Instruction* next_instruction = context()->KillInst(loadInst);
   // if access chain, see if it can be removed as well
   if (IsNonPtrAccessChain(ptrInst->opcode())) DeleteIfUseless(ptrInst);
+  return next_instruction;
 }
 
 void CommonUniformElimPass::GenACLoadRepl(
@@ -256,8 +257,9 @@ void CommonUniformElimPass::GenACLoadRepl(
     }
     ++iidIdx;
   });
-  std::unique_ptr<ir::Instruction> newExt(new ir::Instruction(
-      context(), SpvOpCompositeExtract, ptrPteTypeId, extResultId, ext_in_opnds));
+  std::unique_ptr<ir::Instruction> newExt(
+      new ir::Instruction(context(), SpvOpCompositeExtract, ptrPteTypeId,
+                          extResultId, ext_in_opnds));
   get_def_use_mgr()->AnalyzeInstDefUse(&*newExt);
   newInsts->emplace_back(std::move(newExt));
   *resultId = extResultId;
@@ -279,29 +281,27 @@ bool CommonUniformElimPass::IsConstantIndexAccessChain(ir::Instruction* acp) {
 bool CommonUniformElimPass::UniformAccessChainConvert(ir::Function* func) {
   bool modified = false;
   for (auto bi = func->begin(); bi != func->end(); ++bi) {
-    for (auto ii = bi->begin(); ii != bi->end(); ++ii) {
-      if (ii->opcode() != SpvOpLoad) continue;
+    for (ir::Instruction* inst = &*bi->begin(); inst; inst = inst->NextNode()) {
+      if (inst->opcode() != SpvOpLoad) continue;
       uint32_t varId;
-      ir::Instruction* ptrInst = GetPtr(&*ii, &varId);
+      ir::Instruction* ptrInst = GetPtr(inst, &varId);
       if (!IsNonPtrAccessChain(ptrInst->opcode())) continue;
       // Do not convert nested access chains
       if (ptrInst->GetSingleWordInOperand(kAccessChainPtrIdInIdx) != varId)
         continue;
       if (!IsUniformVar(varId)) continue;
       if (!IsConstantIndexAccessChain(ptrInst)) continue;
-      if (HasUnsupportedDecorates(ii->result_id())) continue;
+      if (HasUnsupportedDecorates(inst->result_id())) continue;
       if (HasUnsupportedDecorates(ptrInst->result_id())) continue;
-      if (IsVolatileLoad(*ii)) continue;
+      if (IsVolatileLoad(*inst)) continue;
       if (IsAccessChainToVolatileStructType(*ptrInst)) continue;
       std::vector<std::unique_ptr<ir::Instruction>> newInsts;
       uint32_t replId;
       GenACLoadRepl(ptrInst, &newInsts, &replId);
-      ReplaceAndDeleteLoad(&*ii, replId, ptrInst);
-      ++ii;
-      ii = ii.InsertBefore(std::move(newInsts));
-      ++ii;
+      inst = ReplaceAndDeleteLoad(inst, replId, ptrInst);
+      inst = inst->InsertBefore(std::move(newInsts));
       modified = true;
-    }
+    };
   }
   return modified;
 }
@@ -369,15 +369,15 @@ bool CommonUniformElimPass::CommonUniformLoadElimination(ir::Function* func) {
       mergeBlockId = 0;
       insertItr = bp->begin();
     }
-    for (auto ii = bp->begin(); ii != bp->end(); ++ii) {
-      if (ii->opcode() != SpvOpLoad) continue;
+    for (ir::Instruction* inst = &*bp->begin(); inst; inst = inst->NextNode()) {
+      if (inst->opcode() != SpvOpLoad) continue;
       uint32_t varId;
-      ir::Instruction* ptrInst = GetPtr(&*ii, &varId);
+      ir::Instruction* ptrInst = GetPtr(inst, &varId);
       if (ptrInst->opcode() != SpvOpVariable) continue;
       if (!IsUniformVar(varId)) continue;
       if (IsSamplerOrImageVar(varId)) continue;
-      if (HasUnsupportedDecorates(ii->result_id())) continue;
-      if (IsVolatileLoad(*ii)) continue;
+      if (HasUnsupportedDecorates(inst->result_id())) continue;
+      if (IsVolatileLoad(*inst)) continue;
       uint32_t replId;
       const auto uItr = uniform2load_id_.find(varId);
       if (uItr != uniform2load_id_.end()) {
@@ -385,13 +385,13 @@ bool CommonUniformElimPass::CommonUniformLoadElimination(ir::Function* func) {
       } else {
         if (mergeBlockId == 0) {
           // Load is in dominating block; just remember it
-          uniform2load_id_[varId] = ii->result_id();
+          uniform2load_id_[varId] = inst->result_id();
           continue;
         } else {
           // Copy load into most recent dominating block and remember it
           replId = TakeNextId();
           std::unique_ptr<ir::Instruction> newLoad(new ir::Instruction(
-              context(), SpvOpLoad, ii->type_id(), replId,
+              context(), SpvOpLoad, inst->type_id(), replId,
               {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {varId}}}));
           get_def_use_mgr()->AnalyzeInstDefUse(&*newLoad);
           insertItr = insertItr.InsertBefore(std::move(newLoad));
@@ -399,7 +399,7 @@ bool CommonUniformElimPass::CommonUniformLoadElimination(ir::Function* func) {
           uniform2load_id_[varId] = replId;
         }
       }
-      ReplaceAndDeleteLoad(&*ii, replId, ptrInst);
+      inst = ReplaceAndDeleteLoad(inst, replId, ptrInst);
       modified = true;
     }
     // If we are outside of any control construct and entering one, remember
@@ -415,24 +415,24 @@ bool CommonUniformElimPass::CommonUniformLoadElimBlock(ir::Function* func) {
   bool modified = false;
   for (auto& blk : *func) {
     uniform2load_id_.clear();
-    for (auto ii = blk.begin(); ii != blk.end(); ++ii) {
-      if (ii->opcode() != SpvOpLoad) continue;
+    for (ir::Instruction* inst = &*blk.begin(); inst; inst = inst->NextNode()) {
+      if (inst->opcode() != SpvOpLoad) continue;
       uint32_t varId;
-      ir::Instruction* ptrInst = GetPtr(&*ii, &varId);
+      ir::Instruction* ptrInst = GetPtr(inst, &varId);
       if (ptrInst->opcode() != SpvOpVariable) continue;
       if (!IsUniformVar(varId)) continue;
       if (!IsSamplerOrImageVar(varId)) continue;
-      if (HasUnsupportedDecorates(ii->result_id())) continue;
-      if (IsVolatileLoad(*ii)) continue;
+      if (HasUnsupportedDecorates(inst->result_id())) continue;
+      if (IsVolatileLoad(*inst)) continue;
       uint32_t replId;
       const auto uItr = uniform2load_id_.find(varId);
       if (uItr != uniform2load_id_.end()) {
         replId = uItr->second;
       } else {
-        uniform2load_id_[varId] = ii->result_id();
+        uniform2load_id_[varId] = inst->result_id();
         continue;
       }
-      ReplaceAndDeleteLoad(&*ii, replId, ptrInst);
+      inst = ReplaceAndDeleteLoad(inst, replId, ptrInst);
       modified = true;
     }
   }
@@ -553,18 +553,27 @@ void CommonUniformElimPass::InitExtensions() {
   extensions_whitelist_.clear();
   extensions_whitelist_.insert({
       "SPV_AMD_shader_explicit_vertex_parameter",
-      "SPV_AMD_shader_trinary_minmax", "SPV_AMD_gcn_shader",
-      "SPV_KHR_shader_ballot", "SPV_AMD_shader_ballot",
-      "SPV_AMD_gpu_shader_half_float", "SPV_KHR_shader_draw_parameters",
-      "SPV_KHR_subgroup_vote", "SPV_KHR_16bit_storage", "SPV_KHR_device_group",
-      "SPV_KHR_multiview", "SPV_NVX_multiview_per_view_attributes",
-      "SPV_NV_viewport_array2", "SPV_NV_stereo_view_rendering",
+      "SPV_AMD_shader_trinary_minmax",
+      "SPV_AMD_gcn_shader",
+      "SPV_KHR_shader_ballot",
+      "SPV_AMD_shader_ballot",
+      "SPV_AMD_gpu_shader_half_float",
+      "SPV_KHR_shader_draw_parameters",
+      "SPV_KHR_subgroup_vote",
+      "SPV_KHR_16bit_storage",
+      "SPV_KHR_device_group",
+      "SPV_KHR_multiview",
+      "SPV_NVX_multiview_per_view_attributes",
+      "SPV_NV_viewport_array2",
+      "SPV_NV_stereo_view_rendering",
       "SPV_NV_sample_mask_override_coverage",
-      "SPV_NV_geometry_shader_passthrough", "SPV_AMD_texture_gather_bias_lod",
+      "SPV_NV_geometry_shader_passthrough",
+      "SPV_AMD_texture_gather_bias_lod",
       "SPV_KHR_storage_buffer_storage_class",
       // SPV_KHR_variable_pointers
       //   Currently do not support extended pointer expressions
-      "SPV_AMD_gpu_shader_int16", "SPV_KHR_post_depth_coverage",
+      "SPV_AMD_gpu_shader_int16",
+      "SPV_KHR_post_depth_coverage",
       "SPV_KHR_shader_atomic_counter_ops",
   });
 }

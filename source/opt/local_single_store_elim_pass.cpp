@@ -32,17 +32,18 @@ const uint32_t kStoreValIdInIdx = 1;
 bool LocalSingleStoreElimPass::HasOnlySupportedRefs(uint32_t ptrId) {
   if (supported_ref_ptrs_.find(ptrId) != supported_ref_ptrs_.end()) return true;
   bool hasOnlySupportedRefs = true;
-  get_def_use_mgr()->ForEachUser(ptrId, [this,&hasOnlySupportedRefs](ir::Instruction* user) {
-    SpvOp op = user->opcode();
-    if (IsNonPtrAccessChain(op) || op == SpvOpCopyObject) {
-      if (!HasOnlySupportedRefs(user->result_id())) {
-        hasOnlySupportedRefs = false;
-      }
-    } else if (op != SpvOpStore && op != SpvOpLoad && op != SpvOpName &&
-               !IsNonTypeDecorate(op)) {
-      hasOnlySupportedRefs = false;
-    }
-  });
+  get_def_use_mgr()->ForEachUser(
+      ptrId, [this, &hasOnlySupportedRefs](ir::Instruction* user) {
+        SpvOp op = user->opcode();
+        if (IsNonPtrAccessChain(op) || op == SpvOpCopyObject) {
+          if (!HasOnlySupportedRefs(user->result_id())) {
+            hasOnlySupportedRefs = false;
+          }
+        } else if (op != SpvOpStore && op != SpvOpLoad && op != SpvOpName &&
+                   !IsNonTypeDecorate(op)) {
+          hasOnlySupportedRefs = false;
+        }
+      });
   if (hasOnlySupportedRefs) {
     supported_ref_ptrs_.insert(ptrId);
   }
@@ -124,7 +125,7 @@ void LocalSingleStoreElimPass::CalculateImmediateDominators(
   successors_map_.clear();
   for (auto& blk : *func) {
     ordered_blocks.push_back(&blk);
-    blk.ForEachSuccessorLabel([&blk, &ordered_blocks, this](uint32_t sbid) {
+    blk.ForEachSuccessorLabel([&blk, this](uint32_t sbid) {
       successors_map_[&blk].push_back(label2block_[sbid]);
       predecessors_map_[label2block_[sbid]].push_back(&blk);
     });
@@ -173,6 +174,7 @@ bool LocalSingleStoreElimPass::SingleStoreProcess(ir::Function* func) {
   bool modified = false;
   for (auto bi = func->begin(); bi != func->end(); ++bi) {
     uint32_t instIdx = 0;
+    std::vector<ir::Instruction*> dead_instructions;
     for (auto ii = bi->begin(); ii != bi->end(); ++ii, ++instIdx) {
       if (ii->opcode() != SpvOpLoad) continue;
       uint32_t varId;
@@ -189,8 +191,40 @@ bool LocalSingleStoreElimPass::SingleStoreProcess(ir::Function* func) {
       // Use store value as replacement id
       uint32_t replId = vsi->second->GetSingleWordInOperand(kStoreValIdInIdx);
       // replace all instances of the load's id with the SSA value's id
-      ReplaceAndDeleteLoad(&*ii, replId);
+      context()->KillNamesAndDecorates(&*ii);
+      context()->ReplaceAllUsesWith(ii->result_id(), replId);
+      dead_instructions.push_back(&*ii);
       modified = true;
+    }
+
+    // Define the function that will update the data structures as instructions
+    // are deleted.
+    auto update_function = [&dead_instructions,
+                            this](ir::Instruction* other_inst) {
+      // Update dead_instructions.
+      auto i = std::find(dead_instructions.begin(), dead_instructions.end(),
+                         other_inst);
+      if (i != dead_instructions.end()) {
+        dead_instructions.erase(i);
+      }
+
+      // Update the variable to store map.
+      if (other_inst->opcode() != SpvOpStore) {
+        return;
+      }
+
+      uint32_t id;
+      GetPtr(other_inst, &id);
+      auto store = ssa_var2store_.find(id);
+      if (store != ssa_var2store_.end()) {
+        ssa_var2store_.erase(store);
+      }
+    };
+
+    while (!dead_instructions.empty()) {
+      ir::Instruction* inst = dead_instructions.back();
+      dead_instructions.pop_back();
+      DCEInst(inst, update_function);
     }
   }
   return modified;
@@ -198,12 +232,15 @@ bool LocalSingleStoreElimPass::SingleStoreProcess(ir::Function* func) {
 
 bool LocalSingleStoreElimPass::SingleStoreDCE() {
   bool modified = false;
+  std::unordered_set<ir::Instruction*> already_deleted;
   for (auto v : ssa_var2store_) {
     // check that it hasn't already been DCE'd
-    if (v.second->opcode() != SpvOpStore) continue;
+    if (already_deleted.find(v.second) != already_deleted.end()) continue;
     if (non_ssa_vars_.find(v.first) != non_ssa_vars_.end()) continue;
     if (!IsLiveStore(v.second)) {
-      DCEInst(v.second);
+      DCEInst(v.second, [&already_deleted](ir::Instruction* inst) {
+        already_deleted.insert(inst);
+      });
       modified = true;
     }
   }
@@ -283,18 +320,27 @@ void LocalSingleStoreElimPass::InitExtensions() {
   extensions_whitelist_.clear();
   extensions_whitelist_.insert({
       "SPV_AMD_shader_explicit_vertex_parameter",
-      "SPV_AMD_shader_trinary_minmax", "SPV_AMD_gcn_shader",
-      "SPV_KHR_shader_ballot", "SPV_AMD_shader_ballot",
-      "SPV_AMD_gpu_shader_half_float", "SPV_KHR_shader_draw_parameters",
-      "SPV_KHR_subgroup_vote", "SPV_KHR_16bit_storage", "SPV_KHR_device_group",
-      "SPV_KHR_multiview", "SPV_NVX_multiview_per_view_attributes",
-      "SPV_NV_viewport_array2", "SPV_NV_stereo_view_rendering",
+      "SPV_AMD_shader_trinary_minmax",
+      "SPV_AMD_gcn_shader",
+      "SPV_KHR_shader_ballot",
+      "SPV_AMD_shader_ballot",
+      "SPV_AMD_gpu_shader_half_float",
+      "SPV_KHR_shader_draw_parameters",
+      "SPV_KHR_subgroup_vote",
+      "SPV_KHR_16bit_storage",
+      "SPV_KHR_device_group",
+      "SPV_KHR_multiview",
+      "SPV_NVX_multiview_per_view_attributes",
+      "SPV_NV_viewport_array2",
+      "SPV_NV_stereo_view_rendering",
       "SPV_NV_sample_mask_override_coverage",
-      "SPV_NV_geometry_shader_passthrough", "SPV_AMD_texture_gather_bias_lod",
+      "SPV_NV_geometry_shader_passthrough",
+      "SPV_AMD_texture_gather_bias_lod",
       "SPV_KHR_storage_buffer_storage_class",
       // SPV_KHR_variable_pointers
       //   Currently do not support extended pointer expressions
-      "SPV_AMD_gpu_shader_int16", "SPV_KHR_post_depth_coverage",
+      "SPV_AMD_gpu_shader_int16",
+      "SPV_KHR_post_depth_coverage",
       "SPV_KHR_shader_atomic_counter_ops",
   });
 }

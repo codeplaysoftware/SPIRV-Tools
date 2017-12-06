@@ -18,8 +18,8 @@
 
 #include "basic_block.h"
 #include "cfa.h"
-#include "iterator.h"
 #include "ir_context.h"
+#include "iterator.h"
 
 namespace spvtools {
 namespace opt {
@@ -119,24 +119,24 @@ ir::Instruction* MemPass::GetPtr(ir::Instruction* ip, uint32_t* varId) {
 
 bool MemPass::HasOnlyNamesAndDecorates(uint32_t id) const {
   bool hasOnlyNamesAndDecorates = true;
-  get_def_use_mgr()->ForEachUser(id, [this, &hasOnlyNamesAndDecorates](ir::Instruction* user) {
-    SpvOp op = user->opcode();
-    if (op != SpvOpName && !IsNonTypeDecorate(op)) {
-      hasOnlyNamesAndDecorates = false;
-    }
-  });
+  get_def_use_mgr()->ForEachUser(
+      id, [this, &hasOnlyNamesAndDecorates](ir::Instruction* user) {
+        SpvOp op = user->opcode();
+        if (op != SpvOpName && !IsNonTypeDecorate(op)) {
+          hasOnlyNamesAndDecorates = false;
+        }
+      });
   return hasOnlyNamesAndDecorates;
 }
 
 void MemPass::KillAllInsts(ir::BasicBlock* bp) {
-  bp->ForEachInst([this](ir::Instruction* ip) {
-    context()->KillInst(ip);
-  });
+  bp->ForEachInst([this](ir::Instruction* ip) { context()->KillInst(ip); });
 }
 
 bool MemPass::HasLoads(uint32_t varId) const {
   bool hasLoads = false;
-  get_def_use_mgr()->ForEachUser(varId, [this, &hasLoads](ir::Instruction* user) {
+  get_def_use_mgr()->ForEachUser(varId, [this,
+                                         &hasLoads](ir::Instruction* user) {
     SpvOp op = user->opcode();
     // TODO(): The following is slightly conservative. Could be
     // better handling of non-store/name.
@@ -173,7 +173,7 @@ bool MemPass::IsLiveStore(ir::Instruction* storeInst) {
 }
 
 void MemPass::AddStores(uint32_t ptr_id, std::queue<ir::Instruction*>* insts) {
-  get_def_use_mgr()->ForEachUser(ptr_id, [this,insts](ir::Instruction* user) {
+  get_def_use_mgr()->ForEachUser(ptr_id, [this, insts](ir::Instruction* user) {
     SpvOp op = user->opcode();
     if (IsNonPtrAccessChain(op)) {
       AddStores(user->result_id(), insts);
@@ -183,7 +183,8 @@ void MemPass::AddStores(uint32_t ptr_id, std::queue<ir::Instruction*>* insts) {
   });
 }
 
-void MemPass::DCEInst(ir::Instruction* inst) {
+void MemPass::DCEInst(ir::Instruction* inst,
+                      const function<void(ir::Instruction*)>& call_back) {
   std::queue<ir::Instruction*> deadInsts;
   deadInsts.push(inst);
   while (!deadInsts.empty()) {
@@ -194,11 +195,14 @@ void MemPass::DCEInst(ir::Instruction* inst) {
       continue;
     }
     // Remember operands
-    std::vector<uint32_t> ids;
-    di->ForEachInId([&ids](uint32_t* iid) { ids.push_back(*iid); });
+    std::set<uint32_t> ids;
+    di->ForEachInId([&ids](uint32_t* iid) { ids.insert(*iid); });
     uint32_t varId = 0;
     // Remember variable if dead load
     if (di->opcode() == SpvOpLoad) (void)GetPtr(di, &varId);
+    if (call_back) {
+      call_back(di);
+    }
     context()->KillInst(di);
     // For all operands with no remaining uses, add their instruction
     // to the dead instruction queue.
@@ -212,25 +216,19 @@ void MemPass::DCEInst(ir::Instruction* inst) {
   }
 }
 
-void MemPass::ReplaceAndDeleteLoad(ir::Instruction* loadInst, uint32_t replId) {
-  const uint32_t loadId = loadInst->result_id();
-  context()->KillNamesAndDecorates(loadId);
-  (void)context()->ReplaceAllUsesWith(loadId, replId);
-  DCEInst(loadInst);
-}
-
 MemPass::MemPass() {}
 
 bool MemPass::HasOnlySupportedRefs(uint32_t varId) {
   if (supported_ref_vars_.find(varId) != supported_ref_vars_.end()) return true;
   bool hasOnlySupportedRefs = true;
-  get_def_use_mgr()->ForEachUser(varId, [this,&hasOnlySupportedRefs](ir::Instruction* user) {
-    SpvOp op = user->opcode();
-    if (op != SpvOpStore && op != SpvOpLoad && op != SpvOpName &&
-        !IsNonTypeDecorate(op)) {
-      hasOnlySupportedRefs = false;
-    }
-  });
+  get_def_use_mgr()->ForEachUser(
+      varId, [this, &hasOnlySupportedRefs](ir::Instruction* user) {
+        SpvOp op = user->opcode();
+        if (op != SpvOpStore && op != SpvOpLoad && op != SpvOpName &&
+            !IsNonTypeDecorate(op)) {
+          hasOnlySupportedRefs = false;
+        }
+      });
   return hasOnlySupportedRefs;
 }
 
@@ -402,8 +400,8 @@ void MemPass::SSABlockInitLoopHeader(
           {spv_operand_type_t::SPV_OPERAND_TYPE_ID, {predLabel}});
     }
     const uint32_t phiId = TakeNextId();
-    std::unique_ptr<ir::Instruction> newPhi(
-        new ir::Instruction(context(), SpvOpPhi, typeId, phiId, phi_in_operands));
+    std::unique_ptr<ir::Instruction> newPhi(new ir::Instruction(
+        context(), SpvOpPhi, typeId, phiId, phi_in_operands));
     // The only phis requiring patching are the ones we create.
     phis_to_patch_.insert(phiId);
     // Only analyze the phi define now; analyze the phi uses after the
@@ -470,8 +468,8 @@ void MemPass::SSABlockInitMultiPred(ir::BasicBlock* block_ptr) {
           {spv_operand_type_t::SPV_OPERAND_TYPE_ID, {predLabel}});
     }
     const uint32_t phiId = TakeNextId();
-    std::unique_ptr<ir::Instruction> newPhi(
-        new ir::Instruction(context(), SpvOpPhi, typeId, phiId, phi_in_operands));
+    std::unique_ptr<ir::Instruction> newPhi(new ir::Instruction(
+        context(), SpvOpPhi, typeId, phiId, phi_in_operands));
     get_def_use_mgr()->AnalyzeInstDefUse(&*newPhi);
     insertItr = insertItr.InsertBefore(std::move(newPhi));
     ++insertItr;
@@ -572,19 +570,21 @@ Pass::Status MemPass::InsertPhiInstructions(ir::Function* func) {
     SSABlockInit(bi);
     ir::BasicBlock* bp = *bi;
     const uint32_t label = bp->id();
-    for (auto ii = bp->begin(); ii != bp->end(); ++ii) {
-      switch (ii->opcode()) {
+    ir::Instruction* inst = &*bp->begin();
+    while (inst) {
+      ir::Instruction* next_instruction = inst->NextNode();
+      switch (inst->opcode()) {
         case SpvOpStore: {
           uint32_t varId;
-          (void)GetPtr(&*ii, &varId);
+          (void)GetPtr(inst, &varId);
           if (!IsTargetVar(varId)) break;
           // Register new stored value for the variable
           label2ssa_map_[label][varId] =
-              ii->GetSingleWordInOperand(kStoreValIdInIdx);
+              inst->GetSingleWordInOperand(kStoreValIdInIdx);
         } break;
         case SpvOpLoad: {
           uint32_t varId;
-          (void)GetPtr(&*ii, &varId);
+          (void)GetPtr(inst, &varId);
           if (!IsTargetVar(varId)) break;
           uint32_t replId = 0;
           const auto ssaItr = label2ssa_map_.find(label);
@@ -600,12 +600,15 @@ Pass::Status MemPass::InsertPhiInstructions(ir::Function* func) {
           // Replace load's id with the last stored value id for variable
           // and delete load. Kill any names or decorates using id before
           // replacing to prevent incorrect replacement in those instructions.
-          const uint32_t loadId = ii->result_id();
+          const uint32_t loadId = inst->result_id();
           context()->KillNamesAndDecorates(loadId);
           (void)context()->ReplaceAllUsesWith(loadId, replId);
-          context()->KillInst(&*ii);
+          context()->KillInst(inst);
         } break;
-        default: { } break; }
+        default:
+          break;
+      }
+      inst = next_instruction;
     }
     visitedBlocks_.insert(label);
     // Look for successor backedge and patch phis in loop header
@@ -699,7 +702,7 @@ void MemPass::RemovePhiOperands(
 
     // In all other cases, the operand must be kept but may need to be changed.
     uint32_t arg_id = phi->GetSingleWordOperand(i);
-    ir::Instruction *arg_def_instr = get_def_use_mgr()->GetDef(arg_id);
+    ir::Instruction* arg_def_instr = get_def_use_mgr()->GetDef(arg_id);
     ir::BasicBlock* def_block = context()->get_instr_block(arg_def_instr);
     if (def_block &&
         reachable_blocks.find(def_block) == reachable_blocks.end()) {
@@ -794,8 +797,9 @@ bool MemPass::RemoveUnreachableBlocks(ir::Function* func) {
     // If the block is reachable and has Phi instructions, remove all
     // operands from its Phi instructions that reference unreachable blocks.
     // If the block has no Phi instructions, this is a no-op.
-    block.ForEachPhiInst([&block, &reachable_blocks, this](
-        ir::Instruction* phi) { RemovePhiOperands(phi, reachable_blocks); });
+    block.ForEachPhiInst([&reachable_blocks, this](ir::Instruction* phi) {
+      RemovePhiOperands(phi, reachable_blocks);
+    });
   }
 
   // Erase unreachable blocks.

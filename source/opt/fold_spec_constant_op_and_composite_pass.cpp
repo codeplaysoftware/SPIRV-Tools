@@ -282,10 +282,12 @@ Pass::Status FoldSpecConstantOpAndCompositePass::ProcessImpl(
   // the dependee Spec Constants, all its dependent constants must have been
   // processed and all its dependent Spec Constants should have been folded if
   // possible.
-  for (ir::Module::inst_iterator inst_iter = irContext->types_values_begin();
+  ir::Module::inst_iterator next_inst = irContext->types_values_begin();
+  for (ir::Module::inst_iterator inst_iter = next_inst;
        // Need to re-evaluate the end iterator since we may modify the list of
        // instructions in this section of the module as the process goes.
-       inst_iter != irContext->types_values_end(); ++inst_iter) {
+       inst_iter != irContext->types_values_end(); inst_iter = next_inst) {
+    ++next_inst;
     ir::Instruction* inst = &*inst_iter;
     // Collect constant values of normal constants and process the
     // OpSpecConstantOp and OpSpecConstantComposite instructions if possible.
@@ -515,7 +517,7 @@ bool IsValidTypeForComponentWiseOperation(const analysis::Type* type) {
   }
   return false;
 }
-}
+}  // namespace
 
 ir::Instruction* FoldSpecConstantOpAndCompositePass::DoComponentWiseOperation(
     ir::Module::inst_iterator* pos) {
@@ -766,8 +768,7 @@ FoldSpecConstantOpAndCompositePass::CreateCompositeInstruction(
     operands.emplace_back(spv_operand_type_t::SPV_OPERAND_TYPE_ID,
                           std::initializer_list<uint32_t>{id});
   }
-  return MakeUnique<ir::Instruction>(context(),
-                                     SpvOp::SpvOpConstantComposite,
+  return MakeUnique<ir::Instruction>(context(), SpvOp::SpvOpConstantComposite,
                                      type_mgr_->GetId(cc->type()), result_id,
                                      std::move(operands));
 }

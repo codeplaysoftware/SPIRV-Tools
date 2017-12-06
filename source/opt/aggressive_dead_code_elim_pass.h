@@ -57,11 +57,6 @@ class AggressiveDCEPass : public MemPass {
   // privates_like_local_)
   bool IsLocalVar(uint32_t varId);
 
-  // Return true if |op| is branch instruction
-  bool IsBranch(SpvOp op) {
-    return op == SpvOpBranch || op == SpvOpBranchConditional;
-  }
-
   // Return true if |inst| is marked live
   bool IsLive(ir::Instruction* inst) {
     return live_insts_.find(inst) != live_insts_.end();
@@ -83,9 +78,9 @@ class AggressiveDCEPass : public MemPass {
   // Return true if all extensions in this module are supported by this pass.
   bool AllExtensionsSupported() const;
 
-  // Kill debug or annotation |inst| if target operand is dead. Return true
-  // if inst killed.
-  bool KillInstIfTargetDead(ir::Instruction* inst);
+  // Returns true if |inst| is dead.  An instruction is dead if its result id
+  // is used in decoration or debug instructions only.
+  bool IsTargetDead(ir::Instruction* inst);
 
   // If |varId| is local, mark all stores of varId as live.
   void ProcessLoad(uint32_t varId);
@@ -105,6 +100,9 @@ class AggressiveDCEPass : public MemPass {
 
   // Add branch to |labelId| to end of block |bp|.
   void AddBranch(uint32_t labelId, ir::BasicBlock* bp);
+
+  // Add all branches to |labelId| to worklist if not already live
+  void AddBranchesToWorklist(uint32_t labelId);
 
   // For function |func|, mark all Stores to non-function-scope variables
   // and block terminating instructions as live. Recursively mark the values
