@@ -431,8 +431,8 @@ TEST_F(PassClassTest, DominatorLoopToSelf) {
     EXPECT_EQ(dom_tree.ImmediateDominator(spvtest::GetBasicBlock(fn, 12)),
               spvtest::GetBasicBlock(fn, 11));
 
-    std::array<uint32_t, 4> node_order{cfg.pseudo_entry_block()->id(), 10, 11,
-                                       12};
+    std::array<uint32_t, 4> node_order(
+        {cfg.pseudo_entry_block()->id(), 10, 11, 12});
     {
       // Test dominator tree iteration order.
       opt::DominatorTree::iterator node_it = dom_tree.GetDomTree().begin();
@@ -488,8 +488,8 @@ TEST_F(PassClassTest, DominatorLoopToSelf) {
     EXPECT_EQ(dom_tree.ImmediateDominator(spvtest::GetBasicBlock(fn, 12)),
               cfg.pseudo_exit_block());
 
-    std::array<uint32_t, 4> node_order{cfg.pseudo_exit_block()->id(), 12, 11,
-                                       10};
+    std::array<uint32_t, 4> node_order(
+        {cfg.pseudo_exit_block()->id(), 12, 11, 10});
     {
       // Test dominator tree iteration order.
       opt::DominatorTree::iterator node_it = tree.begin();
