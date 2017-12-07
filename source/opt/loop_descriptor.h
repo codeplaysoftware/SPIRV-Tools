@@ -29,11 +29,15 @@ class Loop {
  public:
   Loop(bool is_nested, const ir::BasicBlock* begin,
        const ir::BasicBlock* continue_target,
-       const ir::BasicBlock* merge_target)
-      : loop_start_(begin),
+       const ir::BasicBlock* merge_target, ir::IRContext* context,
+       opt::DominatorAnalysis* analysis)
+      : ir_context(context),
+        dom_analysis(analysis),
+        loop_start_(begin),
         loop_continue_(continue_target),
         loop_merge_(merge_target),
-        is_nested_(is_nested){};
+        is_nested_(is_nested),
+        induction_variable(nullptr){};
 
   // Get the BasicBlock containing the original OpLoopMerge instruction.
   inline const ir::BasicBlock* GetStartBB() const { return loop_start_; }
@@ -56,7 +60,28 @@ class Loop {
   // Return true if this loop is itself nested within another loop.
   inline bool IsNested() const { return is_nested_; }
 
+  struct LoopVariable {
+    ir::Instruction* def;
+    ir::Instruction* step_instruction;
+    uint32_t value;
+    bool is_invariant;
+  };
+
+  LoopVariable* GetInductionVariable() {
+    if (!induction_variable) {
+      FindInductionVariable();
+    }
+
+    return induction_variable.get();
+  }
+
  private:
+  ir::IRContext* ir_context;
+
+  // The loop is constructed using the dominator analysis and it keeps a pointer
+  // to that analysis for later reference.
+  opt::DominatorAnalysis* dom_analysis;
+
   // The block which marks the start of the loop.
   const ir::BasicBlock* loop_start_;
 
@@ -68,9 +93,32 @@ class Loop {
 
   // Nested child loops of this loop.
   std::vector<Loop*> nested_loops_;
-
   // True if this loop is nested within another.
   bool is_nested_;
+
+  // If we fail to extract all the information about the loop or run into
+  // unexpected instructions/form, we should mark the loop as an invalid target
+  // for optimisation to preserve correctness.
+  //  bool optimisation_is_valid;
+
+  // Induction variable.
+  std::unique_ptr<LoopVariable> induction_variable;
+
+  // A set of all the basic blocks which comprise the loop structure. Will be
+  // computed only when needed on demand.
+  std::set<const ir::BasicBlock*> loop_basic_blocks;
+  void FindInductionVariable();
+  bool GetConstant(const ir::Instruction* inst, uint32_t* value) const;
+
+  // Returns an OpVariable instruction or null from a load_inst.
+  ir::Instruction* GetVariable(const ir::Instruction* load_inst);
+
+  // Populates the set of basic blocks in the loop.
+  void FindLoopBasicBlocks();
+
+  bool IsLoopInvariant(const ir::Instruction* variable_inst);
+
+  bool IsConstantOnEntryToLoop(const ir::Instruction* variable_inst) const;
 };
 
 class LoopDescriptor {
@@ -98,5 +146,4 @@ class LoopDescriptor {
 
 }  // namespace opt
 }  // namespace spvtools
-
 #endif  // LIBSPIRV_OPT_LOOP_DESCRIPTORS_H_

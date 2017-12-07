@@ -149,6 +149,13 @@ class DominatorTree {
   bool Visit(const DominatorTreeNode* node,
              std::function<bool(const DominatorTreeNode*)> func) const;
 
+  bool Visit(const ir::BasicBlock* bb,
+    std::function<bool(const DominatorTreeNode*)> func) const {
+    auto found_node = nodes_.find(bb->id());
+    if (found_node == nodes_.end()) return false;
+    return Visit(&found_node->second, func);
+  }
+
 
  private:
   // Adds the basic block |bb| to the tree structure if it doesn't already

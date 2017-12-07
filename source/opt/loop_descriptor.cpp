@@ -32,6 +32,115 @@ static const spvtools::ir::BasicBlock* GetBasicBlock(
 }
 }
 
+bool Loop::GetConstant(const ir::Instruction* inst, uint32_t* value) const {
+  if (inst->opcode() != SpvOp::SpvOpConstant) {
+    return false;
+  }
+
+  const ir::Operand& operand = inst->GetOperand(2);
+
+  if (operand.type != SPV_OPERAND_TYPE_TYPED_LITERAL_NUMBER ||
+      operand.words.size() != 1) {
+    return false;
+  }
+
+  *value = operand.words[0];
+  return true;
+}
+
+// Returns an OpVariable instruction or null from a load_inst.
+ir::Instruction* Loop::GetVariable(const ir::Instruction* load_inst) {
+  if (!load_inst || load_inst->opcode() != SpvOp::SpvOpLoad) {
+    return nullptr;
+  }
+
+  // From the branch instruction find the branch condition.
+  opt::analysis::DefUseManager* def_use_manager = ir_context->get_def_use_mgr();
+  ir::Instruction* var =
+      def_use_manager->GetDef(load_inst->GetSingleWordOperand(2));
+
+  return var;
+}
+
+void Loop::FindLoopBasicBlocks() {
+  loop_basic_blocks.clear();
+
+  auto find_all_blocks_in_loop = [&](const DominatorTreeNode* node) {
+    if (dom_analysis->Dominates(loop_merge_, node->bb_)) return false;
+    loop_basic_blocks.insert(node->bb_);
+    return true;
+  };
+
+  const DominatorTree& dom_tree = dom_analysis->GetDomTree();
+  dom_tree.Visit(loop_start_, find_all_blocks_in_loop);
+}
+
+bool Loop::IsLoopInvariant(const ir::Instruction* variable_inst) {
+  opt::analysis::DefUseManager* def_use_manager = ir_context->get_def_use_mgr();
+
+  FindLoopBasicBlocks();
+
+  bool is_invariant = true;
+  auto find_stores = [&is_invariant, this](ir::Instruction* user) {
+    if (user->opcode() == SpvOp::SpvOpStore) {
+      // Get the BasicBlock this block belongs to.
+      const ir::BasicBlock* parent_block =
+          user->context()->get_instr_block(user);
+
+      // If any of the stores are in the loop.
+      if (loop_basic_blocks.count(parent_block) != 0) {
+        // Then the variable is variant to the loop.
+        is_invariant = false;
+      }
+    }
+  };
+
+  def_use_manager->ForEachUser(variable_inst, find_stores);
+
+  return is_invariant;
+}
+
+void Loop::FindInductionVariable() {
+  // Get the basic block which branches to the merge block.
+  const ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_merge_);
+
+  // Find the branch instruction.
+  const ir::Instruction& branch_inst = *bb->ctail();
+  if (branch_inst.opcode() == SpvOp::SpvOpBranchConditional) {
+    // From the branch instruction find the branch condition.
+    opt::analysis::DefUseManager* def_use_manager =
+        ir_context->get_def_use_mgr();
+    const ir::Instruction* condition =
+        def_use_manager->GetDef(branch_inst.GetSingleWordOperand(0));
+
+    if (condition && condition->opcode() == SpvOp::SpvOpSLessThan) {
+      // The right hand side operand of the operation.
+      const ir::Instruction* rhs_inst =
+          def_use_manager->GetDef(condition->GetSingleWordOperand(3));
+
+      uint32_t const_value = 0;
+      // Exit out if we could resolve the rhs to be a constant integer.
+      // TODO: Make this work for other values on rhs.
+      if (!GetConstant(rhs_inst, &const_value)) return;
+
+      // The left hand side operand of the operation.
+      const ir::Instruction* lhs_inst =
+          def_use_manager->GetDef(condition->GetSingleWordOperand(2));
+
+      ir::Instruction* variable_inst = GetVariable(lhs_inst);
+
+      if (IsLoopInvariant(variable_inst)) {
+        return;
+      }
+
+      if (variable_inst) {
+        std::cout << "Variable " << variable_inst->result_id()
+                  << " found with upper range: " << const_value << "\n";
+      }
+    }
+  }
+}
+
 LoopDescriptor::LoopDescriptor(const ir::Function* f) { PopulateList(f); }
 
 void LoopDescriptor::PopulateList(const ir::Function* f) {
@@ -109,13 +218,18 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
     }
 
     // Add the loop the list of all the loops in the function.
-    loops_.push_back({is_nested, start_bb, continue_bb, merge_bb});
+    loops_.push_back(
+        {is_nested, start_bb, continue_bb, merge_bb, context, dom_analysis});
 
     // If it's nested add a reference to it to the parent loop.
     if (is_nested) {
       assert(parent_loop_index != -1);
       loops_[parent_loop_index].AddNestedLoop(&loops_.back());
     }
+  }
+
+  for (Loop& loop : loops_) {
+    loop.GetInductionVariable();
   }
 }
 

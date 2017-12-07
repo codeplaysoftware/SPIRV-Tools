@@ -47,7 +47,7 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
                OpEntryPoint Fragment %2 "main" %3
-               OpExecutionMode %4 OriginUpperLeft
+               OpExecutionMode %2 OriginUpperLeft
                OpSource GLSL 330
                OpName %2 "main"
                OpName %5 "i"
