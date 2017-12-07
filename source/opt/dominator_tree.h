@@ -116,13 +116,13 @@ class DominatorTree {
   // Check if the basic block id |a| strictly dominates the basic block id |b|.
   bool StrictlyDominates(uint32_t a, uint32_t b) const;
 
-  // Return the immediate dominator of basic block |a|.
+  // Returns the immediate dominator of basic block |a|.
   ir::BasicBlock* ImmediateDominator(const ir::BasicBlock* A) const;
 
-  // Return the immediate dominator of basic block id |a|.
+  // Returns the immediate dominator of basic block id |a|.
   ir::BasicBlock* ImmediateDominator(uint32_t a) const;
 
-  // Return true if the basic block |a| is reachable by this tree. A node would
+  // Returns true if the basic block |a| is reachable by this tree. A node would
   // be unreachable if it cannot be reached by traversal from the start node or
   // for a postdominator tree, cannot be reached from the exit nodes.
   inline bool ReachableFromRoots(const ir::BasicBlock* a) const {
@@ -130,10 +130,10 @@ class DominatorTree {
     return ReachableFromRoots(a->id());
   }
 
-  // Return true if the basic block id |a| is reachable by this tree.
+  // Returns true if the basic block id |a| is reachable by this tree.
   bool ReachableFromRoots(uint32_t a) const;
 
-  // Return true if this tree is a post dominator tree.
+  // Returns true if this tree is a post dominator tree.
   bool IsPostDominator() const { return postdominator_; }
 
   // Clean up the tree.
@@ -142,13 +142,31 @@ class DominatorTree {
     roots_.clear();
   }
 
-  // Applies the std::function |func| to |node| then applies it to every child
-  // node recursively. If the function |func| returns false the traversal will
-  // stop. This function will return true if the traversal was completed without
-  // being interrupted by any children.
+  // Applies the std::function |func| to all nodes in the dominator tree.
+  bool Visit(std::function<bool(DominatorTreeNode*)> func) {
+    for (auto n : roots_) {
+      if (!Visit(n, func)) return false;
+    }
+    return true;
+  }
+
+  // Applies the std::function |func| to all nodes in the dominator tree.
+  bool Visit(std::function<bool(const DominatorTreeNode*)> func) const {
+    for (auto n : roots_) {
+      if (!Visit(n, func)) return false;
+    }
+    return true;
+  }
+
+  // Applies the std::function |func| to |node| then applies it to nodes
+  // children.
+  bool Visit(DominatorTreeNode* node,
+             std::function<bool(DominatorTreeNode*)> func);
+
+  // Applies the std::function |func| to |node| then applies it to nodes
+  // children.
   bool Visit(const DominatorTreeNode* node,
              std::function<bool(const DominatorTreeNode*)> func) const;
-
 
  private:
   // Adds the basic block |bb| to the tree structure if it doesn't already
