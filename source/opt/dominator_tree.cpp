@@ -63,7 +63,7 @@ static void DepthFirstSearch(const BBType* bb, SuccessorLambda successors,
 }
 
 // Wrapper around CFA::DepthFirstTraversal to provide an interface to perform
-// depth first search on generic BasicBlock types. This overload is only
+// depth first search on generic BasicBlock types. This overload is for only
 // performing user defined post order.
 //
 // BBType - BasicBlock type. Will either be ir::BasicBlock or DominatorTreeNode
@@ -115,7 +115,7 @@ class BasicBlockSuccessorHelper {
   using GetBlocksFunction =
       std::function<const std::vector<BasicBlock*>*(const BasicBlock*)>;
 
-  // Return the list of predecessor functions.
+  // Returns the list of predecessor functions.
   GetBlocksFunction GetPredFunctor() {
     return [this](const BasicBlock* bb) {
       BasicBlockListTy* v = &this->predecessors_[bb];
@@ -123,7 +123,7 @@ class BasicBlockSuccessorHelper {
     };
   }
 
-  // Return a vector of the list of successor nodes from a given node.
+  // Returns a vector of the list of successor nodes from a given node.
   GetBlocksFunction GetSuccessorFunctor() {
     return [this](const BasicBlock* bb) {
       BasicBlockListTy* v = &this->successors_[bb];
@@ -136,13 +136,13 @@ class BasicBlockSuccessorHelper {
   BasicBlockMapTy successors_;
   BasicBlockMapTy predecessors_;
 
-  // Build a bi-directional graph from the CFG of F.
-  // If invert_graph_ is true, all edge are reversed (successors become
+  // Build the successors and predecessors map for each basic blocks |f|.
+  // If |invert_graph_| is true, all edges are reversed (successors becomes
   // predecessors and vice versa).
-  // For convenience, the start of the graph is dummyStartNode. The dominator
-  // tree construction requires a unique entry node, which cannot be guaranteed
-  // for the postdominator graph. The dummyStartNode BB is here to gather all
-  // entry nodes.
+  // For convenience, the start of the graph is |dummy_start_node|.
+  // The dominator tree construction requires a unique entry node, which cannot
+  // be guaranteed for the postdominator graph. The |dummy_start_node| BB is
+  // here to gather all entry nodes.
   void CreateSuccessorMap(Function& f, const BasicBlock* dummy_start_node);
 };
 
@@ -337,10 +337,9 @@ void DominatorTree::InitializeTree(const ir::Function* f, const ir::CFG& cfg) {
   // Transform the vector<pair> into the tree structure which we can use to
   // efficiently query dominance.
   for (auto edge : edges) {
-    if (dummy_start_node == edge.first) continue;
     DominatorTreeNode* first = GetOrInsertNode(edge.first);
 
-    if (dummy_start_node == edge.second) {
+    if (edge.first == edge.second) {
       if (std::find(roots_.begin(), roots_.end(), first) == roots_.end())
         roots_.push_back(first);
       continue;
@@ -361,54 +360,56 @@ void DominatorTree::InitializeTree(const ir::Function* f, const ir::CFG& cfg) {
     const_cast<DominatorTreeNode*>(node)->dfs_num_post_ = ++index;
   };
 
-  auto getSucc = [](const DominatorTreeNode* node) {
-    return &node->children_;
-  };
+  auto getSucc = [](const DominatorTreeNode* node) { return &node->children_; };
 
   for (auto root : roots_) DepthFirstSearch(root, getSucc, preFunc, postFunc);
 }
 
 void DominatorTree::DumpTreeAsDot(std::ostream& out_stream) const {
   out_stream << "digraph {\n";
-  out_stream << "Dummy [label=\"Entry\"];\n";
-  for (auto Root : roots_) {
-    Visit(Root, [&out_stream](const DominatorTreeNode* node) {
+  Visit([&out_stream](const DominatorTreeNode* node) {
 
-      // Print the node.
-      if (node->bb_) {
-        out_stream << node->bb_->id() << "[label=\"" << node->bb_->id()
-                   << "\"];\n";
-      }
+    // Print the node.
+    if (node->bb_) {
+      out_stream << node->bb_->id() << "[label=\"" << node->bb_->id()
+                 << "\"];\n";
+    }
 
-      // Print the arrow from the parent to this node. Entry nodes will not have
-      // parents so draw them as children from the dummy node.
-      if (node->parent_) {
-        out_stream << node->parent_->bb_->id() << " -> " << node->bb_->id()
-                   << ";\n";
-      } else {
-        out_stream << "Dummy -> " << node->bb_->id() << " [style=dotted];\n";
-      }
+    // Print the arrow from the parent to this node. Entry nodes will not have
+    // parents so draw them as children from the dummy node.
+    if (node->parent_) {
+      out_stream << node->parent_->bb_->id() << " -> " << node->bb_->id()
+                 << ";\n";
+    }
 
-      // Return true to continue the traversal.
-      return true;
-    });
-  }
+    // Return true to continue the traversal.
+    return true;
+  });
   out_stream << "}\n";
+}
+
+bool DominatorTree::Visit(DominatorTreeNode* node,
+                          std::function<bool(DominatorTreeNode*)> func) {
+  // Apply the function to the node.
+  if (!func(node)) return false;
+
+  // Apply the function to every child node.
+  for (DominatorTreeNode* child : node->children_) {
+    if (!Visit(child, func)) return false;
+  }
+
+  return true;
 }
 
 bool DominatorTree::Visit(
     const DominatorTreeNode* node,
     std::function<bool(const DominatorTreeNode*)> func) const {
   // Apply the function to the node.
-  bool functor_return = func(node);
-
-  // If the user provided function return false, stop the traversal.
-  if (!functor_return) return false;
+  if (!func(node)) return false;
 
   // Apply the function to every child node.
   for (const DominatorTreeNode* child : node->children_) {
-    functor_return = Visit(child, func);
-    if (!functor_return) return false;
+    if (!Visit(child, func)) return false;
   }
 
   return true;
