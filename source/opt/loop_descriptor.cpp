@@ -12,35 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "loop_descriptor.h"
+#include "opt/loop_descriptor.h"
 #include <iostream>
 
 namespace spvtools {
 namespace opt {
-
-namespace {
-
-// TODO: Move this into ir::Function
-static const spvtools::ir::BasicBlock* GetBasicBlock(
-    const spvtools::ir::Function* fn, uint32_t id) {
-  for (const spvtools::ir::BasicBlock& bb : *fn) {
-    if (bb.id() == id) {
-      return &bb;
-    }
-  }
-  return nullptr;
-}
-}
 
 LoopDescriptor::LoopDescriptor(const ir::Function* f) { PopulateList(f); }
 
 void LoopDescriptor::PopulateList(const ir::Function* f) {
   ir::IRContext* context = f->GetParent()->context();
 
-  ir::CFG cfg{f->GetParent()};
-  opt::DominatorAnalysis* dom_analysis = context->GetDominatorAnalysis(f, cfg);
-
-  dom_analysis->DumpAsDot(std::cout);
+  opt::DominatorAnalysis* dom_analysis =
+      context->GetDominatorAnalysis(f, *context->cfg());
 
   std::vector<ir::Instruction*> loop_merge_inst;
   // Function to find OpLoopMerge instructions inside the dominator tree.
@@ -61,6 +45,9 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
   const DominatorTree& dom_tree = dom_analysis->GetDomTree();
   dom_tree.Visit(dom_tree.GetRoot(), find_merge_inst_in_dom_order);
 
+  loops_.clear();
+  loops_.reserve(loop_merge_inst.size());
+
   // Populate the loop vector from the merge instructions found in the dominator
   // tree.
   for (ir::Instruction* merge_inst : loop_merge_inst) {
@@ -71,25 +58,23 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
     uint32_t continue_bb_id = merge_inst->GetSingleWordOperand(1);
 
     // The continue target of this loop.
-    const ir::BasicBlock* merge_bb = GetBasicBlock(f, merge_bb_id);
+    ir::BasicBlock* merge_bb = context->cfg()->block(merge_bb_id);
 
     // The continue target of this loop.
-    const ir::BasicBlock* continue_bb = GetBasicBlock(f, continue_bb_id);
+    ir::BasicBlock* continue_bb = context->cfg()->block(continue_bb_id);
 
     // The basicblock containing the merge instruction.
-    const ir::BasicBlock* start_bb = context->get_instr_block(merge_inst);
+    ir::BasicBlock* start_bb = context->get_instr_block(merge_inst);
 
-    bool is_nested = false;
-
-    // The index of the top most parent loop of a nested loop.
-    signed long parent_loop_index = -1;
+    // Add the loop the list of all the loops in the function.
+    loops_.push_back({start_bb, continue_bb, merge_bb});
 
     // If this is the first loop don't check for dominating nesting loop.
     // Otherwise, move through the loops in reverse order to check if this is a
     // nested loop. If it isn't a nested loop this for will exit on the first
     // iteration.
-    for (signed long i = loops_.size() - 1; i >= 0; --i) {
-      Loop& previous_loop = loops_[i];
+    for (auto itr = loops_.rbegin() + 1; itr != loops_.rend(); ++itr) {
+      Loop& previous_loop = *itr;
 
       // If this loop is dominated by the entry of the previous loop it could be
       // a nested loop of that loop or a nested loop of a parent of that loop.
@@ -102,22 +87,13 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
       if (dom_analysis->Dominates(previous_loop.GetMergeBB(), start_bb)) {
         continue;
       } else {
-        parent_loop_index = i;
-        is_nested = true;
+        previous_loop.AddNestedLoop(&loops_.back());
+        loops_.back().SetParent(&previous_loop);
         break;
       }
-    }
-
-    // Add the loop the list of all the loops in the function.
-    loops_.push_back({is_nested, start_bb, continue_bb, merge_bb});
-
-    // If it's nested add a reference to it to the parent loop.
-    if (is_nested) {
-      assert(parent_loop_index != -1);
-      loops_[parent_loop_index].AddNestedLoop(&loops_.back());
     }
   }
 }
 
-}  // opt
-}  // spvtools
+}  // namespace opt
+}  // namespace spvtools

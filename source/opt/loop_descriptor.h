@@ -17,9 +17,9 @@
 
 #include <cstdint>
 #include <map>
-
-#include "module.h"
-#include "pass.h"
+#include <vector>
+#include "opt/module.h"
+#include "opt/pass.h"
 
 namespace spvtools {
 namespace opt {
@@ -27,63 +27,70 @@ namespace opt {
 // A class to represent a loop.
 class Loop {
  public:
-  Loop(bool is_nested, const ir::BasicBlock* begin,
-       const ir::BasicBlock* continue_target,
-       const ir::BasicBlock* merge_target)
+  Loop()
+      : loop_start_(nullptr),
+        loop_continue_(nullptr),
+        loop_merge_(nullptr),
+        parent_(nullptr) {}
+
+  Loop(ir::BasicBlock* begin, ir::BasicBlock* continue_target,
+       ir::BasicBlock* merge_target)
       : loop_start_(begin),
         loop_continue_(continue_target),
         loop_merge_(merge_target),
-        is_nested_(is_nested){};
+        parent_(nullptr) {}
 
   // Get the BasicBlock containing the original OpLoopMerge instruction.
-  inline const ir::BasicBlock* GetStartBB() const { return loop_start_; }
+  inline ir::BasicBlock* GetStartBB() { return loop_start_; }
 
   // Get the BasicBlock which is the start of the body of the loop.
-  inline const ir::BasicBlock* GetContinueBB() const { return loop_continue_; }
+  inline ir::BasicBlock* GetContinueBB() { return loop_continue_; }
 
   // Get the BasicBlock which marks the end of the loop.
-  inline const ir::BasicBlock* GetMergeBB() const { return loop_merge_; }
+  inline ir::BasicBlock* GetMergeBB() { return loop_merge_; }
 
   // Return true if this loop contains any nested loops.
-  inline bool HasNestedLoops() const { return nested_loops_.size() != 0; };
+  inline bool HasNestedLoops() const { return nested_loops_.size() != 0; }
 
   // Return the number of nested loops this loop contains.
-  inline size_t GetNumNestedLoops() const { return nested_loops_.size(); };
+  inline size_t GetNumNestedLoops() const { return nested_loops_.size(); }
 
   // Add a nested loop to this loop.
-  inline void AddNestedLoop(Loop* nested) { nested_loops_.push_back(nested); };
+  inline void AddNestedLoop(Loop* nested) { nested_loops_.push_back(nested); }
 
+  void SetParent(Loop* parent) { parent_ = parent; }
+
+  Loop* GetParent() { return parent_; }
   // Return true if this loop is itself nested within another loop.
-  inline bool IsNested() const { return is_nested_; }
+  inline bool IsNested() const { return parent_ != nullptr; }
 
  private:
   // The block which marks the start of the loop.
-  const ir::BasicBlock* loop_start_;
+  ir::BasicBlock* loop_start_;
 
   // The block which begins the body of the loop.
-  const ir::BasicBlock* loop_continue_;
+  ir::BasicBlock* loop_continue_;
 
   // The block which marks the end of the loop.
-  const ir::BasicBlock* loop_merge_;
+  ir::BasicBlock* loop_merge_;
+
+  Loop* parent_;
 
   // Nested child loops of this loop.
   std::vector<Loop*> nested_loops_;
-
-  // True if this loop is nested within another.
-  bool is_nested_;
 };
 
 class LoopDescriptor {
  public:
   // Creates a loop object for all loops found in |f|.
-  LoopDescriptor(const ir::Function* f);
+  explicit LoopDescriptor(const ir::Function* f);
 
   // Return the number of loops found in the function.
   size_t NumLoops() const { return loops_.size(); }
 
   // Return the loop at a particular |index|. The |index| must be in bounds,
   // check with NumLoops before calling.
-  inline const Loop& GetLoop(size_t index) const {
+  inline Loop& GetLoop(size_t index) const {
     assert(loops_.size() > index &&
            "Index out of range (larger than loop count)");
     return loops_[index];

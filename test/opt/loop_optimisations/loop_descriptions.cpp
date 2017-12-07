@@ -100,12 +100,13 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
 
   EXPECT_EQ(ld.NumLoops(), 1u);
 
-  const opt::Loop& loop = ld.GetLoop(0);
+  opt::Loop& loop = ld.GetLoop(0);
   EXPECT_EQ(loop.GetStartBB(), spvtest::GetBasicBlock(f, 18));
   EXPECT_EQ(loop.GetContinueBB(), spvtest::GetBasicBlock(f, 20));
   EXPECT_EQ(loop.GetMergeBB(), spvtest::GetBasicBlock(f, 19));
 
   EXPECT_FALSE(loop.HasNestedLoops());
+  EXPECT_FALSE(loop.IsNested());
   EXPECT_EQ(loop.GetNumNestedLoops(), 0u);
 }
 
