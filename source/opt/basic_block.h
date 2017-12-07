@@ -100,11 +100,8 @@ class BasicBlock {
     return --insts_.cend();
   }
 
-  // Return true if the basic block has at least one successor
-  inline bool hasSuccessor() const {
-    const auto br = &insts_.back();
-    return br->IsBranch();
-  }
+  // Returns true if the basic block has at least one successor.
+  inline bool hasSuccessor() const { return ctail()->IsBranch(); }
 
   // Runs the given function |f| on each instruction in this basic block, and
   // optionally on the debug line instructions that might precede them.
@@ -174,7 +171,16 @@ inline void BasicBlock::AddInstructions(BasicBlock* bp) {
 inline void BasicBlock::ForEachInst(const std::function<void(Instruction*)>& f,
                                     bool run_on_debug_line_insts) {
   if (label_) label_->ForEachInst(f, run_on_debug_line_insts);
-  for (auto& inst : insts_) inst.ForEachInst(f, run_on_debug_line_insts);
+  if (insts_.empty()) {
+    return;
+  }
+
+  Instruction* inst = &insts_.front();
+  while (inst != nullptr) {
+    Instruction* next_instruction = inst->NextNode();
+    inst->ForEachInst(f, run_on_debug_line_insts);
+    inst = next_instruction;
+  }
 }
 
 inline void BasicBlock::ForEachInst(

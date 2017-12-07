@@ -43,7 +43,7 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
   // loop_merge_inst you still need to check dominance between each block
   // manually.
   const DominatorTree& dom_tree = dom_analysis->GetDomTree();
-  dom_tree.Visit(dom_tree.GetRoot(), find_merge_inst_in_dom_order);
+  dom_tree.Visit(find_merge_inst_in_dom_order);
 
   loops_.clear();
   loops_.reserve(loop_merge_inst.size());
