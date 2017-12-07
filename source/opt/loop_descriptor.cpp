@@ -51,14 +51,13 @@ ir::Instruction* Loop::GetVariable(const ir::Instruction* load_inst) {
 void Loop::FindLoopBasicBlocks() {
   loop_basic_blocks.clear();
 
-  auto find_all_blocks_in_loop = [&](const DominatorTreeNode* node) {
-    if (dom_analysis->Dominates(loop_merge_, node->bb_)) return false;
-    loop_basic_blocks.insert(node->bb_);
-    return true;
-  };
+  opt::DominatorTree& tree = dom_analysis->GetDomTree();
 
-  const DominatorTree& dom_tree = dom_analysis->GetDomTree();
-  dom_tree.Visit(loop_start_, find_all_blocks_in_loop);
+  auto begin_itr = tree.get_iterator(loop_start_);
+  for (; begin_itr != tree.end(); ++begin_itr) {
+    if (dom_analysis->Dominates(loop_merge_, begin_itr->bb_)) break;
+    loop_basic_blocks.insert(begin_itr->bb_);
+  };
 }
 
 bool Loop::IsLoopInvariant(const ir::Instruction* variable_inst) {
@@ -139,6 +138,7 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
   // Function to find OpLoopMerge instructions inside the dominator tree.
   auto find_merge_inst_in_dom_order =
       [&loop_merge_inst](const DominatorTreeNode* node) {
+        if (node->id() == 0) return true;
         ir::Instruction* merge_inst = node->bb_->GetLoopMergeInst();
         if (merge_inst) {
           loop_merge_inst.push_back(merge_inst);
@@ -152,7 +152,7 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
   // loop_merge_inst you still need to check dominance between each block
   // manually.
   const DominatorTree& dom_tree = dom_analysis->GetDomTree();
-  dom_tree.Visit(dom_tree.GetRoot(), find_merge_inst_in_dom_order);
+  dom_tree.Visit(find_merge_inst_in_dom_order);
 
   loops_.clear();
   loops_.reserve(loop_merge_inst.size());
