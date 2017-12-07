@@ -148,7 +148,7 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_TRUE(parent_loop.HasNestedLoops());
   EXPECT_FALSE(parent_loop.IsNested());
   EXPECT_EQ(parent_loop.GetNumNestedLoops(), 2u);
-  EXPECT_EQ(parent_loop.GetStartBB(), spvtest::GetBasicBlock(f, 10));
+  EXPECT_EQ(parent_loop.GetLoopHeader(), spvtest::GetBasicBlock(f, 10));
   EXPECT_EQ(parent_loop.GetContinueBB(), spvtest::GetBasicBlock(f, 13));
   EXPECT_EQ(parent_loop.GetMergeBB(), spvtest::GetBasicBlock(f, 12));
 
@@ -156,7 +156,7 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_FALSE(child_loop_1.HasNestedLoops());
   EXPECT_TRUE(child_loop_1.IsNested());
   EXPECT_EQ(child_loop_1.GetNumNestedLoops(), 0u);
-  EXPECT_EQ(child_loop_1.GetStartBB(), spvtest::GetBasicBlock(f, 21));
+  EXPECT_EQ(child_loop_1.GetLoopHeader(), spvtest::GetBasicBlock(f, 21));
   EXPECT_EQ(child_loop_1.GetContinueBB(), spvtest::GetBasicBlock(f, 24));
   EXPECT_EQ(child_loop_1.GetMergeBB(), spvtest::GetBasicBlock(f, 23));
 
@@ -164,7 +164,7 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_FALSE(child_loop_2.HasNestedLoops());
   EXPECT_TRUE(child_loop_2.IsNested());
   EXPECT_EQ(child_loop_2.GetNumNestedLoops(), 0u);
-  EXPECT_EQ(child_loop_2.GetStartBB(), spvtest::GetBasicBlock(f, 32));
+  EXPECT_EQ(child_loop_2.GetLoopHeader(), spvtest::GetBasicBlock(f, 32));
   EXPECT_EQ(child_loop_2.GetContinueBB(), spvtest::GetBasicBlock(f, 35));
   EXPECT_EQ(child_loop_2.GetMergeBB(), spvtest::GetBasicBlock(f, 34));
 }

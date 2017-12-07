@@ -22,26 +22,42 @@
 #include "opt/pass.h"
 
 namespace spvtools {
+namespace ir {
+class CFG;
+}  // namespace ir
+
 namespace opt {
 
 // A class to represent a loop.
 class Loop {
+  using ChildrenList = std::vector<Loop*>;
+
  public:
+  using iterator = ChildrenList::iterator;
+  using const_iterator = ChildrenList::const_iterator;
+
   Loop()
-      : loop_start_(nullptr),
+      : loop_header_(nullptr),
         loop_continue_(nullptr),
         loop_merge_(nullptr),
         parent_(nullptr) {}
 
-  Loop(ir::BasicBlock* begin, ir::BasicBlock* continue_target,
+  Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
        ir::BasicBlock* merge_target)
-      : loop_start_(begin),
+      : loop_header_(header),
         loop_continue_(continue_target),
         loop_merge_(merge_target),
         parent_(nullptr) {}
 
+  iterator begin() { return nested_loops_.begin(); }
+  iterator end() { return nested_loops_.end(); }
+  const_iterator begin() const { return cbegin(); }
+  const_iterator end() const { return cend(); }
+  const_iterator cbegin() const { return nested_loops_.begin(); }
+  const_iterator cend() const { return nested_loops_.end(); }
+
   // Get the BasicBlock containing the original OpLoopMerge instruction.
-  inline ir::BasicBlock* GetStartBB() { return loop_start_; }
+  inline ir::BasicBlock* GetLoopHeader() { return loop_header_; }
 
   // Get the BasicBlock which is the start of the body of the loop.
   inline ir::BasicBlock* GetContinueBB() { return loop_continue_; }
@@ -66,7 +82,7 @@ class Loop {
 
  private:
   // The block which marks the start of the loop.
-  ir::BasicBlock* loop_start_;
+  ir::BasicBlock* loop_header_;
 
   // The block which begins the body of the loop.
   ir::BasicBlock* loop_continue_;
@@ -77,7 +93,7 @@ class Loop {
   Loop* parent_;
 
   // Nested child loops of this loop.
-  std::vector<Loop*> nested_loops_;
+  ChildrenList nested_loops_;
 };
 
 class LoopDescriptor {
@@ -93,14 +109,14 @@ class LoopDescriptor {
   inline Loop& GetLoop(size_t index) const {
     assert(loops_.size() > index &&
            "Index out of range (larger than loop count)");
-    return loops_[index];
+    return *loops_[index].get();
   }
 
  private:
   void PopulateList(const ir::Function* f);
 
   // A list of all the loops in the function.
-  std::vector<Loop> loops_;
+  std::vector<std::unique_ptr<Loop>> loops_;
 };
 
 }  // namespace opt
