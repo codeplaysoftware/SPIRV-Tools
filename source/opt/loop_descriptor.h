@@ -69,6 +69,13 @@ class Loop {
   // Return true if this loop is itself nested within another loop.
   inline bool IsNested() const { return parent_ != nullptr; }
 
+  // Returns true if the given instruction is invariant wrt this loop
+  bool IsLoopInvariant(const ir::Instruction* variable_inst);
+
+  // TODO(Alexander): Replace with an iterator
+  // Returns the internal vector contianing the nested loops
+  std::vector<Loop*> GetNestedLoops() { return nested_loops_; }
+
   struct LoopVariable {
     ir::Instruction* def;
     ir::Instruction* step_instruction;
@@ -116,8 +123,6 @@ class Loop {
 
   // Populates the set of basic blocks in the loop.
   void FindLoopBasicBlocks();
-
-  bool IsLoopInvariant(const ir::Instruction* variable_inst);
 
   bool IsConstantOnEntryToLoop(const ir::Instruction* variable_inst) const;
 };
