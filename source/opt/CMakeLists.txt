@@ -55,11 +55,13 @@ add_library(SPIRV-Tools-opt
   pass.h
   pass_manager.h
   propagator.h
+  redundancy_elimination.h
   reflect.h
   remove_duplicates_pass.h
   set_spec_constant_default_value_pass.h
   strength_reduction_pass.h
   strip_debug_info_pass.h
+  tree_iterator.h
   type_manager.h
   types.h
   unify_const_pass.h
@@ -73,6 +75,7 @@ add_library(SPIRV-Tools-opt
   cfg.cpp
   common_uniform_elim_pass.cpp
   compact_ids_pass.cpp
+  constants.cpp
   dead_branch_elim_pass.cpp
   dead_variable_elimination.cpp
   decoration_manager.cpp
@@ -105,6 +108,7 @@ add_library(SPIRV-Tools-opt
   pass.cpp
   pass_manager.cpp
   propagator.cpp
+  redundancy_elimination.cpp
   remove_duplicates_pass.cpp
   set_spec_constant_default_value_pass.cpp
   strength_reduction_pass.cpp
