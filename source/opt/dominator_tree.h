@@ -22,6 +22,7 @@
 
 #include "cfg.h"
 #include "module.h"
+#include "tree_iterator.h"
 
 namespace spvtools {
 namespace opt {
@@ -35,6 +36,16 @@ struct DominatorTreeNode {
         children_({}),
         dfs_num_pre_(-1),
         dfs_num_post_(-1) {}
+
+  using iterator = std::vector<DominatorTreeNode*>::iterator;
+  using const_iterator = std::vector<DominatorTreeNode*>::const_iterator;
+
+  iterator begin() { return children_.begin(); }
+  iterator end() { return children_.end(); }
+  const_iterator begin() const { return cbegin(); }
+  const_iterator end() const { return cend(); }
+  const_iterator cbegin() const { return children_.begin(); }
+  const_iterator cend() const { return children_.end(); }
 
   inline uint32_t id() const { return bb_->id(); }
 
@@ -56,8 +67,8 @@ class DominatorTree {
  public:
   // Map OpLabel ids to dominator tree nodes
   using DominatorTreeNodeMap = std::map<uint32_t, DominatorTreeNode>;
-  using iterator = DominatorTreeNodeMap::iterator;
-  using const_iterator = DominatorTreeNodeMap::const_iterator;
+  using iterator = TreeDFIterator<DominatorTreeNode>;
+  using const_iterator = TreeDFIterator<const DominatorTreeNode>;
 
   // List of DominatorTreeNode to define the list of roots
   using DominatorTreeNodeList = std::vector<DominatorTreeNode*>;
@@ -67,12 +78,14 @@ class DominatorTree {
   DominatorTree() : postdominator_(false) {}
   explicit DominatorTree(bool post) : postdominator_(post) {}
 
-  iterator begin() { return nodes_.begin(); }
-  iterator end() { return nodes_.end(); }
+  // Depth first iterators.
+  // Traverse the dominator tree in a depth first pre-order.
+  iterator begin() { return iterator(GetRoot()); }
+  iterator end() { return iterator(); }
   const_iterator begin() const { return cbegin(); }
   const_iterator end() const { return cend(); }
-  const_iterator cbegin() const { return nodes_.begin(); }
-  const_iterator cend() const { return nodes_.end(); }
+  const_iterator cbegin() const { return const_iterator(GetRoot()); }
+  const_iterator cend() const { return const_iterator(); }
 
   roots_iterator roots_begin() { return roots_.begin(); }
   roots_iterator roots_end() { return roots_.end(); }
@@ -143,30 +156,52 @@ class DominatorTree {
   }
 
   // Applies the std::function |func| to all nodes in the dominator tree.
+  // Tree nodes are visited in a depth first pre-order.
   bool Visit(std::function<bool(DominatorTreeNode*)> func) {
-    for (auto n : roots_) {
-      if (!Visit(n, func)) return false;
+    for (auto n : *this) {
+      if (!func(&n)) return false;
     }
     return true;
   }
 
   // Applies the std::function |func| to all nodes in the dominator tree.
+  // Tree nodes are visited in a depth first pre-order.
   bool Visit(std::function<bool(const DominatorTreeNode*)> func) const {
-    for (auto n : roots_) {
-      if (!Visit(n, func)) return false;
+    for (auto n : *this) {
+      if (!func(&n)) return false;
     }
     return true;
   }
 
-  // Applies the std::function |func| to |node| then applies it to nodes
-  // children.
-  bool Visit(DominatorTreeNode* node,
-             std::function<bool(DominatorTreeNode*)> func);
+  // Returns the DominatorTreeNode associated with the basic block |bb|.
+  // If the |bb| is unknown to the dominator tree, it returns null.
+  inline DominatorTreeNode* operator[](ir::BasicBlock* bb) {
+    return (*this)[bb->id()];
+  }
+  // Returns the DominatorTreeNode associated with the basic block |bb|.
+  // If the |bb| is unknown to the dominator tree, it returns null.
+  inline const DominatorTreeNode* operator[](ir::BasicBlock* bb) const {
+    return (*this)[bb->id()];
+  }
 
-  // Applies the std::function |func| to |node| then applies it to nodes
-  // children.
-  bool Visit(const DominatorTreeNode* node,
-             std::function<bool(const DominatorTreeNode*)> func) const;
+  // Returns the DominatorTreeNode associated with the basic block id |id|.
+  // If the id |id| is unknown to the dominator tree, it returns null.
+  inline DominatorTreeNode* operator[](uint32_t id) {
+    DominatorTreeNodeMap::iterator node_iter = nodes_.find(id);
+    if (node_iter == nodes_.end()) {
+      return nullptr;
+    }
+    return &node_iter->second;
+  }
+  // Returns the DominatorTreeNode associated with the basic block id |id|.
+  // If the id |id| is unknown to the dominator tree, it returns null.
+  inline const DominatorTreeNode* operator[](uint32_t id) const {
+    DominatorTreeNodeMap::const_iterator node_iter = nodes_.find(id);
+    if (node_iter == nodes_.end()) {
+      return nullptr;
+    }
+    return &node_iter->second;
+  }
 
  private:
   // Adds the basic block |bb| to the tree structure if it doesn't already

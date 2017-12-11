@@ -58,6 +58,7 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/cfg_cleanup_pass.cpp \
 		source/opt/compact_ids_pass.cpp \
 		source/opt/common_uniform_elim_pass.cpp \
+		source/opt/constants.cpp \
 		source/opt/dead_branch_elim_pass.cpp \
 		source/opt/dead_variable_elimination.cpp \
 		source/opt/decoration_manager.cpp \
@@ -90,6 +91,7 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/pass.cpp \
 		source/opt/pass_manager.cpp \
 		source/opt/propagator.cpp \
+		source/opt/redundancy_elimination.cpp \
 		source/opt/remove_duplicates_pass.cpp \
 		source/opt/set_spec_constant_default_value_pass.cpp \
 		source/opt/strength_reduction_pass.cpp \
