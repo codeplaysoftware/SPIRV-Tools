@@ -1,4 +1,4 @@
-#version 330 core
+#version 440 core
 layout(location = 0) out vec4 c;
 layout(location = 1) out vec4 d;
 layout(location = 2) in vec4 in_val;
@@ -7,7 +7,7 @@ void main(){
   int b = 2;
   int hoist = 0;
   c = vec4(0,0,0,0);
-  for (int i = in_val.x; i < in_val.y; i++) {
+  for (int i = int(in_val.x); i < int(in_val.y); i++) {
     // hoist is not invariant, due to double definition
     hoist = a + b;
     c = vec4(i,i,i,i);
