@@ -17,7 +17,9 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <vector>
+
 #include "opt/module.h"
 #include "opt/pass.h"
 

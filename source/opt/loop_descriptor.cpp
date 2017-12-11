@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <iostream>
+#include <vector>
+
 #include "opt/loop_descriptor.h"
 #include "opt/make_unique.h"
-
-#include <iostream>
 
 namespace spvtools {
 namespace opt {
