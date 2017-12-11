@@ -55,13 +55,26 @@ bool LICMPass::ProcessLoop(Loop* loop) {
   std::vector<ir::Instruction*> invariants = {};
   ir::BasicBlock* bb = loop->GetContinueBB();
   for (auto it = bb->begin(); it != bb->end(); ++it) {
+    if (it->result_id() == 0) continue;
     if (loop->IsLoopInvariant(&(*it))) {
       invariants.push_back(&(*it));
     }
   }
 
+  return invariants.size() != 0;
+}
+
+ir::BasicBlock* LICMPass::FindPreheader(Loop* loop) {
+  if (loop == nullptr) return nullptr;
+  return nullptr;
+}
+
+bool LICMPass::HoistInstruction(ir::BasicBlock* pre_header_bb,
+                                ir::Instruction* inst) {
+  if (pre_header_bb == nullptr) return false;
+  if (inst == nullptr) return false;
   return false;
 }
 
-}
-}
+} // namespace opt
+} // namespace spvtools

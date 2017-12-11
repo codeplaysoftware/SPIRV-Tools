@@ -17,13 +17,15 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <iostream>
 
 #include "../assembly_builder.h"
 #include "../function_utils.h"
 #include "../pass_fixture.h"
 #include "../pass_utils.h"
-#include "opt/dominator_analysis.h"
 #include "opt/pass.h"
+#include "opt/loop_descriptor.h"
+#include "opt/licm_pass.h"
 
 namespace {
 
@@ -51,7 +53,7 @@ void main(){
 }
 */
 TEST_F(PassClassTest, SimpleHoist) {
-  const std::string text = R"(
+  const std::string start = R"(
          OpCapability Shader
     %1 = OpExtInstImport "GLSL.std.450"
          OpMemoryModel Logical GLSL450
@@ -137,16 +139,26 @@ TEST_F(PassClassTest, SimpleHoist) {
          OpReturn
          OpFunctionEnd
 )";
-  // clang-format on
-  std::unique_ptr<ir::IRContext> context =
-      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
-                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
-  ir::Module* module = context->module();
-  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
-                             << text << std::endl;
 
-  const ir::Function* f = spvtest::GetFunction(module, 4);
-  ir::CFG cfg(module);
+
+const std::string end = R"(
+)";
+  // clang-format on
+ // std::unique_ptr<ir::IRContext> context =
+ //     BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, start,
+ //                 SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+ // ir::Module* module = context->module();
+ // EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+ //                            << start << std::endl;
+ // 
+ // const ir::Function* f = spvtest::GetFunction(module, 4);
+ // LoopDescriptor loopDescriptor{f};
+ // //ir::CFG cfg(module);
+ // if (loopDescriptor.NumLoops() > 0) {
+ //   std::cout << "boop";
+ // }
+//
+  SinglePassRunAndCheck<opt::LICMPass>(start, end, true);
 
 }
 

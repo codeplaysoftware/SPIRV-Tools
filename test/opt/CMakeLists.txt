@@ -14,6 +14,7 @@
 
 add_subdirectory(dominator_tree)
 add_subdirectory(loop_optimisations)
+add_subdirectory(LICM)
 
 add_spvtools_unittest(TARGET instruction
   SRCS instruction_test.cpp

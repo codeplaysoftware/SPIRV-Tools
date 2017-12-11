@@ -97,7 +97,8 @@ Optimizer& Optimizer::RegisterPerformancePasses() {
       .RegisterPass(CreateLocalRedundancyEliminationPass())
       // Currently exposing driver bugs resulting in crashes (#946)
       // .RegisterPass(CreateCommonUniformElimPass())
-      .RegisterPass(CreateDeadVariableEliminationPass());
+      .RegisterPass(CreateDeadVariableEliminationPass())
+      .RegisterPass(CreateLICMPass());
 }
 
 Optimizer& Optimizer::RegisterSizePasses() {
@@ -281,5 +282,10 @@ Optimizer::PassToken CreateCFGCleanupPass() {
 Optimizer::PassToken CreateLocalRedundancyEliminationPass() {
   return MakeUnique<Optimizer::PassToken::Impl>(
       MakeUnique<opt::LocalRedundancyEliminationPass>());
+}
+
+Optimizer::PassToken CreateLICMPass() {
+  return MakeUnique<Optimizer::PassToken::Impl>(
+      MakeUnique<opt::LICMPass>());
 }
 }  // namespace spvtools

@@ -16,7 +16,7 @@
 #define LIBSPIRV_OPT_LICM_PASS_H_
 
 #include "pass.h"
-
+#include "opt/basic_block.h"
 #include "loop_descriptor.h"
 
 namespace spvtools {
@@ -28,13 +28,15 @@ class LICMPass : public Pass {
   Status Process(ir::IRContext *) override;
 
  private:
-  bool ProcessIRContext(ir::IRContext* irContext);
+  bool ProcessIRContext(ir::IRContext* ir_context);
   bool ProcessFunction(ir::Function* f);
   bool ProcessLoop(Loop* loop);
+  ir::BasicBlock* FindPreheader(Loop* loop);
+  bool HoistInstruction(ir::BasicBlock* pre_header_bb, ir::Instruction* inst);
 
 };
 
-}
-}
+} // namespace opt
+} // namespace spvtools
 
 #endif  // LIBSPIRV_OPT_LICM_PASS_H_

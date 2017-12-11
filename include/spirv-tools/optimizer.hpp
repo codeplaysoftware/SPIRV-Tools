@@ -432,6 +432,11 @@ Optimizer::PassToken CreateMergeReturnPass();
 // This pass will look for instructions in the same basic block that compute the
 // same value, and remove the redundant ones.
 Optimizer::PassToken CreateLocalRedundancyEliminationPass();
+
+// Create LICM pass.
+// This pass will look for invariant instructions inside loops and hoist them to
+// the loops preheader.
+Optimizer::PassToken CreateLICMPass();
 }  // namespace spvtools
 
 #endif  // SPIRV_TOOLS_OPTIMIZER_HPP_
