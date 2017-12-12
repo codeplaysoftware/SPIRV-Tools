@@ -27,23 +27,11 @@ namespace opt {
 // A class to represent a loop.
 class Loop {
  public:
-  Loop()
-      : ir_context(nullptr),
-        dom_analysis(nullptr),
-        loop_start_(nullptr),
-        loop_continue_(nullptr),
-        loop_merge_(nullptr),
-        parent_(nullptr) {}
+  Loop();
 
   Loop(ir::BasicBlock* begin, ir::BasicBlock* continue_target,
        ir::BasicBlock* merge_target, ir::IRContext* context,
-       opt::DominatorAnalysis* analysis)
-      : ir_context(context),
-        dom_analysis(analysis),
-        loop_start_(begin),
-        loop_continue_(continue_target),
-        loop_merge_(merge_target),
-        parent_(nullptr) {}
+       opt::DominatorAnalysis* analysis);
 
   // Get the BasicBlock containing the original OpLoopMerge instruction.
   inline ir::BasicBlock* GetStartBB() { return loop_start_; }
@@ -53,6 +41,12 @@ class Loop {
 
   // Get the BasicBlock which marks the end of the loop.
   inline ir::BasicBlock* GetMergeBB() { return loop_merge_; }
+
+  // Get the BasicBlock which is the start of the body of the loop.
+  inline ir::BasicBlock* GetBodyBB() { return loop_body_begin_; }
+
+  // Get the BasicBlock whihc contains the condition check.
+  inline ir::BasicBlock* GetConditionBB() { return loop_condition_block_; }
 
   // Return true if this loop contains any nested loops.
   inline bool HasNestedLoops() const { return nested_loops_.size() != 0; }
@@ -66,16 +60,26 @@ class Loop {
   void SetParent(Loop* parent) { parent_ = parent; }
 
   Loop* GetParent() { return parent_; }
+
   // Return true if this loop is itself nested within another loop.
   inline bool IsNested() const { return parent_ != nullptr; }
 
   struct LoopVariable {
-    ir::Instruction* def;
-    ir::Instruction* step_instruction;
-    uint32_t value;
-    bool is_invariant;
+    LoopVariable(ir::Instruction* d,int32_t init_value, int32_t step_amount, int32_t end_val,
+                 ir::Instruction* condition)
+        : def_(d),
+          init_value_(init_value),
+          step_amount_(step_amount),
+          end_value_(end_val),
+          end_condition_(condition) {}
+    ir::Instruction* def_;
+    int32_t init_value_;
+    int32_t step_amount_;
+    int32_t end_value_;
+    ir::Instruction* end_condition_;
   };
 
+  LoopVariable* GetInductionVariable();
  private:
   ir::IRContext* ir_context;
 
@@ -92,6 +96,12 @@ class Loop {
   // The block which marks the end of the loop.
   ir::BasicBlock* loop_merge_;
 
+  // The basic block containing the condition check.
+  ir::BasicBlock* loop_condition_block_;
+
+  // The basic block which marks the start of the main body of the loop, between
+  // the condition block and the continue block.
+  ir::BasicBlock* loop_body_begin_;
   Loop* parent_;
 
   // Nested child loops of this loop.
@@ -110,12 +120,17 @@ class Loop {
   std::set<const ir::BasicBlock*> loop_basic_blocks;
   void FindInductionVariable();
   bool GetConstant(const ir::Instruction* inst, uint32_t* value) const;
+  bool GetInductionInitValue(const ir::Instruction* variable_inst,
+                             uint32_t* value) const;
+  ir::Instruction* GetInductionStepOperation(const ir::Instruction* variable_inst) const;
+
 
   // Returns an OpVariable instruction or null from a load_inst.
   ir::Instruction* GetVariable(const ir::Instruction* load_inst);
 
   // Populates the set of basic blocks in the loop.
   void FindLoopBasicBlocks();
+
 
   bool IsLoopInvariant(const ir::Instruction* variable_inst);
 
@@ -124,6 +139,8 @@ class Loop {
 
 class LoopDescriptor {
  public:
+  using LoopContainerType = std::vector<Loop>;
+  using iterator = LoopContainerType::iterator;
   // Creates a loop object for all loops found in |f|.
   explicit LoopDescriptor(const ir::Function* f);
 
@@ -138,11 +155,13 @@ class LoopDescriptor {
     return loops_[index];
   }
 
+  iterator begin() { return loops_.begin(); }
+  iterator end() { return loops_.end(); }
  private:
   void PopulateList(const ir::Function* f);
 
   // A list of all the loops in the function.
-  std::vector<Loop> loops_;
+  LoopContainerType loops_;
 };
 
 }  // namespace opt

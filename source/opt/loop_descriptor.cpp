@@ -18,6 +18,30 @@
 namespace spvtools {
 namespace opt {
 
+Loop::Loop()
+    : ir_context(nullptr),
+      dom_analysis(nullptr),
+      loop_start_(nullptr),
+      loop_continue_(nullptr),
+      loop_merge_(nullptr),
+      loop_condition_block_(nullptr),
+      loop_body_begin_(nullptr),
+      parent_(nullptr),
+      induction_variable(nullptr) {}
+
+Loop::Loop(ir::BasicBlock* begin, ir::BasicBlock* continue_target,
+           ir::BasicBlock* merge_target, ir::IRContext* context,
+           opt::DominatorAnalysis* analysis)
+    : ir_context(context),
+      dom_analysis(analysis),
+      loop_start_(begin),
+      loop_continue_(continue_target),
+      loop_merge_(merge_target),
+      loop_condition_block_(nullptr),
+      loop_body_begin_(nullptr),
+      parent_(nullptr),
+      induction_variable(nullptr) {}
+
 bool Loop::GetConstant(const ir::Instruction* inst, uint32_t* value) const {
   if (inst->opcode() != SpvOp::SpvOpConstant) {
     return false;
@@ -53,6 +77,9 @@ void Loop::FindLoopBasicBlocks() {
 
   opt::DominatorTree& tree = dom_analysis->GetDomTree();
 
+  // Starting the loop header BasicBlock, traverse the dominator tree until we
+  // reach the merge blockand add every node we traverse to the set of blocks
+  // which we consider to be the loop.
   auto begin_itr = tree.get_iterator(loop_start_);
   for (; begin_itr != tree.end(); ++begin_itr) {
     if (dom_analysis->Dominates(loop_merge_, begin_itr->bb_)) break;
@@ -85,6 +112,72 @@ bool Loop::IsLoopInvariant(const ir::Instruction* variable_inst) {
   return is_invariant;
 }
 
+ir::Instruction* Loop::GetInductionStepOperation(
+    const ir::Instruction* variable_inst) const {
+  ir::BasicBlock* bb = loop_continue_;
+
+  ir::Instruction* store = nullptr;
+
+  // Move over every store in the BasicBlock to find the store assosiated with
+  // the given BB.
+  auto find_store = [&store, &variable_inst](ir::Instruction* inst) {
+    if (inst->opcode() == SpvOp::SpvOpStore &&
+        inst->GetSingleWordOperand(0) == variable_inst->result_id()) {
+      store = inst;
+    }
+  };
+
+  bb->ForEachInst(find_store);
+  if (!store) return nullptr;
+
+  opt::analysis::DefUseManager* def_use_manager = ir_context->get_def_use_mgr();
+
+  ir::Instruction* inst =
+      def_use_manager->GetDef(store->GetSingleWordOperand(1));
+
+  if (!inst || inst->opcode() != SpvOp::SpvOpIAdd) {
+    return nullptr;
+  }
+
+  return inst;
+}
+
+bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
+                                 uint32_t* value) const {
+  // We assume that the immediate dominator of the loop start block should
+  // contain the initialiser for the induction variables.
+  ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_start_);
+  if (!bb) return false;
+
+  ir::Instruction* store = nullptr;
+  auto find_store = [&store, &variable_inst](ir::Instruction* inst) {
+    if (inst->opcode() == SpvOp::SpvOpStore &&
+        inst->GetSingleWordOperand(0) == variable_inst->result_id()) {
+      store = inst;
+    }
+  };
+
+  // Find the storing of the induction variable.
+  bb->ForEachInst(find_store);
+  if (!store) return false;
+
+  opt::analysis::DefUseManager* def_use_manager = ir_context->get_def_use_mgr();
+
+  ir::Instruction* constant =
+      def_use_manager->GetDef(store->GetSingleWordOperand(1));
+  if (!constant) return false;
+
+  return GetConstant(constant, value);
+}
+
+Loop::LoopVariable* Loop::GetInductionVariable() {
+  if (!induction_variable) {
+    FindInductionVariable();
+  }
+
+  return induction_variable.get();
+}
+
 void Loop::FindInductionVariable() {
   // Get the basic block which branches to the merge block.
   const ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_merge_);
@@ -95,7 +188,7 @@ void Loop::FindInductionVariable() {
     // From the branch instruction find the branch condition.
     opt::analysis::DefUseManager* def_use_manager =
         ir_context->get_def_use_mgr();
-    const ir::Instruction* condition =
+    ir::Instruction* condition =
         def_use_manager->GetDef(branch_inst.GetSingleWordOperand(0));
 
     if (condition && condition->opcode() == SpvOp::SpvOpSLessThan) {
@@ -104,7 +197,7 @@ void Loop::FindInductionVariable() {
           def_use_manager->GetDef(condition->GetSingleWordOperand(3));
 
       uint32_t const_value = 0;
-      // Exit out if we could resolve the rhs to be a constant integer.
+      // Exit out if we couldn't resolve the rhs to be a constant integer.
       // TODO: Make this work for other values on rhs.
       if (!GetConstant(rhs_inst, &const_value)) return;
 
@@ -114,14 +207,28 @@ void Loop::FindInductionVariable() {
 
       ir::Instruction* variable_inst = GetVariable(lhs_inst);
 
-      if (IsLoopInvariant(variable_inst)) {
+      if (!IsLoopInvariant(variable_inst)) {
         return;
       }
 
-      if (variable_inst) {
-        std::cout << "Variable " << variable_inst->result_id()
-                  << " found with upper range: " << const_value << "\n";
-      }
+      uint32_t init_value = 0;
+      GetInductionInitValue(variable_inst, &init_value);
+
+      ir::Instruction* step_inst = GetInductionStepOperation(variable_inst);
+
+      if (!step_inst) return;
+
+      // The instruction representing the constant value.
+      const ir::Instruction* step_amount_inst =
+          def_use_manager->GetDef(step_inst->GetSingleWordOperand(3));
+
+      uint32_t step_value = 0;
+      // Exit out if we couldn't resolve the rhs to be a constant integer.
+      if (!GetConstant(step_amount_inst, &step_value)) return;
+
+      induction_variable =
+          std::unique_ptr<Loop::LoopVariable>(new Loop::LoopVariable(
+              variable_inst,step_value, step_value, const_value, condition));
     }
   }
 }
