@@ -34,8 +34,8 @@ Pass::Status LoopUnroller::Process(ir::IRContext* c) {
 
 bool LoopUnroller::RunOnFunction(ir::Function& f) {
   LoopDescriptor LD{&f};
-  for (Loop& loop : LD) {
-    RunOnLoop(loop);
+  for (auto& loop : LD) {
+    RunOnLoop(*loop.get());
   }
   return true;
 }

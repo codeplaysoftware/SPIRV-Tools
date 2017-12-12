@@ -25,7 +25,7 @@ namespace opt {
 Loop::Loop()
     : ir_context(nullptr),
       dom_analysis(nullptr),
-      loop_start_(nullptr),
+      loop_header_(nullptr),
       loop_continue_(nullptr),
       loop_merge_(nullptr),
       loop_condition_block_(nullptr),
@@ -33,12 +33,12 @@ Loop::Loop()
       parent_(nullptr),
       induction_variable(nullptr) {}
 
-Loop::Loop(ir::BasicBlock* begin, ir::BasicBlock* continue_target,
+Loop::Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
            ir::BasicBlock* merge_target, ir::IRContext* context,
            opt::DominatorAnalysis* analysis)
     : ir_context(context),
       dom_analysis(analysis),
-      loop_start_(begin),
+      loop_header_(header),
       loop_continue_(continue_target),
       loop_merge_(merge_target),
       loop_condition_block_(nullptr),
@@ -84,7 +84,7 @@ void Loop::FindLoopBasicBlocks() {
   // Starting the loop header BasicBlock, traverse the dominator tree until we
   // reach the merge blockand add every node we traverse to the set of blocks
   // which we consider to be the loop.
-  auto begin_itr = tree.get_iterator(loop_start_);
+  auto begin_itr = tree.get_iterator(loop_header_);
   for (; begin_itr != tree.end(); ++begin_itr) {
     if (dom_analysis->Dominates(loop_merge_, begin_itr->bb_)) break;
     loop_basic_blocks.insert(begin_itr->bb_);
@@ -150,7 +150,7 @@ bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
                                  uint32_t* value) const {
   // We assume that the immediate dominator of the loop start block should
   // contain the initialiser for the induction variables.
-  ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_start_);
+  ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_header_);
   if (!bb) return false;
 
   ir::Instruction* store = nullptr;
@@ -284,7 +284,8 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
     ir::BasicBlock* start_bb = context->get_instr_block(merge_inst);
 
     // Add the loop the list of all the loops in the function.
-    loops_.push_back(MakeUnique<Loop>(start_bb, continue_bb, merge_bb, context, dom_analysis));
+    loops_.push_back(MakeUnique<Loop>(start_bb, continue_bb, merge_bb, context,
+                                      dom_analysis));
 
     // If this is the first loop don't check for dominating nesting loop.
     // Otherwise, move through the loops in reverse order to check if this is a

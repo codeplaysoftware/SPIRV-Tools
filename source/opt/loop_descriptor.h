@@ -39,7 +39,7 @@ class Loop {
   using const_iterator = ChildrenList::const_iterator;
   Loop();
 
-  Loop(ir::BasicBlock* begin, ir::BasicBlock* continue_target,
+  Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
        ir::BasicBlock* merge_target, ir::IRContext* context,
        opt::DominatorAnalysis* analysis);
   Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
@@ -48,11 +48,6 @@ class Loop {
         loop_continue_(continue_target),
         loop_merge_(merge_target),
         parent_(nullptr) {}
-
-
-
-
-
 
   iterator begin() { return nested_loops_.begin(); }
   iterator end() { return nested_loops_.end(); }
@@ -167,7 +162,7 @@ class Loop {
 
 class LoopDescriptor {
  public:
-  using LoopContainerType = std::vector<Loop>;
+  using LoopContainerType = std::vector<std::unique_ptr<Loop>>;
   using iterator = LoopContainerType::iterator;
   // Creates a loop object for all loops found in |f|.
   explicit LoopDescriptor(const ir::Function* f);
@@ -190,11 +185,10 @@ class LoopDescriptor {
   void PopulateList(const ir::Function* f);
 
   // A list of all the loops in the function.
-  std::vector<std::unique_ptr<Loop>> loops_;
+  LoopContainerType loops_;
 };
 
 }  // namespace opt
 }  // namespace spvtools
 
 #endif  // LIBSPIRV_OPT_LOOP_DESCRIPTORS_H_
-q
