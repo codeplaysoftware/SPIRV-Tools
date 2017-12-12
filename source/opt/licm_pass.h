@@ -15,28 +15,46 @@
 #ifndef LIBSPIRV_OPT_LICM_PASS_H_
 #define LIBSPIRV_OPT_LICM_PASS_H_
 
-#include "pass.h"
-#include "opt/basic_block.h"
 #include "loop_descriptor.h"
+#include "opt/basic_block.h"
+#include "pass.h"
 
 namespace spvtools {
 namespace opt {
 
 class LICMPass : public Pass {
  public:
+  LICMPass();
+
   const char* name() const override { return "licm"; }
-  Status Process(ir::IRContext *) override;
+  Status Process(ir::IRContext*) override;
 
  private:
-  bool ProcessIRContext(ir::IRContext* ir_context);
-  bool ProcessFunction(ir::Function* f);
-  bool ProcessLoop(Loop* loop);
-  ir::BasicBlock* FindPreheader(Loop* loop);
-  bool HoistInstruction(ir::BasicBlock* pre_header_bb, ir::Instruction* inst);
+  // Searchs the IRContext for functions and processes each, moving invairants
+  // outside loops within the function where possible
+  // Returns true if a change was made to a function within the IRContext
+  bool ProcessIRContext();
 
+  // Checks the function for loops, calling ProcessLoop on each one found.
+  // Returns true if a change was made to the function, false otherwise.
+  bool ProcessFunction(ir::Function* f);
+
+  // Checks for invariants in the loop and attempts to move them to the loops
+  // preheader. Works from inner loop to outer when nested loops are found.
+  // Returns true if a change was made to the loop, false otherwise.
+  bool ProcessLoop(Loop* loop);
+
+  // Returns the preheader of the loop
+  ir::BasicBlock* FindPreheader(Loop* loop);
+
+  // Moves the given instruction out of the loop and into the loops preheader
+  bool HoistInstruction(Loop* loop, ir::BasicBlock* pre_header_bb,
+                        ir::Instruction* inst);
+
+  ir::IRContext* ir_context;
 };
 
-} // namespace opt
-} // namespace spvtools
+}  // namespace opt
+}  // namespace spvtools
 
 #endif  // LIBSPIRV_OPT_LICM_PASS_H_

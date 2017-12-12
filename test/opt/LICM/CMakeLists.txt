@@ -12,9 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 add_spvtools_unittest(TARGET LICM_simple_hoist
+SRCS ../function_utils.h
+     simple_hoist.cpp
+LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET LICM_hoist_no_hoist
     SRCS ../function_utils.h
-         simple_hoist.cpp
+         hoist_no_hoist.cpp
     LIBS SPIRV-Tools-opt
 )

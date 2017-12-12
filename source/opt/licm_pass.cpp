@@ -13,21 +13,30 @@
 // limitations under the License.
 
 #include "licm_pass.h"
+#include "cfg.h"
+#include "module.h"
 
 #include "pass.h"
 
 namespace spvtools {
 namespace opt {
 
-Pass::Status LICMPass::Process(ir::IRContext* irContext) {
-  bool modified = ProcessIRContext(irContext);
+LICMPass::LICMPass(){};
+
+Pass::Status LICMPass::Process(ir::IRContext* context) {
+  bool modified = false;
+
+  if (context != nullptr) {
+    ir_context = context;
+    modified = ProcessIRContext();
+  }
 
   return modified ? Status::SuccessWithChange : Status::SuccessWithoutChange;
 }
 
-bool LICMPass::ProcessIRContext(ir::IRContext* irContext) {
+bool LICMPass::ProcessIRContext() {
   bool modified = false;
-  ir::Module* module = irContext->module();
+  ir::Module* module = ir_context->module();
   for (ir::Function& f : *module) {
     modified |= ProcessFunction(&f);
   }
@@ -36,9 +45,18 @@ bool LICMPass::ProcessIRContext(ir::IRContext* irContext) {
 
 bool LICMPass::ProcessFunction(ir::Function* f) {
   bool modified = false;
-  LoopDescriptor loopDescriptor{f};
-  for (size_t i = 0; i < loopDescriptor.NumLoops(); ++i) {
-    modified |= ProcessLoop(&loopDescriptor.GetLoop(i));
+  LoopDescriptor loop_descriptor{f};
+
+  ir::CFG cfg(ir_context->module());
+  std::list<ir::BasicBlock*> structured_order;
+  cfg.ComputeStructuredOrder(f, &*f->begin(), &structured_order);
+
+  for (auto it = structured_order.begin(); it != structured_order.end(); ++it) {
+    auto bb = *it;
+    if (bb == nullptr) return false;
+  }
+  for (size_t i = 0; i < loop_descriptor.NumLoops(); ++i) {
+    modified |= ProcessLoop(&loop_descriptor.GetLoop(i));
   }
   return modified;
 }
@@ -61,20 +79,33 @@ bool LICMPass::ProcessLoop(Loop* loop) {
     }
   }
 
+  if (invariants.size() > 0) {
+    ir::BasicBlock* pre_header = FindPreheader(loop);
+    for (auto invariant_it = invariants.begin();
+         invariant_it != invariants.end(); ++invariant_it) {
+      HoistInstruction(loop, pre_header, *invariant_it);
+    }
+    if (pre_header != nullptr)
+      std::cout << pre_header->tail()->NumOperands();
+  }
+
   return invariants.size() != 0;
 }
 
 ir::BasicBlock* LICMPass::FindPreheader(Loop* loop) {
-  if (loop == nullptr) return nullptr;
+  ir::CFG cfg(ir_context->module());
+  auto preds = cfg.preds(loop->GetStartBB()->id());
   return nullptr;
 }
 
-bool LICMPass::HoistInstruction(ir::BasicBlock* pre_header_bb,
+bool LICMPass::HoistInstruction(Loop* loop, ir::BasicBlock* pre_header_bb,
                                 ir::Instruction* inst) {
-  if (pre_header_bb == nullptr) return false;
-  if (inst == nullptr) return false;
+  if (loop == nullptr || pre_header_bb == nullptr || inst == nullptr) {
+    return false;
+  }
+  pre_header_bb->AddInstruction(std::unique_ptr<ir::Instruction>(inst));
   return false;
 }
 
-} // namespace opt
-} // namespace spvtools
+}  // namespace opt
+}  // namespace spvtools
