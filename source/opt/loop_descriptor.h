@@ -17,24 +17,47 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <vector>
+
 #include "opt/module.h"
 #include "opt/pass.h"
 
 namespace spvtools {
+namespace ir {
+class CFG;
+}  // namespace ir
+
 namespace opt {
 
 // A class to represent a loop.
 class Loop {
+  using ChildrenList = std::vector<Loop*>;
+
  public:
+  using iterator = ChildrenList::iterator;
+  using const_iterator = ChildrenList::const_iterator;
   Loop();
 
-  Loop(ir::BasicBlock* begin, ir::BasicBlock* continue_target,
+  Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
        ir::BasicBlock* merge_target, ir::IRContext* context,
        opt::DominatorAnalysis* analysis);
+  Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
+       ir::BasicBlock* merge_target)
+      : loop_header_(header),
+        loop_continue_(continue_target),
+        loop_merge_(merge_target),
+        parent_(nullptr) {}
+
+  iterator begin() { return nested_loops_.begin(); }
+  iterator end() { return nested_loops_.end(); }
+  const_iterator begin() const { return cbegin(); }
+  const_iterator end() const { return cend(); }
+  const_iterator cbegin() const { return nested_loops_.begin(); }
+  const_iterator cend() const { return nested_loops_.end(); }
 
   // Get the BasicBlock containing the original OpLoopMerge instruction.
-  inline ir::BasicBlock* GetStartBB() { return loop_start_; }
+  inline ir::BasicBlock* GetLoopHeader() { return loop_header_; }
 
   // Get the BasicBlock which is the start of the body of the loop.
   inline ir::BasicBlock* GetContinueBB() { return loop_continue_; }
@@ -89,7 +112,7 @@ class Loop {
   opt::DominatorAnalysis* dom_analysis;
 
   // The block which marks the start of the loop.
-  ir::BasicBlock* loop_start_;
+  ir::BasicBlock* loop_header_;
 
   // The block which begins the body of the loop.
   ir::BasicBlock* loop_continue_;
@@ -106,7 +129,7 @@ class Loop {
   Loop* parent_;
 
   // Nested child loops of this loop.
-  std::vector<Loop*> nested_loops_;
+  ChildrenList nested_loops_;
 
   // If we fail to extract all the information about the loop or run into
   // unexpected instructions/form, we should mark the loop as an invalid target
@@ -139,7 +162,7 @@ class Loop {
 
 class LoopDescriptor {
  public:
-  using LoopContainerType = std::vector<Loop>;
+  using LoopContainerType = std::vector<std::unique_ptr<Loop>>;
   using iterator = LoopContainerType::iterator;
   // Creates a loop object for all loops found in |f|.
   explicit LoopDescriptor(const ir::Function* f);
@@ -149,10 +172,10 @@ class LoopDescriptor {
 
   // Return the loop at a particular |index|. The |index| must be in bounds,
   // check with NumLoops before calling.
-  inline Loop& GetLoop(size_t index) {
+  inline Loop& GetLoop(size_t index) const {
     assert(loops_.size() > index &&
            "Index out of range (larger than loop count)");
-    return loops_[index];
+    return *loops_[index].get();
   }
 
   iterator begin() { return loops_.begin(); }

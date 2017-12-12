@@ -14,6 +14,10 @@
 
 #include "opt/loop_descriptor.h"
 #include <iostream>
+#include <vector>
+
+#include "opt/loop_descriptor.h"
+#include "opt/make_unique.h"
 
 namespace spvtools {
 namespace opt {
@@ -21,7 +25,7 @@ namespace opt {
 Loop::Loop()
     : ir_context(nullptr),
       dom_analysis(nullptr),
-      loop_start_(nullptr),
+      loop_header_(nullptr),
       loop_continue_(nullptr),
       loop_merge_(nullptr),
       loop_condition_block_(nullptr),
@@ -29,12 +33,12 @@ Loop::Loop()
       parent_(nullptr),
       induction_variable(nullptr) {}
 
-Loop::Loop(ir::BasicBlock* begin, ir::BasicBlock* continue_target,
+Loop::Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
            ir::BasicBlock* merge_target, ir::IRContext* context,
            opt::DominatorAnalysis* analysis)
     : ir_context(context),
       dom_analysis(analysis),
-      loop_start_(begin),
+      loop_header_(header),
       loop_continue_(continue_target),
       loop_merge_(merge_target),
       loop_condition_block_(nullptr),
@@ -80,7 +84,7 @@ void Loop::FindLoopBasicBlocks() {
   // Starting the loop header BasicBlock, traverse the dominator tree until we
   // reach the merge blockand add every node we traverse to the set of blocks
   // which we consider to be the loop.
-  auto begin_itr = tree.get_iterator(loop_start_);
+  auto begin_itr = tree.get_iterator(loop_header_);
   for (; begin_itr != tree.end(); ++begin_itr) {
     if (dom_analysis->Dominates(loop_merge_, begin_itr->bb_)) break;
     loop_basic_blocks.insert(begin_itr->bb_);
@@ -146,7 +150,7 @@ bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
                                  uint32_t* value) const {
   // We assume that the immediate dominator of the loop start block should
   // contain the initialiser for the induction variables.
-  ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_start_);
+  ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_header_);
   if (!bb) return false;
 
   ir::Instruction* store = nullptr;
@@ -242,16 +246,6 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
       context->GetDominatorAnalysis(f, *context->cfg());
 
   std::vector<ir::Instruction*> loop_merge_inst;
-  // Function to find OpLoopMerge instructions inside the dominator tree.
-  auto find_merge_inst_in_dom_order =
-      [&loop_merge_inst](const DominatorTreeNode* node) {
-        if (node->id() == 0) return true;
-        ir::Instruction* merge_inst = node->bb_->GetLoopMergeInst();
-        if (merge_inst) {
-          loop_merge_inst.push_back(merge_inst);
-        }
-        return true;
-      };
 
   // Traverse the tree and apply the above functor to find all the OpLoopMerge
   // instructions. Instructions will be in domination order of BasicBlocks.
@@ -259,7 +253,14 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
   // loop_merge_inst you still need to check dominance between each block
   // manually.
   const DominatorTree& dom_tree = dom_analysis->GetDomTree();
-  dom_tree.Visit(find_merge_inst_in_dom_order);
+  // The root node of the dominator tree is a pseudo-block, ignore it.
+  for (DominatorTree::const_iterator node = ++dom_tree.begin();
+       node != dom_tree.end(); ++node) {
+    ir::Instruction* merge_inst = node->bb_->GetLoopMergeInst();
+    if (merge_inst) {
+      loop_merge_inst.push_back(merge_inst);
+    }
+  }
 
   loops_.clear();
   loops_.reserve(loop_merge_inst.size());
@@ -283,33 +284,35 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
     ir::BasicBlock* start_bb = context->get_instr_block(merge_inst);
 
     // Add the loop the list of all the loops in the function.
-    loops_.push_back({start_bb, continue_bb, merge_bb, context, dom_analysis});
+    loops_.push_back(MakeUnique<Loop>(start_bb, continue_bb, merge_bb, context,
+                                      dom_analysis));
 
     // If this is the first loop don't check for dominating nesting loop.
     // Otherwise, move through the loops in reverse order to check if this is a
     // nested loop. If it isn't a nested loop this for will exit on the first
     // iteration.
     for (auto itr = loops_.rbegin() + 1; itr != loops_.rend(); ++itr) {
-      Loop& previous_loop = *itr;
+      Loop* previous_loop = itr->get();
 
       // If this loop is dominated by the entry of the previous loop it could be
       // a nested loop of that loop or a nested loop of a parent of that loop.
       // Otherwise it's not nested at all.
-      if (!dom_analysis->Dominates(previous_loop.GetStartBB(), start_bb)) break;
+      if (!dom_analysis->Dominates(previous_loop->GetLoopHeader(), start_bb))
+        break;
 
       // If this loop is dominated by the merge block of the previous loop it's
       // a nested loop of the parent of the previous loop. Otherwise it's just a
       // nested loop of the parent.
-      if (dom_analysis->Dominates(previous_loop.GetMergeBB(), start_bb)) {
+      if (dom_analysis->Dominates(previous_loop->GetMergeBB(), start_bb)) {
         continue;
       } else {
-        previous_loop.AddNestedLoop(&loops_.back());
-        loops_.back().SetParent(&previous_loop);
+        previous_loop->AddNestedLoop(loops_.back().get());
+        loops_.back()->SetParent(previous_loop);
         break;
       }
     }
   }
 }
 
-}  // opt
-}  // spvtools
+}  // namespace opt
+}  // namespace spvtools
