@@ -179,6 +179,36 @@ class DominatorTree {
     return true;
   }
 
+  // Returns the DominatorTreeNode associated with the basic block |bb|.
+  // If the |bb| is unknown to the dominator tree, it returns null.
+  inline DominatorTreeNode* operator[](ir::BasicBlock* bb) {
+    return (*this)[bb->id()];
+  }
+  // Returns the DominatorTreeNode associated with the basic block |bb|.
+  // If the |bb| is unknown to the dominator tree, it returns null.
+  inline const DominatorTreeNode* operator[](ir::BasicBlock* bb) const {
+    return (*this)[bb->id()];
+  }
+
+  // Returns the DominatorTreeNode associated with the basic block id |id|.
+  // If the id |id| is unknown to the dominator tree, it returns null.
+  inline DominatorTreeNode* operator[](uint32_t id) {
+    DominatorTreeNodeMap::iterator node_iter = nodes_.find(id);
+    if (node_iter == nodes_.end()) {
+      return nullptr;
+    }
+    return &node_iter->second;
+  }
+  // Returns the DominatorTreeNode associated with the basic block id |id|.
+  // If the id |id| is unknown to the dominator tree, it returns null.
+  inline const DominatorTreeNode* operator[](uint32_t id) const {
+    DominatorTreeNodeMap::const_iterator node_iter = nodes_.find(id);
+    if (node_iter == nodes_.end()) {
+      return nullptr;
+    }
+    return &node_iter->second;
+  }
+
  private:
   // Adds the basic block |bb| to the tree structure if it doesn't already
   // exist.
