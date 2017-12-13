@@ -23,28 +23,24 @@ namespace spvtools {
 namespace opt {
 
 Loop::Loop()
-    : ir_context(nullptr),
-      dom_analysis(nullptr),
+    : ir_context_(nullptr),
+      dom_analysis_(nullptr),
       loop_header_(nullptr),
       loop_continue_(nullptr),
       loop_merge_(nullptr),
-      loop_condition_block_(nullptr),
-      loop_body_begin_(nullptr),
       parent_(nullptr),
-      induction_variable(nullptr) {}
+      induction_variable_(nullptr) {}
 
 Loop::Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
            ir::BasicBlock* merge_target, ir::IRContext* context,
            opt::DominatorAnalysis* analysis)
-    : ir_context(context),
-      dom_analysis(analysis),
+    : ir_context_(context),
+      dom_analysis_(analysis),
       loop_header_(header),
       loop_continue_(continue_target),
       loop_merge_(merge_target),
-      loop_condition_block_(nullptr),
-      loop_body_begin_(nullptr),
       parent_(nullptr),
-      induction_variable(nullptr) {}
+      induction_variable_(nullptr) {}
 
 bool Loop::GetConstant(const ir::Instruction* inst, uint32_t* value) const {
   if (inst->opcode() != SpvOp::SpvOpConstant) {
@@ -69,7 +65,8 @@ ir::Instruction* Loop::GetVariable(const ir::Instruction* load_inst) {
   }
 
   // From the branch instruction find the branch condition.
-  opt::analysis::DefUseManager* def_use_manager = ir_context->get_def_use_mgr();
+  opt::analysis::DefUseManager* def_use_manager =
+      ir_context_->get_def_use_mgr();
   ir::Instruction* var =
       def_use_manager->GetDef(load_inst->GetSingleWordOperand(2));
 
@@ -77,22 +74,23 @@ ir::Instruction* Loop::GetVariable(const ir::Instruction* load_inst) {
 }
 
 void Loop::FindLoopBasicBlocks() {
-  loop_basic_blocks.clear();
+  loop_basic_blocks_.clear();
 
-  opt::DominatorTree& tree = dom_analysis->GetDomTree();
+  opt::DominatorTree& tree = dom_analysis_->GetDomTree();
 
   // Starting the loop header BasicBlock, traverse the dominator tree until we
   // reach the merge blockand add every node we traverse to the set of blocks
   // which we consider to be the loop.
   auto begin_itr = tree.get_iterator(loop_header_);
   for (; begin_itr != tree.end(); ++begin_itr) {
-    if (dom_analysis->Dominates(loop_merge_, begin_itr->bb_)) break;
-    loop_basic_blocks.insert(begin_itr->bb_);
+    if (dom_analysis_->Dominates(loop_merge_, begin_itr->bb_)) break;
+    loop_basic_blocks_.insert(begin_itr->bb_);
   };
 }
 
 bool Loop::IsLoopInvariant(const ir::Instruction* variable_inst) {
-  opt::analysis::DefUseManager* def_use_manager = ir_context->get_def_use_mgr();
+  opt::analysis::DefUseManager* def_use_manager =
+      ir_context_->get_def_use_mgr();
 
   FindLoopBasicBlocks();
 
@@ -104,7 +102,7 @@ bool Loop::IsLoopInvariant(const ir::Instruction* variable_inst) {
           user->context()->get_instr_block(user);
 
       // If any of the stores are in the loop.
-      if (loop_basic_blocks.count(parent_block) != 0) {
+      if (loop_basic_blocks_.count(parent_block) != 0) {
         // Then the variable is variant to the loop.
         is_invariant = false;
       }
@@ -134,7 +132,8 @@ ir::Instruction* Loop::GetInductionStepOperation(
   bb->ForEachInst(find_store);
   if (!store) return nullptr;
 
-  opt::analysis::DefUseManager* def_use_manager = ir_context->get_def_use_mgr();
+  opt::analysis::DefUseManager* def_use_manager =
+      ir_context_->get_def_use_mgr();
 
   ir::Instruction* inst =
       def_use_manager->GetDef(store->GetSingleWordOperand(1));
@@ -150,7 +149,7 @@ bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
                                  uint32_t* value) const {
   // We assume that the immediate dominator of the loop start block should
   // contain the initialiser for the induction variables.
-  ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_header_);
+  ir::BasicBlock* bb = dom_analysis_->ImmediateDominator(loop_header_);
   if (!bb) return false;
 
   ir::Instruction* store = nullptr;
@@ -165,7 +164,8 @@ bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
   bb->ForEachInst(find_store);
   if (!store) return false;
 
-  opt::analysis::DefUseManager* def_use_manager = ir_context->get_def_use_mgr();
+  opt::analysis::DefUseManager* def_use_manager =
+      ir_context_->get_def_use_mgr();
 
   ir::Instruction* constant =
       def_use_manager->GetDef(store->GetSingleWordOperand(1));
@@ -175,23 +175,23 @@ bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
 }
 
 Loop::LoopVariable* Loop::GetInductionVariable() {
-  if (!induction_variable) {
+  if (!induction_variable_) {
     FindInductionVariable();
   }
 
-  return induction_variable.get();
+  return induction_variable_.get();
 }
 
 void Loop::FindInductionVariable() {
   // Get the basic block which branches to the merge block.
-  const ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_merge_);
+  const ir::BasicBlock* bb = dom_analysis_->ImmediateDominator(loop_merge_);
 
   // Find the branch instruction.
   const ir::Instruction& branch_inst = *bb->ctail();
   if (branch_inst.opcode() == SpvOp::SpvOpBranchConditional) {
     // From the branch instruction find the branch condition.
     opt::analysis::DefUseManager* def_use_manager =
-        ir_context->get_def_use_mgr();
+        ir_context_->get_def_use_mgr();
     ir::Instruction* condition =
         def_use_manager->GetDef(branch_inst.GetSingleWordOperand(0));
 
@@ -230,7 +230,7 @@ void Loop::FindInductionVariable() {
       // Exit out if we couldn't resolve the rhs to be a constant integer.
       if (!GetConstant(step_amount_inst, &step_value)) return;
 
-      induction_variable =
+      induction_variable_ =
           std::unique_ptr<Loop::LoopVariable>(new Loop::LoopVariable(
               variable_inst, step_value, step_value, const_value, condition));
     }
@@ -242,7 +242,7 @@ LoopDescriptor::LoopDescriptor(const ir::Function* f) { PopulateList(f); }
 void LoopDescriptor::PopulateList(const ir::Function* f) {
   ir::IRContext* context = f->GetParent()->context();
 
-  opt::DominatorAnalysis* dom_analysis =
+  opt::DominatorAnalysis* dom_analysis_ =
       context->GetDominatorAnalysis(f, *context->cfg());
 
   std::vector<ir::Instruction*> loop_merge_inst;
@@ -252,7 +252,7 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
   // However, this does not mean that dominance is implied by the order of
   // loop_merge_inst you still need to check dominance between each block
   // manually.
-  const DominatorTree& dom_tree = dom_analysis->GetDomTree();
+  const DominatorTree& dom_tree = dom_analysis_->GetDomTree();
   // The root node of the dominator tree is a pseudo-block, ignore it.
   for (DominatorTree::const_iterator node = ++dom_tree.begin();
        node != dom_tree.end(); ++node) {
@@ -285,7 +285,7 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
 
     // Add the loop the list of all the loops in the function.
     loops_.push_back(MakeUnique<Loop>(start_bb, continue_bb, merge_bb, context,
-                                      dom_analysis));
+                                      dom_analysis_));
 
     // If this is the first loop don't check for dominating nesting loop.
     // Otherwise, move through the loops in reverse order to check if this is a
@@ -297,13 +297,13 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
       // If this loop is dominated by the entry of the previous loop it could be
       // a nested loop of that loop or a nested loop of a parent of that loop.
       // Otherwise it's not nested at all.
-      if (!dom_analysis->Dominates(previous_loop->GetLoopHeader(), start_bb))
+      if (!dom_analysis_->Dominates(previous_loop->GetLoopHeader(), start_bb))
         break;
 
       // If this loop is dominated by the merge block of the previous loop it's
       // a nested loop of the parent of the previous loop. Otherwise it's just a
       // nested loop of the parent.
-      if (dom_analysis->Dominates(previous_loop->GetMergeBB(), start_bb)) {
+      if (dom_analysis_->Dominates(previous_loop->GetMergeBB(), start_bb)) {
         continue;
       } else {
         previous_loop->AddNestedLoop(loops_.back().get());
