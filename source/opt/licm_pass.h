@@ -17,6 +17,7 @@
 
 #include "loop_descriptor.h"
 #include "opt/basic_block.h"
+#include "opt/instruction.h"
 #include "pass.h"
 
 namespace spvtools {
@@ -48,10 +49,11 @@ class LICMPass : public Pass {
   ir::BasicBlock* FindPreheader(Loop* loop);
 
   // Moves the given instruction out of the loop and into the loops preheader
-  bool HoistInstruction(Loop* loop, ir::BasicBlock* pre_header_bb,
-                        ir::Instruction* inst);
+  bool HoistInstructions(Loop* loop, ir::BasicBlock* pre_header_bb,
+                        ir::BasicBlock* invariants_bb);
 
   ir::IRContext* ir_context;
+  opt::DominatorAnalysis* dom_analysis;
 };
 
 }  // namespace opt

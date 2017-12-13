@@ -48,13 +48,8 @@ bool LICMPass::ProcessFunction(ir::Function* f) {
   LoopDescriptor loop_descriptor{f};
 
   ir::CFG cfg(ir_context->module());
-  std::list<ir::BasicBlock*> structured_order;
-  cfg.ComputeStructuredOrder(f, &*f->begin(), &structured_order);
+  dom_analysis = ir_context->GetDominatorAnalysis(f, cfg);
 
-  for (auto it = structured_order.begin(); it != structured_order.end(); ++it) {
-    auto bb = *it;
-    if (bb == nullptr) return false;
-  }
   for (size_t i = 0; i < loop_descriptor.NumLoops(); ++i) {
     modified |= ProcessLoop(&loop_descriptor.GetLoop(i));
   }
@@ -79,32 +74,35 @@ bool LICMPass::ProcessLoop(Loop* loop) {
     }
   }
 
+  ir::BasicBlock invariants_bb(
+      std::unique_ptr<ir::Instruction>((new ir::Instruction(
+          ir_context, SpvOpLabel, 0, ir_context->TakeNextUniqueId(), {}))));
+  ir::BasicBlock* pre_header = FindPreheader(loop);
+
   if (invariants.size() > 0) {
-    ir::BasicBlock* pre_header = FindPreheader(loop);
     for (auto invariant_it = invariants.begin();
          invariant_it != invariants.end(); ++invariant_it) {
-      HoistInstruction(loop, pre_header, *invariant_it);
+      invariants_bb.AddInstruction(
+          std::unique_ptr<ir::Instruction>(*invariant_it));
     }
-    if (pre_header != nullptr)
-      std::cout << pre_header->tail()->NumOperands();
   }
 
-  return invariants.size() != 0;
+  return HoistInstructions(loop, pre_header, &invariants_bb);
 }
 
 ir::BasicBlock* LICMPass::FindPreheader(Loop* loop) {
-  ir::CFG cfg(ir_context->module());
-  auto preds = cfg.preds(loop->GetStartBB()->id());
-  return nullptr;
+  ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop->GetStartBB());
+  return bb;
 }
 
-bool LICMPass::HoistInstruction(Loop* loop, ir::BasicBlock* pre_header_bb,
-                                ir::Instruction* inst) {
-  if (loop == nullptr || pre_header_bb == nullptr || inst == nullptr) {
+// TODO(Alexander: Remove instructions from loop when hoisting)
+bool LICMPass::HoistInstructions(Loop* loop, ir::BasicBlock* pre_header_bb,
+                                 ir::BasicBlock* invariants_bb) {
+  if (loop == nullptr || pre_header_bb == nullptr || invariants_bb == nullptr) {
     return false;
   }
-  pre_header_bb->AddInstruction(std::unique_ptr<ir::Instruction>(inst));
-  return false;
+  pre_header_bb->AddInstructions(invariants_bb);
+  return true;
 }
 
 }  // namespace opt
