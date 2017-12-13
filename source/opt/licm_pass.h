@@ -31,7 +31,7 @@ class LICMPass : public Pass {
   Status Process(ir::IRContext*) override;
 
  private:
-  // Searchs the IRContext for functions and processes each, moving invairants
+  // Searches the IRContext for functions and processes each, moving invairants
   // outside loops within the function where possible
   // Returns true if a change was made to a function within the IRContext
   bool ProcessIRContext();

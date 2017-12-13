@@ -285,8 +285,9 @@ Optimizer::PassToken CreateLocalRedundancyEliminationPass() {
 }
 
 Optimizer::PassToken CreateLICMPass() {
-  return MakeUnique<Optimizer::PassToken::Impl>(
-      MakeUnique<opt::LICMPass>());
+  return MakeUnique<Optimizer::PassToken::Impl>(MakeUnique<opt::LICMPass>());
+}
+
 Optimizer::PassToken CreateRedundancyEliminationPass() {
   return MakeUnique<Optimizer::PassToken::Impl>(
       MakeUnique<opt::RedundancyEliminationPass>());
