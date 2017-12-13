@@ -94,7 +94,7 @@ Optimizer& Optimizer::RegisterPerformancePasses() {
       .RegisterPass(CreateBlockMergePass())
       .RegisterPass(CreateLocalMultiStoreElimPass())
       .RegisterPass(CreateInsertExtractElimPass())
-      .RegisterPass(CreateLocalRedundancyEliminationPass())
+      .RegisterPass(CreateRedundancyEliminationPass())
       // Currently exposing driver bugs resulting in crashes (#946)
       // .RegisterPass(CreateCommonUniformElimPass())
       .RegisterPass(CreateDeadVariableEliminationPass())
@@ -114,7 +114,7 @@ Optimizer& Optimizer::RegisterSizePasses() {
       .RegisterPass(CreateBlockMergePass())
       .RegisterPass(CreateLocalMultiStoreElimPass())
       .RegisterPass(CreateInsertExtractElimPass())
-      .RegisterPass(CreateLocalRedundancyEliminationPass())
+      .RegisterPass(CreateRedundancyEliminationPass())
       // Currently exposing driver bugs resulting in crashes (#946)
       // .RegisterPass(CreateCommonUniformElimPass())
       .RegisterPass(CreateDeadVariableEliminationPass());
@@ -284,8 +284,14 @@ Optimizer::PassToken CreateLocalRedundancyEliminationPass() {
       MakeUnique<opt::LocalRedundancyEliminationPass>());
 }
 
+<<<<<<< HEAD
 Optimizer::PassToken CreateLICMPass() {
   return MakeUnique<Optimizer::PassToken::Impl>(
       MakeUnique<opt::LICMPass>());
+=======
+Optimizer::PassToken CreateRedundancyEliminationPass() {
+  return MakeUnique<Optimizer::PassToken::Impl>(
+      MakeUnique<opt::RedundancyEliminationPass>());
+>>>>>>> SO-31-terminator-conditions
 }
 }  // namespace spvtools

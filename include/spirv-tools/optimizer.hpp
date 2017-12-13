@@ -437,6 +437,11 @@ Optimizer::PassToken CreateLocalRedundancyEliminationPass();
 // This pass will look for invariant instructions inside loops and hoist them to
 // the loops preheader.
 Optimizer::PassToken CreateLICMPass();
+
+// Create global value numbering pass.
+// This pass will look for instructions where the same value is computed on all
+// paths leading to the instruction.  Those instructions are deleted.
+Optimizer::PassToken CreateRedundancyEliminationPass();
 }  // namespace spvtools
 
 #endif  // SPIRV_TOOLS_OPTIMIZER_HPP_
