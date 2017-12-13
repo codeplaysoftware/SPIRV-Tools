@@ -74,9 +74,10 @@ bool LICMPass::ProcessLoop(Loop* loop) {
     }
   }
 
+  uint32_t new_bb_result_id = ir_context->TakeNextUniqueId();
   ir::BasicBlock invariants_bb(
       std::unique_ptr<ir::Instruction>((new ir::Instruction(
-          ir_context, SpvOpLabel, 0, ir_context->TakeNextUniqueId(), {}))));
+          ir_context, SpvOpLabel, 0, new_bb_result_id, {}))));
   ir::BasicBlock* pre_header = FindPreheader(loop);
 
   if (invariants.size() > 0) {

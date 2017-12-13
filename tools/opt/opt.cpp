@@ -397,13 +397,10 @@ OptStatus ParseFlags(int argc, const char** argv, Optimizer* optimizer,
         optimizer->RegisterPass(CreateCFGCleanupPass());
       } else if (0 == strcmp(cur_arg, "--local-redundancy-elimination")) {
         optimizer->RegisterPass(CreateLocalRedundancyEliminationPass());
-<<<<<<< HEAD
       } else if (0 == strcmp(cur_arg, "--licm")) {
         optimizer->RegisterPass(CreateLICMPass());
-=======
       } else if (0 == strcmp(cur_arg, "--redundancy-elimination")) {
         optimizer->RegisterPass(CreateRedundancyEliminationPass());
->>>>>>> SO-31-terminator-conditions
       } else if (0 == strcmp(cur_arg, "--relax-store-struct")) {
         options->relax_struct_store = true;
       } else if (0 == strcmp(cur_arg, "--skip-validation")) {
