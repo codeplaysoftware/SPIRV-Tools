@@ -28,6 +28,7 @@ Loop::Loop()
       loop_header_(nullptr),
       loop_continue_(nullptr),
       loop_merge_(nullptr),
+      loop_preheader_(nullptr),
       parent_(nullptr),
       induction_variable_(nullptr) {}
 
@@ -39,8 +40,12 @@ Loop::Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
       loop_header_(header),
       loop_continue_(continue_target),
       loop_merge_(merge_target),
+      loop_preheader_(nullptr),
       parent_(nullptr),
-      induction_variable_(nullptr) {}
+      induction_variable_(nullptr) {
+  assert(dom_analysis_);
+  loop_preheader_ = dom_analysis_->ImmediateDominator(loop_header_);
+}
 
 bool Loop::GetConstant(const ir::Instruction* inst, uint32_t* value) const {
   if (inst->opcode() != SpvOp::SpvOpConstant) {
@@ -83,8 +88,9 @@ void Loop::FindLoopBasicBlocks() {
   // which we consider to be the loop.
   auto begin_itr = tree.get_iterator(loop_header_);
   for (; begin_itr != tree.end(); ++begin_itr) {
-    if (dom_analysis_->Dominates(loop_merge_, begin_itr->bb_)) break;
-    loop_basic_blocks_.insert(begin_itr->bb_);
+    if (!dom_analysis_->Dominates(loop_merge_, begin_itr->bb_)) {
+      loop_basic_blocks_.insert(begin_itr->bb_);
+    }
   };
 }
 
@@ -211,7 +217,7 @@ void Loop::FindInductionVariable() {
 
       ir::Instruction* variable_inst = GetVariable(lhs_inst);
 
-      if (!IsLoopInvariant(variable_inst)) {
+      if (IsLoopInvariant(variable_inst)) {
         return;
       }
 
