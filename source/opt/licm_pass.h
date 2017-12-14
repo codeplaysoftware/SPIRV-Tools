@@ -48,9 +48,14 @@ class LICMPass : public Pass {
   // Returns the preheader of the loop
   ir::BasicBlock* FindPreheader(Loop* loop);
 
-  // Moves the given instruction out of the loop and into the loops preheader
-  bool HoistInstructions(Loop* loop, ir::BasicBlock* pre_header_bb,
-                        ir::BasicBlock* invariants_bb);
+  // Finds all basic blocks in the between the header and merge blocks of the
+  // loop, not contained in a nested loop
+  std::vector<ir::BasicBlock*> FindValidBasicBlocks(Loop* loop);
+
+  // Moves the given basic block out of the loop and into the loops
+  // preheader
+  bool HoistInstructions(ir::BasicBlock* pre_header_bb,
+                         ir::BasicBlock* invariants_bb);
 
   ir::IRContext* ir_context;
   opt::DominatorAnalysis* dom_analysis;

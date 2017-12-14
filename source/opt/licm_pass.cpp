@@ -37,6 +37,8 @@ Pass::Status LICMPass::Process(ir::IRContext* context) {
 bool LICMPass::ProcessIRContext() {
   bool modified = false;
   ir::Module* module = ir_context->module();
+
+  // Process each function in the module
   for (ir::Function& f : *module) {
     modified |= ProcessFunction(&f);
   }
@@ -47,9 +49,13 @@ bool LICMPass::ProcessFunction(ir::Function* f) {
   bool modified = false;
   LoopDescriptor loop_descriptor{f};
 
+  // TODO(Alexander: remove this debug dom_analysis stuff)
   ir::CFG cfg(ir_context->module());
   dom_analysis = ir_context->GetDominatorAnalysis(f, cfg);
 
+  dom_analysis->DumpAsDot(std::cout);
+
+  // Process each loop in the function
   for (size_t i = 0; i < loop_descriptor.NumLoops(); ++i) {
     modified |= ProcessLoop(&loop_descriptor.GetLoop(i));
   }
@@ -65,45 +71,82 @@ bool LICMPass::ProcessLoop(Loop* loop) {
     }
   }
 
+  // Search all BB in this loop, and not in a nested loop, for invariants,
+  // starting at the first bb after the header and stopping when we reach the
+  // header.
   std::vector<ir::Instruction*> invariants = {};
-  ir::BasicBlock* bb = loop->GetContinueBB();
-  for (auto it = bb->begin(); it != bb->end(); ++it) {
-    if (it->result_id() == 0) continue;
-    if (loop->IsLoopInvariant(&(*it))) {
-      invariants.push_back(&(*it));
+  std::vector<ir::BasicBlock*> valid_blocks = FindValidBasicBlocks(loop);
+  for (auto bb_it = valid_blocks.begin(); bb_it != valid_blocks.end();
+       ++bb_it) {
+    for (auto inst_it = (*bb_it)->begin(); inst_it != (*bb_it)->end();
+         ++inst_it) {
+      // TODO(Alexander: Add appropriate conditions to only test OpCodes that
+      // can be invariant)
+      if (inst_it->result_id() == 0) continue;
+      if (loop->IsLoopInvariant(&(*inst_it))) {
+        invariants.push_back(&(*inst_it));
+      }
     }
   }
 
-  uint32_t new_bb_result_id = ir_context->TakeNextUniqueId();
-  ir::BasicBlock invariants_bb(
-      std::unique_ptr<ir::Instruction>((new ir::Instruction(
-          ir_context, SpvOpLabel, 0, new_bb_result_id, {}))));
-  ir::BasicBlock* pre_header = FindPreheader(loop);
-
+  // If we found any invariants, process them
   if (invariants.size() > 0) {
+    // Create a new BB to hold all found invariants
+    uint32_t new_bb_result_id = ir_context->TakeNextUniqueId();
+    ir::BasicBlock invariants_bb(std::unique_ptr<ir::Instruction>((
+        new ir::Instruction(ir_context, SpvOpLabel, 0, new_bb_result_id, {}))));
+
+    // Add all invariant instructions to the new bb
     for (auto invariant_it = invariants.begin();
          invariant_it != invariants.end(); ++invariant_it) {
       invariants_bb.AddInstruction(
           std::unique_ptr<ir::Instruction>(*invariant_it));
     }
+
+    // Remove all invariant instructions from the existing loop
+    for (auto invariant_it = invariants.begin();
+         invariant_it != invariants.end(); ++invariant_it) {
+      // Remove the instruction once we've added it to our bb
+      ir_context->KillInst(*invariant_it);
+    }
+
+    ir::BasicBlock* pre_header = FindPreheader(loop);
+    // Insert the new BB of invariants between the loop header and the previous
+    // BB
+    return HoistInstructions(pre_header, &invariants_bb);
   }
 
-  return HoistInstructions(loop, pre_header, &invariants_bb);
+  // Didn't find any invariants
+  return false;
 }
 
 ir::BasicBlock* LICMPass::FindPreheader(Loop* loop) {
-  ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop->GetStartBB());
-  return bb;
+  return dom_analysis->ImmediateDominator(loop->GetLoopHeader());
 }
 
-// TODO(Alexander: Remove instructions from loop when hoisting)
-bool LICMPass::HoistInstructions(Loop* loop, ir::BasicBlock* pre_header_bb,
+bool LICMPass::HoistInstructions(ir::BasicBlock* pre_header_bb,
                                  ir::BasicBlock* invariants_bb) {
-  if (loop == nullptr || pre_header_bb == nullptr || invariants_bb == nullptr) {
+  if (pre_header_bb == nullptr || invariants_bb == nullptr) {
     return false;
   }
+  // TODO(Alexander: Change this to insert the new bb between the preheader and
+  // header, rather than inserting into the preheader)
   pre_header_bb->AddInstructions(invariants_bb);
   return true;
+}
+
+std::vector<ir::BasicBlock*> LICMPass::FindValidBasicBlocks(Loop* loop) {
+  std::vector<ir::BasicBlock*> blocks = {};
+
+  opt::DominatorTree& tree = dom_analysis->GetDomTree();
+
+  auto begin_itr = tree.get_iterator(loop->GetLoopHeader());
+  for (; begin_itr != tree.end(); ++begin_itr) {
+    if (dom_analysis->Dominates(loop->GetMergeBB(), begin_itr->bb_)) break;
+    // TODO(Alexander: Check that the bb is not in a nested loop!)
+    blocks.push_back(begin_itr->bb_);
+  }
+  return blocks;
 }
 
 }  // namespace opt
