@@ -17,14 +17,14 @@
 #include <cassert>
 #include <cstring>
 
-#include "spirv/1.0/GLSL.std.450.h"
-#include "spirv/1.0/OpenCL.std.h"
+#include "latest_version_glsl_std_450_header.h"
+#include "latest_version_opencl_std_header.h"
 #include "spirv_definition.h"
 
 #include "macro.h"
 
-#include "glsl.std.450.insts-1.0.inc"  // defines glsl_entries
-#include "opencl.std.insts-1.0.inc"    // defines opencl_entries
+#include "glsl.std.450.insts.inc"  // defines glsl_entries
+#include "opencl.std.insts.inc"    // defines opencl_entries
 
 #include "spv-amd-gcn-shader.insts.inc"
 #include "spv-amd-shader-ballot.insts.inc"
@@ -59,8 +59,14 @@ spv_result_t spvExtInstTableGet(spv_ext_inst_table* pExtInstTable,
     case SPV_ENV_VULKAN_1_0:
     case SPV_ENV_UNIVERSAL_1_1:
     case SPV_ENV_UNIVERSAL_1_2:
+    case SPV_ENV_OPENCL_1_2:
+    case SPV_ENV_OPENCL_EMBEDDED_1_2:
+    case SPV_ENV_OPENCL_2_0:
+    case SPV_ENV_OPENCL_EMBEDDED_2_0:
     case SPV_ENV_OPENCL_2_1:
+    case SPV_ENV_OPENCL_EMBEDDED_2_1:
     case SPV_ENV_OPENCL_2_2:
+    case SPV_ENV_OPENCL_EMBEDDED_2_2:
     case SPV_ENV_OPENGL_4_0:
     case SPV_ENV_OPENGL_4_1:
     case SPV_ENV_OPENGL_4_2:

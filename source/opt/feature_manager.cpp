@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright (c) 2017 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,22 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef LIBSPIRV_SPIRV_DEFINITION_H_
-#define LIBSPIRV_SPIRV_DEFINITION_H_
+#include "feature_manager.h"
 
-#include <cstdint>
+#include "enum_string_mapping.h"
 
-#include "latest_version_spirv_header.h"
+namespace spvtools {
+namespace opt {
 
-#define spvIsInBitfield(value, bitfield) ((value) == ((value)&bitfield))
+void FeatureManager::Analyze(ir::Module* module) {
+  for (auto ext : module->extensions()) {
+    const std::string name =
+        reinterpret_cast<const char*>(ext.GetInOperand(0u).words.data());
+    libspirv::Extension extension;
+    if (libspirv::GetExtensionFromString(name, &extension)) {
+      extensions_.Add(extension);
+    }
+  }
+}
 
-typedef struct spv_header_t {
-  uint32_t magic;
-  uint32_t version;
-  uint32_t generator;
-  uint32_t bound;
-  uint32_t schema;               // NOTE: Reserved
-  const uint32_t* instructions;  // NOTE: Unfixed pointer to instruciton stream
-} spv_header_t;
-
-#endif  // LIBSPIRV_SPIRV_DEFINITION_H_
+}  // namespace opt
+}  // namespace spvtools
