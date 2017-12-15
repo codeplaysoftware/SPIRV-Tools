@@ -22,16 +22,6 @@
 namespace spvtools {
 namespace opt {
 
-Loop::Loop()
-    : ir_context_(nullptr),
-      dom_analysis_(nullptr),
-      loop_header_(nullptr),
-      loop_continue_(nullptr),
-      loop_merge_(nullptr),
-      loop_preheader_(nullptr),
-      parent_(nullptr),
-      induction_variable_(nullptr) {}
-
 Loop::Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
            ir::BasicBlock* merge_target, ir::IRContext* context,
            opt::DominatorAnalysis* analysis)
@@ -42,7 +32,7 @@ Loop::Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
       loop_merge_(merge_target),
       loop_preheader_(nullptr),
       parent_(nullptr),
-      induction_variable_(nullptr) {
+      induction_variable_() {
   assert(dom_analysis_);
   loop_preheader_ = dom_analysis_->ImmediateDominator(loop_header_);
 }
@@ -180,12 +170,13 @@ bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
   return GetConstant(constant, value);
 }
 
-Loop::LoopVariable* Loop::GetInductionVariable() {
-  if (!induction_variable_) {
+InductionVariable* Loop::GetInductionVariable() {
+  if (!induction_variable_.def_) {
     FindInductionVariable();
   }
-
-  return induction_variable_.get();
+  if (induction_variable_.def_)
+    return nullptr;
+  return &induction_variable_;
 }
 
 void Loop::FindInductionVariable() {
@@ -236,9 +227,8 @@ void Loop::FindInductionVariable() {
       // Exit out if we couldn't resolve the rhs to be a constant integer.
       if (!GetConstant(step_amount_inst, &step_value)) return;
 
-      induction_variable_ =
-          std::unique_ptr<Loop::LoopVariable>(new Loop::LoopVariable(
-              variable_inst, step_value, step_value, const_value, condition));
+      induction_variable_ = InductionVariable(
+          variable_inst, step_value, step_value, const_value, condition);
     }
   }
 }
@@ -303,17 +293,16 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
       // If this loop is dominated by the entry of the previous loop it could be
       // a nested loop of that loop or a nested loop of a parent of that loop.
       // Otherwise it's not nested at all.
-      if (!dom_analysis_->Dominates(previous_loop->GetLoopHeader(), start_bb))
+      if (!dom_analysis_->Dominates(previous_loop->GetHeaderBlock(), start_bb))
         break;
 
       // If this loop is dominated by the merge block of the previous loop it's
       // a nested loop of the parent of the previous loop. Otherwise it's just a
       // nested loop of the parent.
-      if (dom_analysis_->Dominates(previous_loop->GetMergeBB(), start_bb)) {
+      if (dom_analysis_->Dominates(previous_loop->GetMergeBlock(), start_bb)) {
         continue;
       } else {
         previous_loop->AddNestedLoop(loops_.back().get());
-        loops_.back()->SetParent(previous_loop);
         break;
       }
     }

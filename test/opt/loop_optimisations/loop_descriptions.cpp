@@ -101,13 +101,13 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_EQ(ld.NumLoops(), 1u);
 
   opt::Loop& loop = ld.GetLoop(0);
-  EXPECT_EQ(loop.GetLoopHeader(), spvtest::GetBasicBlock(f, 18));
-  EXPECT_EQ(loop.GetContinueBB(), spvtest::GetBasicBlock(f, 20));
-  EXPECT_EQ(loop.GetMergeBB(), spvtest::GetBasicBlock(f, 19));
+  EXPECT_EQ(loop.GetHeaderBlock(), spvtest::GetBasicBlock(f, 18));
+  EXPECT_EQ(loop.GetLatchBlock(), spvtest::GetBasicBlock(f, 20));
+  EXPECT_EQ(loop.GetMergeBlock(), spvtest::GetBasicBlock(f, 19));
 
   EXPECT_FALSE(loop.HasNestedLoops());
   EXPECT_FALSE(loop.IsNested());
-  EXPECT_EQ(loop.GetNumNestedLoops(), 0u);
+  EXPECT_EQ(loop.GetDepth(), 1u);
 }
 
 }  // namespace

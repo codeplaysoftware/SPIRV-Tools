@@ -147,26 +147,29 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   opt::Loop& parent_loop = ld.GetLoop(0);
   EXPECT_TRUE(parent_loop.HasNestedLoops());
   EXPECT_FALSE(parent_loop.IsNested());
-  EXPECT_EQ(parent_loop.GetNumNestedLoops(), 2u);
-  EXPECT_EQ(parent_loop.GetLoopHeader(), spvtest::GetBasicBlock(f, 10));
-  EXPECT_EQ(parent_loop.GetContinueBB(), spvtest::GetBasicBlock(f, 13));
-  EXPECT_EQ(parent_loop.GetMergeBB(), spvtest::GetBasicBlock(f, 12));
+  EXPECT_EQ(parent_loop.GetDepth(), 1u);
+  EXPECT_EQ(std::distance(parent_loop.begin(), parent_loop.end()), 2u);
+  EXPECT_EQ(parent_loop.GetHeaderBlock(), spvtest::GetBasicBlock(f, 10));
+  EXPECT_EQ(parent_loop.GetLatchBlock(), spvtest::GetBasicBlock(f, 13));
+  EXPECT_EQ(parent_loop.GetMergeBlock(), spvtest::GetBasicBlock(f, 12));
 
   opt::Loop& child_loop_1 = ld.GetLoop(1);
   EXPECT_FALSE(child_loop_1.HasNestedLoops());
   EXPECT_TRUE(child_loop_1.IsNested());
-  EXPECT_EQ(child_loop_1.GetNumNestedLoops(), 0u);
-  EXPECT_EQ(child_loop_1.GetLoopHeader(), spvtest::GetBasicBlock(f, 21));
-  EXPECT_EQ(child_loop_1.GetContinueBB(), spvtest::GetBasicBlock(f, 24));
-  EXPECT_EQ(child_loop_1.GetMergeBB(), spvtest::GetBasicBlock(f, 23));
+  EXPECT_EQ(child_loop_1.GetDepth(), 2u);
+  EXPECT_EQ(std::distance(child_loop_1.begin(), child_loop_1.end()), 0u);
+  EXPECT_EQ(child_loop_1.GetHeaderBlock(), spvtest::GetBasicBlock(f, 21));
+  EXPECT_EQ(child_loop_1.GetLatchBlock(), spvtest::GetBasicBlock(f, 24));
+  EXPECT_EQ(child_loop_1.GetMergeBlock(), spvtest::GetBasicBlock(f, 23));
 
   opt::Loop& child_loop_2 = ld.GetLoop(2);
   EXPECT_FALSE(child_loop_2.HasNestedLoops());
   EXPECT_TRUE(child_loop_2.IsNested());
-  EXPECT_EQ(child_loop_2.GetNumNestedLoops(), 0u);
-  EXPECT_EQ(child_loop_2.GetLoopHeader(), spvtest::GetBasicBlock(f, 32));
-  EXPECT_EQ(child_loop_2.GetContinueBB(), spvtest::GetBasicBlock(f, 35));
-  EXPECT_EQ(child_loop_2.GetMergeBB(), spvtest::GetBasicBlock(f, 34));
+  EXPECT_EQ(child_loop_2.GetDepth(), 2u);
+  EXPECT_EQ(std::distance(child_loop_2.begin(), child_loop_2.end()), 0u);
+  EXPECT_EQ(child_loop_2.GetHeaderBlock(), spvtest::GetBasicBlock(f, 32));
+  EXPECT_EQ(child_loop_2.GetLatchBlock(), spvtest::GetBasicBlock(f, 35));
+  EXPECT_EQ(child_loop_2.GetMergeBlock(), spvtest::GetBasicBlock(f, 34));
 }
 
 }  // namespace

@@ -30,7 +30,29 @@ class CFG;
 
 namespace opt {
 
-// A class to represent a loop.
+struct InductionVariable {
+  InductionVariable()
+      : def_(nullptr),
+        init_value_(0),
+        step_amount_(0),
+        end_value_(0),
+        end_condition_(nullptr) {}
+
+  InductionVariable(ir::Instruction* d, int32_t init_value, int32_t step_amount,
+                    int32_t end_val, ir::Instruction* condition)
+      : def_(d),
+        init_value_(init_value),
+        step_amount_(step_amount),
+        end_value_(end_val),
+        end_condition_(condition) {}
+  ir::Instruction* def_;
+  int32_t init_value_;
+  int32_t step_amount_;
+  int32_t end_value_;
+  ir::Instruction* end_condition_;
+};
+
+// A class to represent and manipulate a loop.
 class Loop {
   // The type used to represent nested child loops.
   using ChildrenList = std::vector<Loop*>;
@@ -40,7 +62,16 @@ class Loop {
   using const_iterator = ChildrenList::const_iterator;
   using BasicBlockListTy = std::set<const ir::BasicBlock*>;
 
-  Loop();
+  Loop()
+      : ir_context_(nullptr),
+        dom_analysis_(nullptr),
+        loop_header_(nullptr),
+        loop_continue_(nullptr),
+        loop_merge_(nullptr),
+        loop_preheader_(nullptr),
+        parent_(nullptr),
+        induction_variable_() {}
+
   Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
        ir::BasicBlock* merge_target, ir::IRContext* context,
        opt::DominatorAnalysis* analysis);
@@ -53,52 +84,50 @@ class Loop {
   const_iterator cbegin() const { return nested_loops_.begin(); }
   const_iterator cend() const { return nested_loops_.end(); }
 
-  // Get the BasicBlock containing the original OpLoopMerge instruction.
-  inline ir::BasicBlock* GetLoopHeader() { return loop_header_; }
+  // Get the header (first basic block of the loop). This block contains the
+  // OpLoopMerge instruction.
+  inline ir::BasicBlock* GetHeaderBlock() { return loop_header_; }
+  inline const ir::BasicBlock* GetHeaderBlock() const { return loop_header_; }
 
-  // Get the BasicBlock which is the start of the body of the loop.
-  inline ir::BasicBlock* GetContinueBB() { return loop_continue_; }
+  // Get the latch basic block (basic block that holds the back-edge).
+  inline ir::BasicBlock* GetLatchBlock() { return loop_continue_; }
+  inline const ir::BasicBlock* GetLatchBlock() const { return loop_continue_; }
 
   // Get the BasicBlock which marks the end of the loop.
-  inline ir::BasicBlock* GetMergeBB() { return loop_merge_; }
+  inline ir::BasicBlock* GetMergeBlock() { return loop_merge_; }
+  inline const ir::BasicBlock* GetMergeBlock() const { return loop_merge_; }
 
   // Get the BasicBlock which immediately precedes the loop header.
-  inline ir::BasicBlock* GetPreheader() { return loop_preheader_; }
+  inline const ir::BasicBlock* GetPreheaderBlock() const {
+    return loop_preheader_;
+  }
 
   // Return true if this loop contains any nested loops.
   inline bool HasNestedLoops() const { return nested_loops_.size() != 0; }
 
-  // Return the number of nested loops this loop contains.
-  inline size_t GetNumNestedLoops() const { return nested_loops_.size(); }
+  // Return the depth of this loop in the loop nest.
+  // The outer-most loop has a depth of 1.
+  inline size_t GetDepth() const {
+    size_t lvl = 1;
+    for (const Loop* loop = GetParent(); loop; loop = loop->GetParent()) lvl++;
+    return lvl;
+  }
 
   // Add a nested loop to this loop.
-  inline void AddNestedLoop(Loop* nested) { nested_loops_.push_back(nested); }
+  inline void AddNestedLoop(Loop* nested) {
+    assert(!nested->GetParent() && "The loop has another parent.");
+    nested_loops_.push_back(nested);
+    nested->SetParent(this);
+  }
 
-  // Sets the parent loop of this loop, that is, a loop which contains this loop
-  // as a nested child loop.
-  void SetParent(Loop* parent) { parent_ = parent; }
   Loop* GetParent() { return parent_; }
+  const Loop* GetParent() const { return parent_; }
 
   // Return true if this loop is itself nested within another loop.
   inline bool IsNested() const { return parent_ != nullptr; }
 
-  struct LoopVariable {
-    LoopVariable(ir::Instruction* d, int32_t init_value, int32_t step_amount,
-                 int32_t end_val, ir::Instruction* condition)
-        : def_(d),
-          init_value_(init_value),
-          step_amount_(step_amount),
-          end_value_(end_val),
-          end_condition_(condition) {}
-    ir::Instruction* def_;
-    int32_t init_value_;
-    int32_t step_amount_;
-    int32_t end_value_;
-    ir::Instruction* end_condition_;
-  };
-
   // Gets or if unitialised, sets, the induction variable for the loop.
-  LoopVariable* GetInductionVariable();
+  InductionVariable* GetInductionVariable();
 
   // Returns the set of all basic blocks contained within the loop. Will be all
   // BasicBlocks dominated by the header which are not also dominated by the
@@ -133,11 +162,18 @@ class Loop {
   ChildrenList nested_loops_;
 
   // Induction variable.
-  std::unique_ptr<LoopVariable> induction_variable_;
+  // FIXME: That's only apply for some canonical form.
+  //        Plus, only the Phi insn is really needed as other information should
+  //        be trivial to recover.
+  InductionVariable induction_variable_;
 
   // A set of all the basic blocks which comprise the loop structure. Will be
   // computed only when needed on demand.
   BasicBlockListTy loop_basic_blocks_;
+
+  // Sets the parent loop of this loop, that is, a loop which contains this loop
+  // as a nested child loop.
+  void SetParent(Loop* parent) { parent_ = parent; }
 
   void FindInductionVariable();
   bool GetConstant(const ir::Instruction* inst, uint32_t* value) const;
