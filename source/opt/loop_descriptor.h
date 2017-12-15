@@ -62,6 +62,9 @@ class Loop {
   // Get the BasicBlock which marks the end of the loop.
   inline ir::BasicBlock* GetMergeBB() { return loop_merge_; }
 
+  // Get the BasicBlock which immediately precedes the loop header.
+  inline ir::BasicBlock* GetPreheader() { return loop_preheader_; }
+
   // Return true if this loop contains any nested loops.
   inline bool HasNestedLoops() const { return nested_loops_.size() != 0; }
 
@@ -119,6 +122,9 @@ class Loop {
 
   // The block which marks the end of the loop.
   ir::BasicBlock* loop_merge_;
+
+  // The block immediately before the loop header.
+  ir::BasicBlock* loop_preheader_;
 
   // A parent of a loop is the loop which contains it as a nested child loop.
   Loop* parent_;
