@@ -108,7 +108,9 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
                              << text << std::endl;
 
   opt::LoopUnroller loop_unroller;
-  loop_unroller.Process(context.get());
+  SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
+  std::cout << std::get<0>(
+      SinglePassRunAndDisassemble<opt::LoopUnroller>(text, false));
 }
 
 }  // namespace
