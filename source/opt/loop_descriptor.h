@@ -38,7 +38,7 @@ class Loop {
  public:
   using iterator = ChildrenList::iterator;
   using const_iterator = ChildrenList::const_iterator;
-
+  using BasicBlockListTy = std::set<const ir::BasicBlock*>;
 
   Loop();
   Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
@@ -62,11 +62,8 @@ class Loop {
   // Get the BasicBlock which marks the end of the loop.
   inline ir::BasicBlock* GetMergeBB() { return loop_merge_; }
 
-  // Get the BasicBlock which is the start of the body of the loop.
-  inline ir::BasicBlock* GetBodyBB() { return loop_body_begin_; }
-
-  // Get the BasicBlock whihc contains the condition check.
-  inline ir::BasicBlock* GetConditionBB() { return loop_condition_block_; }
+  // Get the BasicBlock which immediately precedes the loop header.
+  inline ir::BasicBlock* GetPreheader() { return loop_preheader_; }
 
   // Return true if this loop contains any nested loops.
   inline bool HasNestedLoops() const { return nested_loops_.size() != 0; }
@@ -110,12 +107,19 @@ class Loop {
   // Gets or if unitialised, sets, the induction variable for the loop.
   LoopVariable* GetInductionVariable();
 
+  // Returns the set of all basic blocks contained within the loop. Will be all
+  // BasicBlocks dominated by the header which are not also dominated by the
+  // loop merge block.
+  const BasicBlockListTy& GetBlocks() const { return loop_basic_blocks_; }
+
+  ir::IRContext* GetContext() const { return ir_context_; }
+
  private:
-  ir::IRContext* ir_context;
+  ir::IRContext* ir_context_;
 
   // The loop is constructed using the dominator analysis and it keeps a pointer
   // to that analysis for later reference.
-  opt::DominatorAnalysis* dom_analysis;
+  opt::DominatorAnalysis* dom_analysis_;
 
   // The block which marks the start of the loop.
   ir::BasicBlock* loop_header_;
@@ -126,12 +130,8 @@ class Loop {
   // The block which marks the end of the loop.
   ir::BasicBlock* loop_merge_;
 
-  // The basic block containing the condition check.
-  ir::BasicBlock* loop_condition_block_;
-
-  // The basic block which marks the start of the main body of the loop, between
-  // the condition block and the continue block.
-  ir::BasicBlock* loop_body_begin_;
+  // The block immediately before the loop header.
+  ir::BasicBlock* loop_preheader_;
 
   // A parent of a loop is the loop which contains it as a nested child loop.
   Loop* parent_;
@@ -140,11 +140,12 @@ class Loop {
   ChildrenList nested_loops_;
 
   // Induction variable.
-  std::unique_ptr<LoopVariable> induction_variable;
+  std::unique_ptr<LoopVariable> induction_variable_;
 
   // A set of all the basic blocks which comprise the loop structure. Will be
   // computed only when needed on demand.
-  std::set<const ir::BasicBlock*> loop_basic_blocks;
+  BasicBlockListTy loop_basic_blocks_;
+
   void FindInductionVariable();
   bool GetConstant(const ir::Instruction* inst, uint32_t* value) const;
   bool GetInductionInitValue(const ir::Instruction* variable_inst,
