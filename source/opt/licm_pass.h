@@ -45,9 +45,6 @@ class LICMPass : public Pass {
   // Returns true if a change was made to the loop, false otherwise.
   bool ProcessLoop(Loop* loop);
 
-  // Returns the preheader of the loop
-  ir::BasicBlock* FindPreheader(Loop* loop);
-
   // Finds all basic blocks in the between the header and merge blocks of the
   // loop, not contained in a nested loop
   std::vector<ir::BasicBlock*> FindValidBasicBlocks(Loop* loop);

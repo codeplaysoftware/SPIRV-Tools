@@ -110,7 +110,7 @@ bool LICMPass::ProcessLoop(Loop* loop) {
       ir_context->KillInst(*invariant_it);
     }
 
-    ir::BasicBlock* pre_header = FindPreheader(loop);
+    ir::BasicBlock* pre_header = loop->GetPreheader();
     // Insert the new BB of invariants between the loop header and the previous
     // BB
     return HoistInstructions(pre_header, &invariants_bb);
@@ -118,10 +118,6 @@ bool LICMPass::ProcessLoop(Loop* loop) {
 
   // Didn't find any invariants
   return false;
-}
-
-ir::BasicBlock* LICMPass::FindPreheader(Loop* loop) {
-  return dom_analysis->ImmediateDominator(loop->GetLoopHeader());
 }
 
 bool LICMPass::HoistInstructions(ir::BasicBlock* pre_header_bb,
