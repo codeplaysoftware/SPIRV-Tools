@@ -133,15 +133,54 @@ bool LICMPass::HoistInstructions(ir::BasicBlock* pre_header_bb,
 
 std::vector<ir::BasicBlock*> LICMPass::FindValidBasicBlocks(Loop* loop) {
   std::vector<ir::BasicBlock*> blocks = {};
+  std::vector<ir::BasicBlock*> nested_blocks = FindAllNestedBasicBlocks(loop);
 
   opt::DominatorTree& tree = dom_analysis->GetDomTree();
 
-  auto begin_itr = tree.get_iterator(loop->GetLoopHeader());
-  for (; begin_itr != tree.end(); ++begin_itr) {
-    if (dom_analysis->Dominates(loop->GetMergeBB(), begin_itr->bb_)) break;
-    // TODO(Alexander: Check that the bb is not in a nested loop!)
-    blocks.push_back(begin_itr->bb_);
+  // Find every basic block in the loop, excluding the header, merge, and blocks
+  // belonging to a nested loop
+  auto begin_it = tree.get_iterator(loop->GetLoopHeader());
+  for (; begin_it != tree.end(); ++begin_it) {
+    ir::BasicBlock* cur_block = begin_it->bb_;
+    if (dom_analysis->Dominates(loop->GetMergeBB(), cur_block)) break;
+
+    // Check block is not nested within another loop
+    for (auto nested_it = nested_blocks.begin();
+         nested_it != nested_blocks.end(); ++nested_it) {
+      if (cur_block == *nested_it) break;
+    }
+
+    blocks.push_back(cur_block);
   }
+  return blocks;
+}
+
+std::vector<ir::BasicBlock*> LICMPass::FindAllNestedBasicBlocks(Loop* loop) {
+  std::vector<ir::BasicBlock*> blocks = {};
+
+  opt::DominatorTree& tree = dom_analysis->GetDomTree();
+
+  if (loop->HasNestedLoops()) {
+    std::vector<Loop*> nested_loops = loop->GetNestedLoops();
+
+    // Go through each nested loop
+    for (auto loop_it = nested_loops.begin(); loop_it != nested_loops.end();
+         ++loop_it) {
+      // Test the blocks of the nested loop against the dominator tree
+      auto tree_it = tree.get_iterator((*loop_it)->GetLoopHeader());
+      for (; tree_it != tree.end(); ++tree_it) {
+        if (dom_analysis->Dominates((*loop_it)->GetMergeBB(), tree_it->bb_))
+          break;
+        blocks.push_back(tree_it->bb_);
+      }
+
+      // Add the header and merge blocks, as they won't be caught in the above
+      // loop
+      blocks.push_back((*loop_it)->GetLoopHeader());
+      blocks.push_back((*loop_it)->GetMergeBB());
+    }
+  }
+
   return blocks;
 }
 

@@ -49,6 +49,9 @@ class LICMPass : public Pass {
   // loop, not contained in a nested loop
   std::vector<ir::BasicBlock*> FindValidBasicBlocks(Loop* loop);
 
+  // Finds and returns a vector of all basic blocks in nested loops
+  std::vector<ir::BasicBlock*> FindAllNestedBasicBlocks(Loop* loop);
+
   // Moves the given basic block out of the loop and into the loops
   // preheader
   bool HoistInstructions(ir::BasicBlock* pre_header_bb,

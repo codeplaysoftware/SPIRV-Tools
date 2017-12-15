@@ -13,13 +13,25 @@
 # limitations under the License.
 
 add_spvtools_unittest(TARGET LICM_simple_hoist
-SRCS ../function_utils.h
-     simple_hoist.cpp
-LIBS SPIRV-Tools-opt
+    SRCS ../function_utils.h
+        simple_hoist.cpp
+    LIBS SPIRV-Tools-opt
 )
 
 add_spvtools_unittest(TARGET LICM_hoist_no_hoist
     SRCS ../function_utils.h
          hoist_no_hoist.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET LICM_nested_single_hoist
+    SRCS ../function_utils.h
+        nested_single_hoist.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET LICM_nested_double_hoist
+    SRCS ../function_utils.h
+        nested_double_hoist.cpp
     LIBS SPIRV-Tools-opt
 )
