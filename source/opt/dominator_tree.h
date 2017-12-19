@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "cfg.h"
+#include "iterator.h"
 #include "module.h"
 #include "tree_iterator.h"
 
@@ -69,6 +70,8 @@ class DominatorTree {
   using DominatorTreeNodeMap = std::map<uint32_t, DominatorTreeNode>;
   using iterator = TreeDFIterator<DominatorTreeNode>;
   using const_iterator = TreeDFIterator<const DominatorTreeNode>;
+  using post_iterator = PostOrderTreeDFIterator<DominatorTreeNode>;
+  using const_post_iterator = PostOrderTreeDFIterator<const DominatorTreeNode>;
 
   // List of DominatorTreeNode to define the list of roots
   using DominatorTreeNodeList = std::vector<DominatorTreeNode*>;
@@ -86,12 +89,47 @@ class DominatorTree {
 
   // Depth first iterators.
   // Traverse the dominator tree in a depth first pre-order.
-  iterator begin() { return iterator(GetRoot()); }
+  // The pseudo-block is ignored.
+  iterator begin() { return ++iterator(GetRoot()); }
   iterator end() { return iterator(); }
   const_iterator begin() const { return cbegin(); }
   const_iterator end() const { return cend(); }
-  const_iterator cbegin() const { return const_iterator(GetRoot()); }
+  const_iterator cbegin() const { return ++const_iterator(GetRoot()); }
   const_iterator cend() const { return const_iterator(); }
+
+  // Traverse the dominator tree in a depth first post-order.
+  // The pseudo-block is ignored.
+  post_iterator post_begin() { return post_iterator::begin(GetRoot()); }
+  post_iterator post_end() { return post_iterator::end(GetRoot()); }
+  const_post_iterator post_begin() const { return post_cbegin(); }
+  const_post_iterator post_end() const { return post_cend(); }
+  const_post_iterator post_cbegin() const {
+    return const_post_iterator::begin(GetRoot());
+  }
+  const_post_iterator post_cend() const {
+    return const_post_iterator::end(GetRoot());
+  }
+
+  // Ranged iterators.
+  inline ir::IteratorRange<iterator> preorder() {
+    return ir::make_range(begin(), end());
+  }
+  inline ir::IteratorRange<const_iterator> preorder() const {
+    return ir::make_range(cbegin(), cend());
+  }
+  inline ir::IteratorRange<const_iterator> cpreorder() const {
+    return ir::make_range(cbegin(), cend());
+  }
+
+  inline ir::IteratorRange<post_iterator> postorder() {
+    return ir::make_range(post_begin(), post_end());
+  }
+  inline ir::IteratorRange<const_post_iterator> postorder() const {
+    return ir::make_range(post_cbegin(), post_cend());
+  }
+  inline ir::IteratorRange<const_post_iterator> cpostorder() const {
+    return ir::make_range(post_cbegin(), post_cend());
+  }
 
   roots_iterator roots_begin() { return roots_.begin(); }
   roots_iterator roots_end() { return roots_.end(); }
