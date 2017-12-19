@@ -18,7 +18,7 @@
 
 #include "cfa.h"
 #include "iterator.h"
-#include "spirv/1.0/GLSL.std.450.h"
+#include "latest_version_glsl_std_450_header.h"
 
 #include <stack>
 
@@ -101,49 +101,58 @@ void AggressiveDCEPass::ProcessLoad(uint32_t varId) {
   live_local_vars_.insert(varId);
 }
 
-bool AggressiveDCEPass::IsStructuredIfHeader(ir::BasicBlock* bp,
-                                             ir::Instruction** mergeInst,
-                                             ir::Instruction** branchInst,
-                                             uint32_t* mergeBlockId) {
-  auto ii = bp->end();
-  --ii;
-  if (ii->opcode() != SpvOpBranchConditional) return false;
-  if (ii == bp->begin()) return false;
-  if (branchInst != nullptr) *branchInst = &*ii;
-  --ii;
-  if (ii->opcode() != SpvOpSelectionMerge) return false;
-  if (mergeInst != nullptr) *mergeInst = &*ii;
-  if (mergeBlockId != nullptr)
-    *mergeBlockId =
-        ii->GetSingleWordInOperand(kSelectionMergeMergeBlockIdInIdx);
+bool AggressiveDCEPass::IsStructuredIfOrLoopHeader(ir::BasicBlock* bp,
+                                                   ir::Instruction** mergeInst,
+                                                   ir::Instruction** branchInst,
+                                                   uint32_t* mergeBlockId) {
+  ir::Instruction* mi = bp->GetMergeInst();
+  if (mi == nullptr) return false;
+  ir::Instruction* bri = &*bp->tail();
+  // Make sure it is not a Switch
+  if (mi->opcode() == SpvOpSelectionMerge &&
+      bri->opcode() != SpvOpBranchConditional)
+    return false;
+  if (branchInst != nullptr) *branchInst = bri;
+  if (mergeInst != nullptr) *mergeInst = mi;
+  if (mergeBlockId != nullptr) *mergeBlockId = mi->GetSingleWordInOperand(0);
   return true;
 }
 
 void AggressiveDCEPass::ComputeBlock2HeaderMaps(
     std::list<ir::BasicBlock*>& structuredOrder) {
-  block2headerMerge_.clear();
   block2headerBranch_.clear();
-  std::stack<ir::Instruction*> currentMergeInst;
-  std::stack<ir::Instruction*> currentBranchInst;
-  std::stack<uint32_t> currentMergeBlockId;
-  currentMergeInst.push(nullptr);
-  currentBranchInst.push(nullptr);
-  currentMergeBlockId.push(0);
+  branch2merge_.clear();
+  std::stack<ir::Instruction*> currentHeaderBranch;
+  currentHeaderBranch.push(nullptr);
+  uint32_t currentMergeBlockId = 0;
   for (auto bi = structuredOrder.begin(); bi != structuredOrder.end(); ++bi) {
-    if ((*bi)->id() == currentMergeBlockId.top()) {
-      currentMergeBlockId.pop();
-      currentMergeInst.pop();
-      currentBranchInst.pop();
+    // If this block is the merge block of the current control construct,
+    // we are leaving the current construct so we must update state
+    if ((*bi)->id() == currentMergeBlockId) {
+      currentHeaderBranch.pop();
+      ir::Instruction* chb = currentHeaderBranch.top();
+      if (chb != nullptr)
+        currentMergeBlockId = branch2merge_[chb]->GetSingleWordInOperand(0);
     }
-    block2headerMerge_[*bi] = currentMergeInst.top();
-    block2headerBranch_[*bi] = currentBranchInst.top();
     ir::Instruction* mergeInst;
     ir::Instruction* branchInst;
     uint32_t mergeBlockId;
-    if (IsStructuredIfHeader(*bi, &mergeInst, &branchInst, &mergeBlockId)) {
-      currentMergeBlockId.push(mergeBlockId);
-      currentMergeInst.push(mergeInst);
-      currentBranchInst.push(branchInst);
+    bool is_header =
+        IsStructuredIfOrLoopHeader(*bi, &mergeInst, &branchInst, &mergeBlockId);
+    // If this is a loop header, update state first so the block will map to
+    // the loop.
+    if (is_header && mergeInst->opcode() == SpvOpLoopMerge) {
+      currentHeaderBranch.push(branchInst);
+      branch2merge_[branchInst] = mergeInst;
+      currentMergeBlockId = mergeBlockId;
+    }
+    // Map the block to the current construct.
+    block2headerBranch_[*bi] = currentHeaderBranch.top();
+    // If this is an if header, update state so following blocks map to the if.
+    if (is_header && mergeInst->opcode() == SpvOpSelectionMerge) {
+      currentHeaderBranch.push(branchInst);
+      branch2merge_[branchInst] = mergeInst;
+      currentMergeBlockId = mergeBlockId;
     }
   }
 }
@@ -163,11 +172,63 @@ void AggressiveDCEPass::AddBranch(uint32_t labelId, ir::BasicBlock* bp) {
   bp->AddInstruction(std::move(newBranch));
 }
 
-void AggressiveDCEPass::AddBranchesToWorklist(uint32_t labelId) {
-  get_def_use_mgr()->ForEachUser(labelId, [this](ir::Instruction* user) {
+void AggressiveDCEPass::AddBreaksAndContinuesToWorklist(
+    ir::Instruction* loopMerge) {
+  const uint32_t mergeId =
+      loopMerge->GetSingleWordInOperand(kLoopMergeMergeBlockIdInIdx);
+  get_def_use_mgr()->ForEachUser(
+      mergeId, [&loopMerge, this](ir::Instruction* user) {
+        // A branch to the merge block can only be a break if it is nested in
+        // the current loop
+        SpvOp op = user->opcode();
+        if (op != SpvOpBranchConditional && op != SpvOpBranch) return;
+        ir::Instruction* branchInst = user;
+        while (true) {
+          ir::BasicBlock* blk = inst2block_[branchInst];
+          ir::Instruction* hdrBranch = block2headerBranch_[blk];
+          if (hdrBranch == nullptr) return;
+          ir::Instruction* hdrMerge = branch2merge_[hdrBranch];
+          if (hdrMerge == loopMerge) break;
+          branchInst = hdrBranch;
+        }
+        if (!IsLive(user)) {
+          AddToWorklist(user);
+          // Add branch's merge if there is one
+          ir::Instruction* userMerge = branch2merge_[user];
+          if (userMerge != nullptr) AddToWorklist(userMerge);
+        }
+      });
+  const uint32_t contId =
+      loopMerge->GetSingleWordInOperand(kLoopMergeContinueBlockIdInIdx);
+  get_def_use_mgr()->ForEachUser(contId, [&contId,
+                                          this](ir::Instruction* user) {
     SpvOp op = user->opcode();
-    if (op == SpvOpBranchConditional || op == SpvOpBranch)
-      if (!IsLive(user)) AddToWorklist(user);
+    if (op == SpvOpBranchConditional) {
+      // A conditional branch can only be a continue if it does not have a merge
+      // instruction or its merge block is not the continue block.
+      ir::Instruction* hdrMerge = branch2merge_[user];
+      if (hdrMerge != nullptr && hdrMerge->opcode() == SpvOpSelectionMerge) {
+        uint32_t hdrMergeId =
+            hdrMerge->GetSingleWordInOperand(kSelectionMergeMergeBlockIdInIdx);
+        if (hdrMergeId == contId) return;
+        // Need to mark merge instruction too
+        if (!IsLive(hdrMerge)) AddToWorklist(hdrMerge);
+      }
+    } else if (op == SpvOpBranch) {
+      // An unconditional branch can only be a continue if it is not
+      // branching to its own merge block.
+      ir::BasicBlock* blk = inst2block_[user];
+      ir::Instruction* hdrBranch = block2headerBranch_[blk];
+      if (hdrBranch == nullptr) return;
+      ir::Instruction* hdrMerge = branch2merge_[hdrBranch];
+      if (hdrMerge->opcode() == SpvOpLoopMerge) return;
+      uint32_t hdrMergeId =
+          hdrMerge->GetSingleWordInOperand(kSelectionMergeMergeBlockIdInIdx);
+      if (contId == hdrMergeId) return;
+    } else {
+      return;
+    }
+    if (!IsLive(user)) AddToWorklist(user);
   });
 }
 
@@ -180,19 +241,22 @@ bool AggressiveDCEPass::AggressiveDCE(ir::Function* func) {
   ComputeBlock2HeaderMaps(structuredOrder);
   bool modified = false;
   // Add instructions with external side effects to worklist. Also add branches
-  // EXCEPT those immediately contained in an "if" selection construct.
+  // EXCEPT those immediately contained in an "if" selection construct or a loop
+  // or continue construct.
   // TODO(greg-lunarg): Handle Frexp, Modf more optimally
   call_in_func_ = false;
   func_is_entry_point_ = false;
   private_stores_.clear();
-  // Stacks to keep track of when we are inside an if-construct. When not
-  // immediately inside an in-construct,  we must assume all branches are live.
+  // Stacks to keep track of when we are inside an if- or loop-construct.
+  // When immediately inside an if- or loop-construct, we do not initially
+  // mark branches live. All other branches must be marked live.
   std::stack<bool> assume_branches_live;
   std::stack<uint32_t> currentMergeBlockId;
   // Push sentinel values on stack for when outside of any control flow.
   assume_branches_live.push(true);
   currentMergeBlockId.push(0);
   for (auto bi = structuredOrder.begin(); bi != structuredOrder.end(); ++bi) {
+    // If exiting if or loop, update stacks
     if ((*bi)->id() == currentMergeBlockId.top()) {
       assume_branches_live.pop();
       currentMergeBlockId.pop();
@@ -212,12 +276,9 @@ bool AggressiveDCEPass::AggressiveDCE(ir::Function* func) {
             AddToWorklist(&*ii);
         } break;
         case SpvOpLoopMerge: {
-          // Assume loops live (for now)
-          // TODO(greg-lunarg): Add dead loop elimination
-          assume_branches_live.push(true);
+          assume_branches_live.push(false);
           currentMergeBlockId.push(
               ii->GetSingleWordInOperand(kLoopMergeMergeBlockIdInIdx));
-          AddToWorklist(&*ii);
         } break;
         case SpvOpSelectionMerge: {
           auto brii = ii;
@@ -268,18 +329,27 @@ bool AggressiveDCEPass::AggressiveDCE(ir::Function* func) {
   while (!worklist_.empty()) {
     ir::Instruction* liveInst = worklist_.front();
     // Add all operand instructions if not already live
-    liveInst->ForEachInId([this](const uint32_t* iid) {
+    liveInst->ForEachInId([&liveInst, this](const uint32_t* iid) {
       ir::Instruction* inInst = get_def_use_mgr()->GetDef(*iid);
+      // Do not add label if an operand of a branch. This is not needed
+      // as part of live code discovery and can create false live code,
+      // for example, the branch to a header of a loop.
+      if (inInst->opcode() == SpvOpLabel && liveInst->IsBranch()) return;
       if (!IsLive(inInst)) AddToWorklist(inInst);
     });
-    // If in a structured if construct, add the controlling conditional branch
-    // and its merge. Any containing if construct is marked live when the
-    // the merge and branch are processed out of the worklist.
+    // If in a structured if or loop construct, add the controlling
+    // conditional branch and its merge. Any containing control construct
+    // is marked live when the merge and branch are processed out of the
+    // worklist.
     ir::BasicBlock* blk = inst2block_[liveInst];
     ir::Instruction* branchInst = block2headerBranch_[blk];
     if (branchInst != nullptr && !IsLive(branchInst)) {
       AddToWorklist(branchInst);
-      AddToWorklist(block2headerMerge_[blk]);
+      ir::Instruction* mergeInst = branch2merge_[branchInst];
+      AddToWorklist(mergeInst);
+      // If in a loop, mark all its break and continue instructions live
+      if (mergeInst->opcode() == SpvOpLoopMerge)
+        AddBreaksAndContinuesToWorklist(mergeInst);
     }
     // If local load, add all variable's stores if variable not already live
     if (liveInst->opcode() == SpvOpLoad) {
@@ -297,27 +367,19 @@ bool AggressiveDCEPass::AggressiveDCE(ir::Function* func) {
         ProcessLoad(varId);
       });
     }
-    // If loop merge, add all branches to continue and merge blocks
-    // to worklist
-    else if (liveInst->opcode() == SpvOpLoopMerge) {
-      AddBranchesToWorklist(
-          liveInst->GetSingleWordInOperand(kLoopMergeContinueBlockIdInIdx));
-      AddBranchesToWorklist(
-          liveInst->GetSingleWordInOperand(kLoopMergeMergeBlockIdInIdx));
-    }
     // If function parameter, treat as if it's result id is loaded from
     else if (liveInst->opcode() == SpvOpFunctionParameter) {
       ProcessLoad(liveInst->result_id());
     }
     worklist_.pop();
   }
-  // Mark all non-live instructions dead, except branches which are not
-  // at the end of an if-header, which indicate a dead if.
+  // Mark all non-live instructions dead except non-structured branches, which
+  // now should be considered live unless their block is deleted.
   for (auto bi = structuredOrder.begin(); bi != structuredOrder.end(); ++bi) {
     for (auto ii = (*bi)->begin(); ii != (*bi)->end(); ++ii) {
       if (IsLive(&*ii)) continue;
       if (ii->IsBranch() &&
-          !IsStructuredIfHeader(*bi, nullptr, nullptr, nullptr))
+          !IsStructuredIfOrLoopHeader(*bi, nullptr, nullptr, nullptr))
         continue;
       dead_insts_.insert(&*ii);
     }
@@ -363,15 +425,15 @@ bool AggressiveDCEPass::AggressiveDCE(ir::Function* func) {
       if (dead_insts_.find(inst) == dead_insts_.end()) return;
       // If dead instruction is selection merge, remember merge block
       // for new branch at end of block
-      if (inst->opcode() == SpvOpSelectionMerge)
-        mergeBlockId =
-            inst->GetSingleWordInOperand(kSelectionMergeMergeBlockIdInIdx);
+      if (inst->opcode() == SpvOpSelectionMerge ||
+          inst->opcode() == SpvOpLoopMerge)
+        mergeBlockId = inst->GetSingleWordInOperand(0);
       context()->KillInst(inst);
       modified = true;
     });
-    // If a structured if was deleted, add a branch to its merge block,
-    // and traverse to the merge block, continuing processing there.
-    // The block still exists as the OpLabel at least is still intact.
+    // If a structured if or loop was deleted, add a branch to its merge
+    // block, and traverse to the merge block and continue processing there.
+    // We know the block still exists because the label is not deleted.
     if (mergeBlockId != 0) {
       AddBranch(mergeBlockId, *bi);
       for (++bi; (*bi)->id() != mergeBlockId; ++bi) {

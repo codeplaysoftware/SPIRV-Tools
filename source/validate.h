@@ -139,9 +139,17 @@ spv_result_t BitwisePass(ValidationState_t& _,
 spv_result_t ImagePass(ValidationState_t& _,
                        const spv_parsed_instruction_t* inst);
 
+/// Validates correctness of atomic instructions.
+spv_result_t AtomicsPass(ValidationState_t& _,
+                         const spv_parsed_instruction_t* inst);
+
 // Validates that capability declarations use operands allowed in the current
 // context.
 spv_result_t CapabilityPass(ValidationState_t& _,
+                            const spv_parsed_instruction_t* inst);
+
+/// Validates correctness of primitive instructions.
+spv_result_t PrimitivesPass(ValidationState_t& _,
                             const spv_parsed_instruction_t* inst);
 
 }  // namespace libspirv
