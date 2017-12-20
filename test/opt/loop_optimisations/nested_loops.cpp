@@ -140,7 +140,7 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
   const ir::Function* f = spvtest::GetFunction(module, 2);
-  opt::LoopDescriptor ld{f};
+  ir::LoopDescriptor ld{f};
 
   EXPECT_EQ(ld.NumLoops(), 3u);
 
@@ -149,7 +149,7 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   // Not a loop header.
   EXPECT_EQ(ld[20], nullptr);
 
-  opt::Loop& parent_loop = *ld[21];
+  ir::Loop& parent_loop = *ld[21];
   EXPECT_TRUE(parent_loop.HasNestedLoops());
   EXPECT_FALSE(parent_loop.IsNested());
   EXPECT_EQ(parent_loop.GetDepth(), 1u);
@@ -158,7 +158,7 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_EQ(parent_loop.GetLatchBlock(), spvtest::GetBasicBlock(f, 23));
   EXPECT_EQ(parent_loop.GetMergeBlock(), spvtest::GetBasicBlock(f, 22));
 
-  opt::Loop& child_loop_1 = *ld[28];
+  ir::Loop& child_loop_1 = *ld[28];
   EXPECT_FALSE(child_loop_1.HasNestedLoops());
   EXPECT_TRUE(child_loop_1.IsNested());
   EXPECT_EQ(child_loop_1.GetDepth(), 2u);
@@ -167,7 +167,7 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_EQ(child_loop_1.GetLatchBlock(), spvtest::GetBasicBlock(f, 30));
   EXPECT_EQ(child_loop_1.GetMergeBlock(), spvtest::GetBasicBlock(f, 29));
 
-  opt::Loop& child_loop_2 = *ld[37];
+  ir::Loop& child_loop_2 = *ld[37];
   EXPECT_FALSE(child_loop_2.HasNestedLoops());
   EXPECT_TRUE(child_loop_2.IsNested());
   EXPECT_EQ(child_loop_2.GetDepth(), 2u);

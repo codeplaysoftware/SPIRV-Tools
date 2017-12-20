@@ -96,11 +96,11 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
   const ir::Function* f = spvtest::GetFunction(module, 2);
-  opt::LoopDescriptor ld{f};
+  ir::LoopDescriptor ld{f};
 
   EXPECT_EQ(ld.NumLoops(), 1u);
 
-  opt::Loop& loop = ld.GetLoopByIndex(0);
+  ir::Loop& loop = ld.GetLoopByIndex(0);
   EXPECT_EQ(loop.GetHeaderBlock(), spvtest::GetBasicBlock(f, 18));
   EXPECT_EQ(loop.GetLatchBlock(), spvtest::GetBasicBlock(f, 20));
   EXPECT_EQ(loop.GetMergeBlock(), spvtest::GetBasicBlock(f, 19));
