@@ -41,12 +41,39 @@ struct DominatorTreeNode {
   using iterator = std::vector<DominatorTreeNode*>::iterator;
   using const_iterator = std::vector<DominatorTreeNode*>::const_iterator;
 
+  // depth first preorder iterator.
+  using df_iterator = TreeDFIterator<DominatorTreeNode>;
+  using const_df_iterator = TreeDFIterator<const DominatorTreeNode>;
+  // depth first postorder iterator.
+  using post_iterator = PostOrderTreeDFIterator<DominatorTreeNode>;
+  using const_post_iterator = PostOrderTreeDFIterator<const DominatorTreeNode>;
+
   iterator begin() { return children_.begin(); }
   iterator end() { return children_.end(); }
   const_iterator begin() const { return cbegin(); }
   const_iterator end() const { return cend(); }
   const_iterator cbegin() const { return children_.begin(); }
   const_iterator cend() const { return children_.end(); }
+
+  // Depth first preorder iterator using this node as root.
+  df_iterator df_begin() { return df_iterator(this); }
+  df_iterator df_end() { return df_iterator(); }
+  const_df_iterator df_begin() const { return df_cbegin(); }
+  const_df_iterator df_end() const { return df_cend(); }
+  const_df_iterator df_cbegin() const { return const_df_iterator(this); }
+  const_df_iterator df_cend() const { return const_df_iterator(); }
+
+  // Depth first postorder iterator using this node as root.
+  post_iterator post_begin() { return post_iterator::begin(this); }
+  post_iterator post_end() { return post_iterator::end(nullptr); }
+  const_post_iterator post_begin() const { return post_cbegin(); }
+  const_post_iterator post_end() const { return post_cend(); }
+  const_post_iterator post_cbegin() const {
+    return const_post_iterator::begin(this);
+  }
+  const_post_iterator post_cend() const {
+    return const_post_iterator::end(nullptr);
+  }
 
   inline uint32_t id() const { return bb_->id(); }
 
@@ -81,21 +108,15 @@ class DominatorTree {
   DominatorTree() : postdominator_(false) {}
   explicit DominatorTree(bool post) : postdominator_(post) {}
 
-  iterator get_iterator(const ir::BasicBlock* bb) {
-    auto found_itr = nodes_.find(bb->id());
-    if (found_itr == nodes_.end()) return end();
-    return iterator(&found_itr->second);
-  }
-
   // Depth first iterators.
   // Traverse the dominator tree in a depth first pre-order.
   // The pseudo-block is ignored.
-  iterator begin() { return ++iterator(GetRoot()); }
-  iterator end() { return iterator(); }
+  iterator begin() { return ++GetRoot()->df_begin(); }
+  iterator end() { return GetRoot()->df_end(); }
   const_iterator begin() const { return cbegin(); }
   const_iterator end() const { return cend(); }
-  const_iterator cbegin() const { return ++const_iterator(GetRoot()); }
-  const_iterator cend() const { return const_iterator(); }
+  const_iterator cbegin() const { return ++GetRoot()->df_begin(); }
+  const_iterator cend() const { return GetRoot()->df_end(); }
 
   // Traverse the dominator tree in a depth first post-order.
   // The pseudo-block is ignored.
@@ -111,23 +132,23 @@ class DominatorTree {
   }
 
   // Ranged iterators.
-  inline ir::IteratorRange<iterator> preorder() {
+  inline ir::IteratorRange<iterator> PreorderRange() {
     return ir::make_range(begin(), end());
   }
-  inline ir::IteratorRange<const_iterator> preorder() const {
+  inline ir::IteratorRange<const_iterator> PreorderRange() const {
     return ir::make_range(cbegin(), cend());
   }
-  inline ir::IteratorRange<const_iterator> cpreorder() const {
+  inline ir::IteratorRange<const_iterator> cPreorderRange() const {
     return ir::make_range(cbegin(), cend());
   }
 
-  inline ir::IteratorRange<post_iterator> postorder() {
+  inline ir::IteratorRange<post_iterator> PostorderRange() {
     return ir::make_range(post_begin(), post_end());
   }
-  inline ir::IteratorRange<const_post_iterator> postorder() const {
+  inline ir::IteratorRange<const_post_iterator> PostorderRange() const {
     return ir::make_range(post_cbegin(), post_cend());
   }
-  inline ir::IteratorRange<const_post_iterator> cpostorder() const {
+  inline ir::IteratorRange<const_post_iterator> cPostorderRange() const {
     return ir::make_range(post_cbegin(), post_cend());
   }
 
@@ -166,12 +187,20 @@ class DominatorTree {
   // Check if the basic block id |a| dominates the basic block id |b|.
   bool Dominates(uint32_t a, uint32_t b) const;
 
+  // Check if the dominator tree node |a| dominates the dominator tree node |b|.
+  bool Dominates(const DominatorTreeNode* a, const DominatorTreeNode* b) const;
+
   // Check if the basic block |a| strictly dominates the basic block |b|.
   bool StrictlyDominates(const ir::BasicBlock* a,
                          const ir::BasicBlock* b) const;
 
   // Check if the basic block id |a| strictly dominates the basic block id |b|.
   bool StrictlyDominates(uint32_t a, uint32_t b) const;
+
+  // Check if the dominator tree node |a| strictly dominates the dominator tree
+  // node |b|.
+  bool StrictlyDominates(const DominatorTreeNode* a,
+                         const DominatorTreeNode* b) const;
 
   // Returns the immediate dominator of basic block |a|.
   ir::BasicBlock* ImmediateDominator(const ir::BasicBlock* A) const;
