@@ -28,25 +28,25 @@ namespace ir {
 Loop::Loop(IRContext* context, opt::DominatorAnalysis* dom_analysis,
            BasicBlock* header, BasicBlock* continue_target,
            BasicBlock* merge_target)
-    : ir_context_(context),
-      dom_analysis_(dom_analysis),
-      loop_header_(header),
+    : loop_header_(header),
       loop_continue_(continue_target),
       loop_merge_(merge_target),
       loop_preheader_(nullptr),
       parent_(nullptr) {
-  assert(dom_analysis_);
-  SetLoopPreheader();
+  assert(context);
+  assert(dom_analysis);
+  SetLoopPreheader(context, dom_analysis);
   AddBasicBlockToLoop(header);
   AddBasicBlockToLoop(continue_target);
 }
 
-void Loop::SetLoopPreheader() {
-  CFG* cfg = ir_context_->cfg();
-  opt::DominatorTree& dom_tree = dom_analysis_->GetDomTree();
+void Loop::SetLoopPreheader(IRContext* ir_context,
+                            opt::DominatorAnalysis* dom_analysis) {
+  CFG* cfg = ir_context->cfg();
+  opt::DominatorTree& dom_tree = dom_analysis->GetDomTree();
   opt::DominatorTreeNode* header_node = dom_tree[loop_header_];
 
-  // The loop predecessor basic block.
+  // The loop predecessor.
   BasicBlock* loop_pred = nullptr;
 
   auto header_pred = cfg->preds(loop_header_->id());
@@ -86,7 +86,7 @@ LoopDescriptor::LoopDescriptor(const Function* f) { PopulateList(f); }
 void LoopDescriptor::PopulateList(const Function* f) {
   IRContext* context = f->GetParent()->context();
 
-  opt::DominatorAnalysis* dom_analysis_ =
+  opt::DominatorAnalysis* dom_analysis =
       context->GetDominatorAnalysis(f, *context->cfg());
 
   loops_.clear();
@@ -96,7 +96,7 @@ void LoopDescriptor::PopulateList(const Function* f) {
   // However, this does not mean that dominance is implied by the order of
   // loop_merge_inst you still need to check dominance between each block
   // manually.
-  opt::DominatorTree& dom_tree = dom_analysis_->GetDomTree();
+  opt::DominatorTree& dom_tree = dom_analysis->GetDomTree();
   // Post-order traversal of the dominator tree: inner loop will be inserted
   // first.
   for (opt::DominatorTreeNode& node :
@@ -119,7 +119,7 @@ void LoopDescriptor::PopulateList(const Function* f) {
       BasicBlock* header_bb = context->get_instr_block(merge_inst);
 
       // Add the loop the list of all the loops in the function.
-      loops_.emplace_back(MakeUnique<Loop>(context, dom_analysis_, header_bb,
+      loops_.emplace_back(MakeUnique<Loop>(context, dom_analysis, header_bb,
                                            continue_bb, merge_bb));
       Loop* current_loop = loops_.back().get();
 
@@ -133,12 +133,12 @@ void LoopDescriptor::PopulateList(const Function* f) {
 
         // If the current loop does not dominates the previous loop then it is
         // not nested loop.
-        if (!dom_analysis_->Dominates(header_bb,
+        if (!dom_analysis->Dominates(header_bb,
                                       previous_loop->GetHeaderBlock()))
           break;
         // If the current loop merge dominates the previous loop then it is
         // not nested loop.
-        if (dom_analysis_->Dominates(merge_bb, previous_loop->GetHeaderBlock()))
+        if (dom_analysis->Dominates(merge_bb, previous_loop->GetHeaderBlock()))
           break;
 
         current_loop->AddNestedLoop(previous_loop);

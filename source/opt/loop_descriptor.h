@@ -43,9 +43,7 @@ class Loop {
   using BasicBlockListTy = std::unordered_set<const BasicBlock*>;
 
   Loop()
-      : ir_context_(nullptr),
-        dom_analysis_(nullptr),
-        loop_header_(nullptr),
+      : loop_header_(nullptr),
         loop_continue_(nullptr),
         loop_merge_(nullptr),
         loop_preheader_(nullptr),
@@ -62,29 +60,33 @@ class Loop {
   inline const_iterator cbegin() const { return nested_loops_.begin(); }
   inline const_iterator cend() const { return nested_loops_.end(); }
 
-  // Get the header (first basic block of the loop). This block contains the
+  // Returns the header (first basic block of the loop). This block contains the
   // OpLoopMerge instruction.
   inline BasicBlock* GetHeaderBlock() { return loop_header_; }
   inline const BasicBlock* GetHeaderBlock() const { return loop_header_; }
 
-  // Get the latch basic block (basic block that holds the back-edge).
+  // Returns the latch basic block (basic block that holds the back-edge).
   inline BasicBlock* GetLatchBlock() { return loop_continue_; }
   inline const BasicBlock* GetLatchBlock() const { return loop_continue_; }
 
-  // Get the BasicBlock which marks the end of the loop.
+  // Returns the BasicBlock which marks the end of the loop.
   inline BasicBlock* GetMergeBlock() { return loop_merge_; }
   inline const BasicBlock* GetMergeBlock() const { return loop_merge_; }
 
-  // Get or create the loop pre-header.
+  // Returns the loop pre-header, nullptr means that the loop predecessor does
+  // not qualify as a preheader.
+  // The preheader is the unique predecessor that:
+  //   - Dominates the loop header;
+  //   - Has only the loop header as successor.
   inline BasicBlock* GetPreHeaderBlock() { return loop_preheader_; }
 
-  // Get or create the loop pre-header.
+  // Returns the loop pre-header.
   inline const BasicBlock* GetPreHeaderBlock() const { return loop_preheader_; }
 
-  // Return true if this loop contains any nested loops.
+  // Returns true if this loop contains any nested loops.
   inline bool HasNestedLoops() const { return nested_loops_.size() != 0; }
 
-  // Return the depth of this loop in the loop nest.
+  // Returns the depth of this loop in the loop nest.
   // The outer-most loop has a depth of 1.
   inline size_t GetDepth() const {
     size_t lvl = 1;
@@ -92,7 +94,8 @@ class Loop {
     return lvl;
   }
 
-  // Add a nested loop to this loop.
+  // Adds |nested| as a nested loop of this loop. Automatically register |this|
+  // as the parent of |nested|.
   inline void AddNestedLoop(Loop* nested) {
     assert(!nested->GetParent() && "The loop has another parent.");
     nested_loops_.push_back(nested);
@@ -104,7 +107,7 @@ class Loop {
 
   inline bool HasParent() const { return parent_; }
 
-  // Return true if this loop is itself nested within another loop.
+  // Returns true if this loop is itself nested within another loop.
   inline bool IsNested() const { return parent_ != nullptr; }
 
   // Returns the set of all basic blocks contained within the loop. Will be all
@@ -114,21 +117,19 @@ class Loop {
     return loop_basic_blocks_;
   }
 
-  inline IRContext* GetContext() const { return ir_context_; }
-
   // Returns true if |bb| is inside this loop.
   inline bool IsInsideLoop(const BasicBlock* bb) const {
     return loop_basic_blocks_.count(bb);
   }
 
-  // Add a Basic Block to this loop.
+  // Adds the Basic Block |bb| this loop and its parents.
   void AddBasicBlockToLoop(const BasicBlock* bb) {
     for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
       loop_basic_blocks_.insert(bb);
     }
   }
 
-  // Returns true is the parent basic block
+  // Returns true if the parent basic block of |inst| belong to this loop.
   inline bool IsLoopInvariant(Instruction* inst) const {
     const BasicBlock* parent_block = inst->context()->get_instr_block(inst);
     if (!parent_block) return true;
@@ -136,12 +137,6 @@ class Loop {
   }
 
  private:
-  IRContext* ir_context_;
-
-  // The loop is constructed using the dominator analysis and it keeps a pointer
-  // to that analysis for later reference.
-  opt::DominatorAnalysis* dom_analysis_;
-
   // The block which marks the start of the loop.
   BasicBlock* loop_header_;
 
@@ -168,8 +163,8 @@ class Loop {
   // as a nested child loop.
   inline void SetParent(Loop* parent) { parent_ = parent; }
 
-  // Set the loop preheader if it exist.
-  void SetLoopPreheader();
+  // Set the loop preheader if it exists.
+  void SetLoopPreheader(IRContext* context, opt::DominatorAnalysis* dom_analysis);
 
   // This is only to allow LoopDescriptor::dummy_top_loop_ to add top level
   // loops as child.
@@ -185,10 +180,10 @@ class LoopDescriptor {
   // Creates a loop object for all loops found in |f|.
   explicit LoopDescriptor(const Function* f);
 
-  // Return the number of loops found in the function.
+  // Returns the number of loops found in the function.
   inline size_t NumLoops() const { return loops_.size(); }
 
-  // Return the loop at a particular |index|. The |index| must be in bounds,
+  // Returns the loop at a particular |index|. The |index| must be in bounds,
   // check with NumLoops before calling.
   inline Loop& GetLoopByIndex(size_t index) const {
     assert(loops_.size() > index &&
@@ -196,14 +191,16 @@ class LoopDescriptor {
     return *loops_[index].get();
   }
 
-  // Return the loop descriptor which has |header_id| as loop header id.
-  inline Loop* operator[](uint32_t header_id) const {
+  // Returns the inner most loop that contains the basic block id |block_id|.
+  inline Loop* operator[](uint32_t block_id) const {
     return FindLoopForBasicBlock(header_id);
   }
 
-  // Return the loop descriptor which has |header| as loop header.
+  // Returns the inner most loop that contains the basic block |bb|.
   inline Loop* operator[](BasicBlock* bb) const { return (*this)[bb->id()]; }
 
+  // Iterators for post order depth first traversal of the loops.
+  // Inner most loops will be visited first.
   inline iterator begin() { return iterator::begin(&dummy_top_loop_); }
   inline iterator end() { return iterator::end(&dummy_top_loop_); }
   inline const_iterator begin() const { return cbegin(); }
@@ -218,10 +215,11 @@ class LoopDescriptor {
  private:
   using LoopContainerType = std::vector<std::unique_ptr<Loop>>;
 
+  // Creates loop descriptors for the function |f|.
   void PopulateList(const Function* f);
 
-  // Return the loop descriptor which has |header_id| as loop header id.
-  inline Loop* FindLoopForBasicBlock(uint32_t header_id) const {
+  // Returns the inner most loop that contains the basic block id |block_id|.
+  inline Loop* FindLoopForBasicBlock(uint32_t block_id) const {
     std::unordered_map<uint32_t, Loop*>::const_iterator it =
         basic_block_to_loop_.find(header_id);
     return it != basic_block_to_loop_.end() ? it->second : nullptr;
