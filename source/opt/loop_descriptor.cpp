@@ -148,13 +148,13 @@ void LoopDescriptor::PopulateList(const Function* f) {
         // Check if we are in the loop.
         if (dom_tree.Dominates(dom_merge_node, &loop_node)) continue;
         current_loop->AddBasicBlockToLoop(loop_node.bb_);
-        basic_block_to_loop_.insert(std::make_pair(loop_node.bb_->id(), current_loop));
+        basic_block_to_loop_.insert(
+            std::make_pair(loop_node.bb_->id(), current_loop));
       }
     }
   }
   for (std::unique_ptr<Loop>& loop : loops_) {
-    if (!loop->HasParent())
-      dummy_top_loop_.nested_loops_.push_back(loop.get());
+    if (!loop->HasParent()) dummy_top_loop_.nested_loops_.push_back(loop.get());
   }
 }
 

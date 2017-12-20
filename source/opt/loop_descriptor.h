@@ -51,9 +51,8 @@ class Loop {
         loop_preheader_(nullptr),
         parent_(nullptr) {}
 
-  Loop(IRContext* context, opt::DominatorAnalysis* analysis,
-       BasicBlock* header, BasicBlock* continue_target,
-       BasicBlock* merge_target);
+  Loop(IRContext* context, opt::DominatorAnalysis* analysis, BasicBlock* header,
+       BasicBlock* continue_target, BasicBlock* merge_target);
 
   // Iterators which allows access to the nested loops.
   inline iterator begin() { return nested_loops_.begin(); }
@@ -80,9 +79,7 @@ class Loop {
   inline BasicBlock* GetPreHeaderBlock() { return loop_preheader_; }
 
   // Get or create the loop pre-header.
-  inline const BasicBlock* GetPreHeaderBlock() const {
-    return loop_preheader_;
-  }
+  inline const BasicBlock* GetPreHeaderBlock() const { return loop_preheader_; }
 
   // Return true if this loop contains any nested loops.
   inline bool HasNestedLoops() const { return nested_loops_.size() != 0; }
@@ -205,9 +202,7 @@ class LoopDescriptor {
   }
 
   // Return the loop descriptor which has |header| as loop header.
-  inline Loop* operator[](BasicBlock* bb) const {
-    return (*this)[bb->id()];
-  }
+  inline Loop* operator[](BasicBlock* bb) const { return (*this)[bb->id()]; }
 
   inline iterator begin() { return iterator::begin(&dummy_top_loop_); }
   inline iterator end() { return iterator::end(&dummy_top_loop_); }
