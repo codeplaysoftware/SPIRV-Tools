@@ -23,11 +23,11 @@
 #include "opt/tree_iterator.h"
 
 namespace spvtools {
-namespace opt {
+namespace ir {
 
-Loop::Loop(ir::IRContext* context, opt::DominatorAnalysis* dom_analysis,
-           ir::BasicBlock* header, ir::BasicBlock* continue_target,
-           ir::BasicBlock* merge_target)
+Loop::Loop(IRContext* context, opt::DominatorAnalysis* dom_analysis,
+           BasicBlock* header, BasicBlock* continue_target,
+           BasicBlock* merge_target)
     : ir_context_(context),
       dom_analysis_(dom_analysis),
       loop_header_(header),
@@ -43,16 +43,16 @@ Loop::Loop(ir::IRContext* context, opt::DominatorAnalysis* dom_analysis,
 }
 
 void Loop::SetLoopPreheader() {
-  ir::CFG* cfg = ir_context_->cfg();
-  DominatorTree& dom_tree = dom_analysis_->GetDomTree();
-  DominatorTreeNode* header_node = dom_tree[loop_header_];
+  CFG* cfg = ir_context_->cfg();
+  opt::DominatorTree& dom_tree = dom_analysis_->GetDomTree();
+  opt::DominatorTreeNode* header_node = dom_tree[loop_header_];
 
   // The loop predecessor basic block.
-  ir::BasicBlock* loop_pred = nullptr;
+  BasicBlock* loop_pred = nullptr;
 
   auto header_pred = cfg->preds(loop_header_->id());
   for (uint32_t p_id : header_pred) {
-    DominatorTreeNode* node = dom_tree[p_id];
+    opt::DominatorTreeNode* node = dom_tree[p_id];
     if (node && !dom_tree.Dominates(header_node, node)) {
       // The predecessor is not part of the loop, so potential loop preheader.
       if (loop_pred && node->bb_ != loop_pred) {
@@ -82,12 +82,12 @@ void Loop::SetLoopPreheader() {
   if (is_preheader) loop_preheader_ = loop_pred;
 }
 
-bool Loop::GetConstant(const ir::Instruction* inst, uint32_t* value) const {
+bool Loop::GetConstant(const Instruction* inst, uint32_t* value) const {
   if (inst->opcode() != SpvOp::SpvOpConstant) {
     return false;
   }
 
-  const ir::Operand& operand = inst->GetOperand(2);
+  const Operand& operand = inst->GetOperand(2);
 
   if (operand.type != SPV_OPERAND_TYPE_TYPED_LITERAL_NUMBER ||
       operand.words.size() != 1) {
@@ -99,7 +99,7 @@ bool Loop::GetConstant(const ir::Instruction* inst, uint32_t* value) const {
 }
 
 // Returns an OpVariable instruction or null from a load_inst.
-ir::Instruction* Loop::GetVariable(const ir::Instruction* load_inst) {
+Instruction* Loop::GetVariable(const Instruction* load_inst) {
   if (!load_inst || load_inst->opcode() != SpvOp::SpvOpLoad) {
     return nullptr;
   }
@@ -107,21 +107,21 @@ ir::Instruction* Loop::GetVariable(const ir::Instruction* load_inst) {
   // From the branch instruction find the branch condition.
   opt::analysis::DefUseManager* def_use_manager =
       ir_context_->get_def_use_mgr();
-  ir::Instruction* var =
+  Instruction* var =
       def_use_manager->GetDef(load_inst->GetSingleWordOperand(2));
 
   return var;
 }
 
-ir::Instruction* Loop::GetInductionStepOperation(
-    const ir::Instruction* variable_inst) const {
-  ir::BasicBlock* bb = loop_continue_;
+Instruction* Loop::GetInductionStepOperation(
+    const Instruction* variable_inst) const {
+  BasicBlock* bb = loop_continue_;
 
-  ir::Instruction* store = nullptr;
+  Instruction* store = nullptr;
 
   // Move over every store in the BasicBlock to find the store assosiated with
   // the given BB.
-  auto find_store = [&store, &variable_inst](ir::Instruction* inst) {
+  auto find_store = [&store, &variable_inst](Instruction* inst) {
     if (inst->opcode() == SpvOp::SpvOpStore &&
         inst->GetSingleWordOperand(0) == variable_inst->result_id()) {
       store = inst;
@@ -134,7 +134,7 @@ ir::Instruction* Loop::GetInductionStepOperation(
   opt::analysis::DefUseManager* def_use_manager =
       ir_context_->get_def_use_mgr();
 
-  ir::Instruction* inst =
+  Instruction* inst =
       def_use_manager->GetDef(store->GetSingleWordOperand(1));
 
   if (!inst || inst->opcode() != SpvOp::SpvOpIAdd) {
@@ -144,15 +144,15 @@ ir::Instruction* Loop::GetInductionStepOperation(
   return inst;
 }
 
-bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
+bool Loop::GetInductionInitValue(const Instruction* variable_inst,
                                  uint32_t* value) const {
   // We assume that the immediate dominator of the loop start block should
   // contain the initialiser for the induction variables.
-  ir::BasicBlock* bb = dom_analysis_->ImmediateDominator(loop_header_);
+  BasicBlock* bb = dom_analysis_->ImmediateDominator(loop_header_);
   if (!bb) return false;
 
-  ir::Instruction* store = nullptr;
-  auto find_store = [&store, &variable_inst](ir::Instruction* inst) {
+  Instruction* store = nullptr;
+  auto find_store = [&store, &variable_inst](Instruction* inst) {
     if (inst->opcode() == SpvOp::SpvOpStore &&
         inst->GetSingleWordOperand(0) == variable_inst->result_id()) {
       store = inst;
@@ -166,7 +166,7 @@ bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
   opt::analysis::DefUseManager* def_use_manager =
       ir_context_->get_def_use_mgr();
 
-  ir::Instruction* constant =
+  Instruction* constant =
       def_use_manager->GetDef(store->GetSingleWordOperand(1));
   if (!constant) return false;
 
@@ -183,20 +183,20 @@ InductionVariable* Loop::GetInductionVariable() {
 
 void Loop::FindInductionVariable() {
   // Get the basic block which branches to the merge block.
-  const ir::BasicBlock* bb = dom_analysis_->ImmediateDominator(loop_merge_);
+  const BasicBlock* bb = dom_analysis_->ImmediateDominator(loop_merge_);
 
   // Find the branch instruction.
-  const ir::Instruction& branch_inst = *bb->ctail();
+  const Instruction& branch_inst = *bb->ctail();
   if (branch_inst.opcode() == SpvOp::SpvOpBranchConditional) {
     // From the branch instruction find the branch condition.
     opt::analysis::DefUseManager* def_use_manager =
         ir_context_->get_def_use_mgr();
-    ir::Instruction* condition =
+    Instruction* condition =
         def_use_manager->GetDef(branch_inst.GetSingleWordOperand(0));
 
     if (condition && condition->opcode() == SpvOp::SpvOpSLessThan) {
       // The right hand side operand of the operation.
-      const ir::Instruction* rhs_inst =
+      const Instruction* rhs_inst =
           def_use_manager->GetDef(condition->GetSingleWordOperand(3));
 
       uint32_t const_value = 0;
@@ -205,10 +205,10 @@ void Loop::FindInductionVariable() {
       if (!GetConstant(rhs_inst, &const_value)) return;
 
       // The left hand side operand of the operation.
-      const ir::Instruction* lhs_inst =
+      const Instruction* lhs_inst =
           def_use_manager->GetDef(condition->GetSingleWordOperand(2));
 
-      ir::Instruction* variable_inst = GetVariable(lhs_inst);
+      Instruction* variable_inst = GetVariable(lhs_inst);
 
       if (IsLoopInvariant(variable_inst)) {
         return;
@@ -217,12 +217,12 @@ void Loop::FindInductionVariable() {
       uint32_t init_value = 0;
       GetInductionInitValue(variable_inst, &init_value);
 
-      ir::Instruction* step_inst = GetInductionStepOperation(variable_inst);
+      Instruction* step_inst = GetInductionStepOperation(variable_inst);
 
       if (!step_inst) return;
 
       // The instruction representing the constant value.
-      const ir::Instruction* step_amount_inst =
+      const Instruction* step_amount_inst =
           def_use_manager->GetDef(step_inst->GetSingleWordOperand(3));
 
       uint32_t step_value = 0;
@@ -235,10 +235,10 @@ void Loop::FindInductionVariable() {
   }
 }
 
-LoopDescriptor::LoopDescriptor(const ir::Function* f) { PopulateList(f); }
+LoopDescriptor::LoopDescriptor(const Function* f) { PopulateList(f); }
 
-void LoopDescriptor::PopulateList(const ir::Function* f) {
-  ir::IRContext* context = f->GetParent()->context();
+void LoopDescriptor::PopulateList(const Function* f) {
+  IRContext* context = f->GetParent()->context();
 
   opt::DominatorAnalysis* dom_analysis_ =
       context->GetDominatorAnalysis(f, *context->cfg());
@@ -250,11 +250,11 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
   // However, this does not mean that dominance is implied by the order of
   // loop_merge_inst you still need to check dominance between each block
   // manually.
-  DominatorTree& dom_tree = dom_analysis_->GetDomTree();
+  opt::DominatorTree& dom_tree = dom_analysis_->GetDomTree();
   // Post-order traversal of the dominator tree: inner loop will be inserted
   // first.
-  for (DominatorTreeNode& node : dom_tree.PostorderRange()) {
-    ir::Instruction* merge_inst = node.bb_->GetLoopMergeInst();
+  for (opt::DominatorTreeNode& node : dom_tree.PostorderRange()) {
+    Instruction* merge_inst = node.bb_->GetLoopMergeInst();
     if (merge_inst) {
       // The id of the continue basic block of this loop.
       uint32_t merge_bb_id = merge_inst->GetSingleWordOperand(0);
@@ -263,13 +263,13 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
       uint32_t continue_bb_id = merge_inst->GetSingleWordOperand(1);
 
       // The continue target of this loop.
-      ir::BasicBlock* merge_bb = context->cfg()->block(merge_bb_id);
+      BasicBlock* merge_bb = context->cfg()->block(merge_bb_id);
 
       // The continue target of this loop.
-      ir::BasicBlock* continue_bb = context->cfg()->block(continue_bb_id);
+      BasicBlock* continue_bb = context->cfg()->block(continue_bb_id);
 
       // The basicblock containing the merge instruction.
-      ir::BasicBlock* header_bb = context->get_instr_block(merge_inst);
+      BasicBlock* header_bb = context->get_instr_block(merge_inst);
 
       // Add the loop the list of all the loops in the function.
       loops_.emplace_back(MakeUnique<Loop>(context, dom_analysis_, header_bb,
@@ -296,9 +296,9 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
 
         current_loop->AddNestedLoop(previous_loop);
       }
-      DominatorTreeNode* dom_merge_node = dom_tree[merge_bb];
-      for (DominatorTreeNode& loop_node :
-           ir::make_range(node.df_begin(), node.df_end())) {
+      opt::DominatorTreeNode* dom_merge_node = dom_tree[merge_bb];
+      for (opt::DominatorTreeNode& loop_node :
+           make_range(node.df_begin(), node.df_end())) {
         // Check if we are in the loop.
         if (dom_tree.Dominates(dom_merge_node, &loop_node)) continue;
         current_loop->AddBasicBlockToLoop(loop_node.bb_);
@@ -307,5 +307,5 @@ void LoopDescriptor::PopulateList(const ir::Function* f) {
   }
 }
 
-}  // namespace opt
+}  // namespace ir
 }  // namespace spvtools
