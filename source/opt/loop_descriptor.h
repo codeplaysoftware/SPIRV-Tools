@@ -29,28 +29,6 @@ namespace spvtools {
 namespace ir {
 class CFG;
 
-struct InductionVariable {
-  InductionVariable()
-      : def_(nullptr),
-        init_value_(0),
-        step_amount_(0),
-        end_value_(0),
-        end_condition_(nullptr) {}
-
-  InductionVariable(ir::Instruction* d, int32_t init_value, int32_t step_amount,
-                    int32_t end_val, ir::Instruction* condition)
-      : def_(d),
-        init_value_(init_value),
-        step_amount_(step_amount),
-        end_value_(end_val),
-        end_condition_(condition) {}
-  ir::Instruction* def_;
-  int32_t init_value_;
-  int32_t step_amount_;
-  int32_t end_value_;
-  ir::Instruction* end_condition_;
-};
-
 // A class to represent and manipulate a loop.
 class Loop {
   // The type used to represent nested child loops.
@@ -68,8 +46,7 @@ class Loop {
         loop_continue_(nullptr),
         loop_merge_(nullptr),
         loop_preheader_(nullptr),
-        parent_(nullptr),
-        induction_variable_() {}
+        parent_(nullptr) {}
 
   Loop(IRContext* context, opt::DominatorAnalysis* analysis,
        BasicBlock* header, BasicBlock* continue_target,
@@ -130,9 +107,6 @@ class Loop {
   // Return true if this loop is itself nested within another loop.
   inline bool IsNested() const { return parent_ != nullptr; }
 
-  // Gets or if unitialised, sets, the induction variable for the loop.
-  InductionVariable* GetInductionVariable();
-
   // Returns the set of all basic blocks contained within the loop. Will be all
   // BasicBlocks dominated by the header which are not also dominated by the
   // loop merge block.
@@ -186,12 +160,6 @@ class Loop {
   // Nested child loops of this loop.
   ChildrenList nested_loops_;
 
-  // Induction variable.
-  // FIXME: That's only apply for some canonical form.
-  //        Plus, only the Phi insn is really needed as other information should
-  //        be trivial to recover.
-  InductionVariable induction_variable_;
-
   // A set of all the basic blocks which comprise the loop structure. Will be
   // computed only when needed on demand.
   BasicBlockListTy loop_basic_blocks_;
@@ -203,17 +171,6 @@ class Loop {
   // Set the loop preheader if it exist.
   void SetLoopPreheader();
 
-  void FindInductionVariable();
-  bool GetConstant(const Instruction* inst, uint32_t* value) const;
-  bool GetInductionInitValue(const Instruction* variable_inst,
-                             uint32_t* value) const;
-  Instruction* GetInductionStepOperation(
-      const Instruction* variable_inst) const;
-
-  // Returns an OpVariable instruction or null from a load_inst.
-  Instruction* GetVariable(const Instruction* load_inst);
-
-  bool IsConstantOnEntryToLoop(const Instruction* variable_inst) const;
 };
 
 class LoopDescriptor {
