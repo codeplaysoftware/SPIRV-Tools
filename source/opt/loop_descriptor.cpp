@@ -99,7 +99,8 @@ void LoopDescriptor::PopulateList(const Function* f) {
   opt::DominatorTree& dom_tree = dom_analysis_->GetDomTree();
   // Post-order traversal of the dominator tree: inner loop will be inserted
   // first.
-  for (opt::DominatorTreeNode& node : dom_tree.PostorderRange()) {
+  for (opt::DominatorTreeNode& node :
+       ir::make_range(dom_tree.post_begin(), dom_tree.post_end())) {
     Instruction* merge_inst = node.bb_->GetLoopMergeInst();
     if (merge_inst) {
       // The id of the continue basic block of this loop.

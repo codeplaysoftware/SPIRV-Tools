@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "cfg.h"
-#include "iterator.h"
 #include "module.h"
 #include "tree_iterator.h"
 
@@ -111,12 +110,12 @@ class DominatorTree {
   // Depth first iterators.
   // Traverse the dominator tree in a depth first pre-order.
   // The pseudo-block is ignored.
-  iterator begin() { return ++GetRoot()->df_begin(); }
-  iterator end() { return GetRoot()->df_end(); }
+  iterator begin() { return ++iterator(GetRoot()); }
+  iterator end() { return iterator(); }
   const_iterator begin() const { return cbegin(); }
   const_iterator end() const { return cend(); }
-  const_iterator cbegin() const { return ++GetRoot()->df_begin(); }
-  const_iterator cend() const { return GetRoot()->df_end(); }
+  const_iterator cbegin() const { return ++const_iterator(GetRoot()); }
+  const_iterator cend() const { return const_iterator(); }
 
   // Traverse the dominator tree in a depth first post-order.
   // The pseudo-block is ignored.
@@ -129,27 +128,6 @@ class DominatorTree {
   }
   const_post_iterator post_cend() const {
     return const_post_iterator::end(GetRoot());
-  }
-
-  // Ranged iterators.
-  inline ir::IteratorRange<iterator> PreorderRange() {
-    return ir::make_range(begin(), end());
-  }
-  inline ir::IteratorRange<const_iterator> PreorderRange() const {
-    return ir::make_range(cbegin(), cend());
-  }
-  inline ir::IteratorRange<const_iterator> cPreorderRange() const {
-    return ir::make_range(cbegin(), cend());
-  }
-
-  inline ir::IteratorRange<post_iterator> PostorderRange() {
-    return ir::make_range(post_begin(), post_end());
-  }
-  inline ir::IteratorRange<const_post_iterator> PostorderRange() const {
-    return ir::make_range(post_cbegin(), post_cend());
-  }
-  inline ir::IteratorRange<const_post_iterator> cPostorderRange() const {
-    return ir::make_range(post_cbegin(), post_cend());
   }
 
   roots_iterator roots_begin() { return roots_.begin(); }
