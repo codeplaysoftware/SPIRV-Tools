@@ -15,9 +15,11 @@
 #ifndef LIBSPIRV_OPT_LOOP_DESCRIPTORS_H_
 #define LIBSPIRV_OPT_LOOP_DESCRIPTORS_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 #include "opt/module.h"
@@ -60,7 +62,7 @@ class Loop {
  public:
   using iterator = ChildrenList::iterator;
   using const_iterator = ChildrenList::const_iterator;
-  using BasicBlockListTy = std::set<const ir::BasicBlock*>;
+  using BasicBlockListTy = std::unordered_set<const ir::BasicBlock*>;
 
   Loop()
       : ir_context_(nullptr),
@@ -72,17 +74,17 @@ class Loop {
         parent_(nullptr),
         induction_variable_() {}
 
-  Loop(ir::BasicBlock* header, ir::BasicBlock* continue_target,
-       ir::BasicBlock* merge_target, ir::IRContext* context,
-       opt::DominatorAnalysis* analysis);
+  Loop(ir::IRContext* context, opt::DominatorAnalysis* analysis,
+       ir::BasicBlock* header, ir::BasicBlock* continue_target,
+       ir::BasicBlock* merge_target);
 
   // Iterators which allows access to the nested loops.
-  iterator begin() { return nested_loops_.begin(); }
-  iterator end() { return nested_loops_.end(); }
-  const_iterator begin() const { return cbegin(); }
-  const_iterator end() const { return cend(); }
-  const_iterator cbegin() const { return nested_loops_.begin(); }
-  const_iterator cend() const { return nested_loops_.end(); }
+  inline iterator begin() { return nested_loops_.begin(); }
+  inline iterator end() { return nested_loops_.end(); }
+  inline const_iterator begin() const { return cbegin(); }
+  inline const_iterator end() const { return cend(); }
+  inline const_iterator cbegin() const { return nested_loops_.begin(); }
+  inline const_iterator cend() const { return nested_loops_.end(); }
 
   // Get the header (first basic block of the loop). This block contains the
   // OpLoopMerge instruction.
@@ -97,8 +99,11 @@ class Loop {
   inline ir::BasicBlock* GetMergeBlock() { return loop_merge_; }
   inline const ir::BasicBlock* GetMergeBlock() const { return loop_merge_; }
 
-  // Get the BasicBlock which immediately precedes the loop header.
-  inline const ir::BasicBlock* GetPreheaderBlock() const {
+  // Get or create the loop pre-header.
+  inline ir::BasicBlock* GetPreHeaderBlock() { return loop_preheader_; }
+
+  // Get or create the loop pre-header.
+  inline const ir::BasicBlock* GetPreHeaderBlock() const {
     return loop_preheader_;
   }
 
@@ -120,8 +125,10 @@ class Loop {
     nested->SetParent(this);
   }
 
-  Loop* GetParent() { return parent_; }
-  const Loop* GetParent() const { return parent_; }
+  inline Loop* GetParent() { return parent_; }
+  inline const Loop* GetParent() const { return parent_; }
+
+  inline bool HasParent() const { return parent_; }
 
   // Return true if this loop is itself nested within another loop.
   inline bool IsNested() const { return parent_ != nullptr; }
@@ -132,9 +139,30 @@ class Loop {
   // Returns the set of all basic blocks contained within the loop. Will be all
   // BasicBlocks dominated by the header which are not also dominated by the
   // loop merge block.
-  const BasicBlockListTy& GetBlocks() const { return loop_basic_blocks_; }
+  inline const BasicBlockListTy& GetBlocks() const {
+    return loop_basic_blocks_;
+  }
 
-  ir::IRContext* GetContext() const { return ir_context_; }
+  inline ir::IRContext* GetContext() const { return ir_context_; }
+
+  // Returns true if |bb| is inside this loop.
+  inline bool IsInsideLoop(const ir::BasicBlock* bb) const {
+    return loop_basic_blocks_.count(bb);
+  }
+
+  // Add a Basic Block to this loop.
+  void AddBasicBlockToLoop(const ir::BasicBlock* bb) {
+    for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
+      loop_basic_blocks_.insert(bb);
+    }
+  }
+
+  // Returns true is the parent basic block
+  inline bool IsLoopInvariant(ir::Instruction* inst) const {
+    const ir::BasicBlock* parent_block = inst->context()->get_instr_block(inst);
+    if (!parent_block) return true;
+    return IsInsideLoop(parent_block);
+  }
 
  private:
   ir::IRContext* ir_context_;
@@ -173,7 +201,10 @@ class Loop {
 
   // Sets the parent loop of this loop, that is, a loop which contains this loop
   // as a nested child loop.
-  void SetParent(Loop* parent) { parent_ = parent; }
+  inline void SetParent(Loop* parent) { parent_ = parent; }
+
+  // Set the loop preheader if it exist.
+  void SetLoopPreheader();
 
   void FindInductionVariable();
   bool GetConstant(const ir::Instruction* inst, uint32_t* value) const;
@@ -184,11 +215,6 @@ class Loop {
 
   // Returns an OpVariable instruction or null from a load_inst.
   ir::Instruction* GetVariable(const ir::Instruction* load_inst);
-
-  // Populates the set of basic blocks in the loop.
-  void FindLoopBasicBlocks();
-
-  bool IsLoopInvariant(const ir::Instruction* variable_inst);
 
   bool IsConstantOnEntryToLoop(const ir::Instruction* variable_inst) const;
 };
@@ -201,21 +227,41 @@ class LoopDescriptor {
   explicit LoopDescriptor(const ir::Function* f);
 
   // Return the number of loops found in the function.
-  size_t NumLoops() const { return loops_.size(); }
+  inline size_t NumLoops() const { return loops_.size(); }
 
   // Return the loop at a particular |index|. The |index| must be in bounds,
   // check with NumLoops before calling.
-  inline Loop& GetLoop(size_t index) const {
+  inline Loop& GetLoopByIndex(size_t index) const {
     assert(loops_.size() > index &&
            "Index out of range (larger than loop count)");
     return *loops_[index].get();
   }
 
-  iterator begin() { return loops_.begin(); }
-  iterator end() { return loops_.end(); }
+  // Return the loop descriptor which has |header_id| as loop header id.
+  inline Loop* operator[](uint32_t header_id) const {
+    return FindLoop(header_id);
+  }
+
+  // Return the loop descriptor which has |header| as loop header.
+  inline Loop* operator[](ir::BasicBlock* bb) const {
+    return (*this)[bb->id()];
+  }
+
+  inline iterator begin() { return loops_.begin(); }
+  inline iterator end() { return loops_.end(); }
 
  private:
   void PopulateList(const ir::Function* f);
+
+  // Return the loop descriptor which has |header_id| as loop header id.
+  inline Loop* FindLoop(uint32_t header_id) const {
+    LoopContainerType::const_iterator it =
+        std::find_if(loops_.begin(), loops_.end(),
+                     [header_id](const std::unique_ptr<Loop>& loop) {
+                       return loop.get()->GetHeaderBlock()->id() == header_id;
+                     });
+    return it != loops_.end() ? it->get() : nullptr;
+  }
 
   // A list of all the loops in the function.
   LoopContainerType loops_;

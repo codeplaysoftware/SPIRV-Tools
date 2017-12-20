@@ -100,7 +100,7 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
 
   EXPECT_EQ(ld.NumLoops(), 1u);
 
-  opt::Loop& loop = ld.GetLoop(0);
+  opt::Loop& loop = ld.GetLoopByIndex(0);
   EXPECT_EQ(loop.GetHeaderBlock(), spvtest::GetBasicBlock(f, 18));
   EXPECT_EQ(loop.GetLatchBlock(), spvtest::GetBasicBlock(f, 20));
   EXPECT_EQ(loop.GetMergeBlock(), spvtest::GetBasicBlock(f, 19));
