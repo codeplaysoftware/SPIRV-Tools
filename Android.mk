@@ -47,6 +47,7 @@ SPVTOOLS_SRC_FILES := \
 		source/validate_image.cpp \
 		source/validate_instruction.cpp \
 		source/validate_layout.cpp \
+		source/validate_literals.cpp \
 		source/validate_logicals.cpp \
 		source/validate_primitives.cpp \
 		source/validate_type_unique.cpp
@@ -94,6 +95,7 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/optimizer.cpp \
 		source/opt/pass.cpp \
 		source/opt/pass_manager.cpp \
+		source/opt/private_to_local_pass.cpp \
 		source/opt/propagator.cpp \
 		source/opt/redundancy_elimination.cpp \
 		source/opt/remove_duplicates_pass.cpp \
