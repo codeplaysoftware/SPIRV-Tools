@@ -19,15 +19,18 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "opt/module.h"
 #include "opt/pass.h"
+#include "opt/tree_iterator.h"
 
 namespace spvtools {
 namespace ir {
 class CFG;
+class LoopDescriptor;
 
 // A class to represent and manipulate a loop.
 class Loop {
@@ -171,12 +174,17 @@ class Loop {
   // Set the loop preheader if it exist.
   void SetLoopPreheader();
 
+  // This is only to allow LoopDescriptor::dummy_top_loop_ to add top level
+  // loops as child.
+  friend class LoopDescriptor;
 };
 
 class LoopDescriptor {
  public:
-  using LoopContainerType = std::vector<std::unique_ptr<Loop>>;
-  using iterator = LoopContainerType::iterator;
+  // Iterator interface (depth first postorder traversal).
+  using iterator = opt::PostOrderTreeDFIterator<Loop>;
+  using const_iterator = opt::PostOrderTreeDFIterator<const Loop>;
+
   // Creates a loop object for all loops found in |f|.
   explicit LoopDescriptor(const Function* f);
 
@@ -193,7 +201,7 @@ class LoopDescriptor {
 
   // Return the loop descriptor which has |header_id| as loop header id.
   inline Loop* operator[](uint32_t header_id) const {
-    return FindLoop(header_id);
+    return FindLoopForBasicBlock(header_id);
   }
 
   // Return the loop descriptor which has |header| as loop header.
@@ -201,24 +209,34 @@ class LoopDescriptor {
     return (*this)[bb->id()];
   }
 
-  inline iterator begin() { return loops_.begin(); }
-  inline iterator end() { return loops_.end(); }
+  inline iterator begin() { return iterator::begin(&dummy_top_loop_); }
+  inline iterator end() { return iterator::end(&dummy_top_loop_); }
+  inline const_iterator begin() const { return cbegin(); }
+  inline const_iterator end() const { return cend(); }
+  inline const_iterator cbegin() const {
+    return const_iterator::begin(&dummy_top_loop_);
+  }
+  inline const_iterator cend() const {
+    return const_iterator::end(&dummy_top_loop_);
+  }
 
  private:
+  using LoopContainerType = std::vector<std::unique_ptr<Loop>>;
+
   void PopulateList(const Function* f);
 
   // Return the loop descriptor which has |header_id| as loop header id.
-  inline Loop* FindLoop(uint32_t header_id) const {
-    LoopContainerType::const_iterator it =
-        std::find_if(loops_.begin(), loops_.end(),
-                     [header_id](const std::unique_ptr<Loop>& loop) {
-                       return loop.get()->GetHeaderBlock()->id() == header_id;
-                     });
-    return it != loops_.end() ? it->get() : nullptr;
+  inline Loop* FindLoopForBasicBlock(uint32_t header_id) const {
+    std::unordered_map<uint32_t, Loop*>::const_iterator it =
+        basic_block_to_loop_.find(header_id);
+    return it != basic_block_to_loop_.end() ? it->second : nullptr;
   }
 
   // A list of all the loops in the function.
   LoopContainerType loops_;
+  // Dummy root: this "loop" is only there to help iterators creation.
+  Loop dummy_top_loop_;
+  std::unordered_map<uint32_t, Loop*> basic_block_to_loop_;
 };
 
 }  // namespace ir
