@@ -12,17 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <string>
-#include <vector>
-
 #include <gmock/gmock.h>
+
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "../assembly_builder.h"
 #include "../function_utils.h"
 #include "../pass_fixture.h"
 #include "../pass_utils.h"
+
+#include "opt/iterator.h"
 #include "opt/loop_descriptor.h"
 #include "opt/pass.h"
+#include "opt/tree_iterator.h"
 
 namespace {
 
@@ -175,6 +180,252 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_EQ(child_loop_2.GetHeaderBlock(), spvtest::GetBasicBlock(f, 37));
   EXPECT_EQ(child_loop_2.GetLatchBlock(), spvtest::GetBasicBlock(f, 39));
   EXPECT_EQ(child_loop_2.GetMergeBlock(), spvtest::GetBasicBlock(f, 38));
+}
+
+static void CheckLoopBlocks(ir::Loop* loop,
+                            std::unordered_set<uint32_t>* expected_ids) {
+  SCOPED_TRACE("Check loop " + std::to_string(loop->GetHeaderBlock()->id()));
+  for (uint32_t bb_id : loop->GetBlocks()) {
+    EXPECT_EQ(expected_ids->count(bb_id), 1u);
+    expected_ids->erase(bb_id);
+  }
+  EXPECT_FALSE(loop->IsInsideLoop(loop->GetMergeBlock()));
+  EXPECT_EQ(expected_ids->size(), 0u);
+}
+
+/*
+Generated from the following GLSL
+#version 330 core
+layout(location = 0) out vec4 c;
+void main() {
+  int i = 0;
+  for (; i < 10; ++i) {
+    for (int j = 0; j < 11; ++j) {
+      if (j < 5) {
+        for (int k = 0; k < 12; ++k) {}
+      }
+      else {}
+      for (int k = 0; k < 12; ++k) {}
+    }
+  }
+}*/
+TEST_F(PassClassTest, TripleNestedLoop) {
+  const std::string text = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %2 "main" %3
+               OpExecutionMode %2 OriginUpperLeft
+               OpSource GLSL 330
+               OpName %2 "main"
+               OpName %4 "i"
+               OpName %5 "j"
+               OpName %6 "k"
+               OpName %7 "k"
+               OpName %3 "c"
+               OpDecorate %3 Location 0
+          %8 = OpTypeVoid
+          %9 = OpTypeFunction %8
+         %10 = OpTypeInt 32 1
+         %11 = OpTypePointer Function %10
+         %12 = OpConstant %10 0
+         %13 = OpConstant %10 10
+         %14 = OpTypeBool
+         %15 = OpConstant %10 11
+         %16 = OpConstant %10 5
+         %17 = OpConstant %10 12
+         %18 = OpConstant %10 1
+         %19 = OpTypeFloat 32
+         %20 = OpTypeVector %19 4
+         %21 = OpTypePointer Output %20
+          %3 = OpVariable %21 Output
+          %2 = OpFunction %8 None %9
+         %22 = OpLabel
+          %4 = OpVariable %11 Function
+          %5 = OpVariable %11 Function
+          %6 = OpVariable %11 Function
+          %7 = OpVariable %11 Function
+               OpStore %4 %12
+               OpBranch %23
+         %23 = OpLabel
+               OpLoopMerge %24 %25 None
+               OpBranch %26
+         %26 = OpLabel
+         %27 = OpLoad %10 %4
+         %28 = OpSLessThan %14 %27 %13
+               OpBranchConditional %28 %29 %24
+         %29 = OpLabel
+               OpStore %5 %12
+               OpBranch %30
+         %30 = OpLabel
+               OpLoopMerge %31 %32 None
+               OpBranch %33
+         %33 = OpLabel
+         %34 = OpLoad %10 %5
+         %35 = OpSLessThan %14 %34 %15
+               OpBranchConditional %35 %36 %31
+         %36 = OpLabel
+         %37 = OpLoad %10 %5
+         %38 = OpSLessThan %14 %37 %16
+               OpSelectionMerge %39 None
+               OpBranchConditional %38 %40 %39
+         %40 = OpLabel
+               OpStore %6 %12
+               OpBranch %41
+         %41 = OpLabel
+               OpLoopMerge %42 %43 None
+               OpBranch %44
+         %44 = OpLabel
+         %45 = OpLoad %10 %6
+         %46 = OpSLessThan %14 %45 %17
+               OpBranchConditional %46 %47 %42
+         %47 = OpLabel
+               OpBranch %43
+         %43 = OpLabel
+         %48 = OpLoad %10 %6
+         %49 = OpIAdd %10 %48 %18
+               OpStore %6 %49
+               OpBranch %41
+         %42 = OpLabel
+               OpBranch %39
+         %39 = OpLabel
+               OpStore %7 %12
+               OpBranch %50
+         %50 = OpLabel
+               OpLoopMerge %51 %52 None
+               OpBranch %53
+         %53 = OpLabel
+         %54 = OpLoad %10 %7
+         %55 = OpSLessThan %14 %54 %17
+               OpBranchConditional %55 %56 %51
+         %56 = OpLabel
+               OpBranch %52
+         %52 = OpLabel
+         %57 = OpLoad %10 %7
+         %58 = OpIAdd %10 %57 %18
+               OpStore %7 %58
+               OpBranch %50
+         %51 = OpLabel
+               OpBranch %32
+         %32 = OpLabel
+         %59 = OpLoad %10 %5
+         %60 = OpIAdd %10 %59 %18
+               OpStore %5 %60
+               OpBranch %30
+         %31 = OpLabel
+               OpBranch %25
+         %25 = OpLabel
+         %61 = OpLoad %10 %4
+         %62 = OpIAdd %10 %61 %18
+               OpStore %4 %62
+               OpBranch %23
+         %24 = OpLabel
+               OpReturn
+               OpFunctionEnd
+  )";
+  // clang-format on
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 2);
+  ir::LoopDescriptor ld{f};
+
+  EXPECT_EQ(ld.NumLoops(), 4u);
+
+  // Invalid basic block id.
+  EXPECT_EQ(ld[0u], nullptr);
+  // Not in a loop.
+  EXPECT_EQ(ld[22], nullptr);
+
+  // Check that we can map basic block to the correct loop.
+  // The following block ids do not belong to a loop.
+  for (uint32_t bb_id : {22, 24}) EXPECT_EQ(ld[bb_id], nullptr);
+
+  {
+    std::unordered_set<uint32_t> basic_block_in_loop = {
+        {23, 26, 29, 30, 33, 36, 40, 41, 44, 47, 43,
+         42, 39, 50, 53, 56, 52, 51, 32, 31, 25}};
+    ir::Loop* loop = ld[23];
+    CheckLoopBlocks(loop, &basic_block_in_loop);
+
+    EXPECT_TRUE(loop->HasNestedLoops());
+    EXPECT_FALSE(loop->IsNested());
+    EXPECT_EQ(loop->GetDepth(), 1u);
+    EXPECT_EQ(std::distance(loop->begin(), loop->end()), 1u);
+    EXPECT_EQ(loop->GetPreHeaderBlock(), spvtest::GetBasicBlock(f, 22));
+    EXPECT_EQ(loop->GetHeaderBlock(), spvtest::GetBasicBlock(f, 23));
+    EXPECT_EQ(loop->GetLatchBlock(), spvtest::GetBasicBlock(f, 25));
+    EXPECT_EQ(loop->GetMergeBlock(), spvtest::GetBasicBlock(f, 24));
+    EXPECT_FALSE(loop->IsInsideLoop(loop->GetMergeBlock()));
+    EXPECT_FALSE(loop->IsInsideLoop(loop->GetPreHeaderBlock()));
+  }
+
+  {
+    std::unordered_set<uint32_t> basic_block_in_loop = {
+        {30, 33, 36, 40, 41, 44, 47, 43, 42, 39, 50, 53, 56, 52, 51, 32}};
+    ir::Loop* loop = ld[30];
+    CheckLoopBlocks(loop, &basic_block_in_loop);
+
+    EXPECT_TRUE(loop->HasNestedLoops());
+    EXPECT_TRUE(loop->IsNested());
+    EXPECT_EQ(loop->GetDepth(), 2u);
+    EXPECT_EQ(std::distance(loop->begin(), loop->end()), 2u);
+    EXPECT_EQ(loop->GetPreHeaderBlock(), spvtest::GetBasicBlock(f, 29));
+    EXPECT_EQ(loop->GetHeaderBlock(), spvtest::GetBasicBlock(f, 30));
+    EXPECT_EQ(loop->GetLatchBlock(), spvtest::GetBasicBlock(f, 32));
+    EXPECT_EQ(loop->GetMergeBlock(), spvtest::GetBasicBlock(f, 31));
+    EXPECT_FALSE(loop->IsInsideLoop(loop->GetMergeBlock()));
+    EXPECT_FALSE(loop->IsInsideLoop(loop->GetPreHeaderBlock()));
+  }
+
+  {
+    std::unordered_set<uint32_t> basic_block_in_loop = {{41, 44, 47, 43}};
+    ir::Loop* loop = ld[41];
+    CheckLoopBlocks(loop, &basic_block_in_loop);
+
+    EXPECT_FALSE(loop->HasNestedLoops());
+    EXPECT_TRUE(loop->IsNested());
+    EXPECT_EQ(loop->GetDepth(), 3u);
+    EXPECT_EQ(std::distance(loop->begin(), loop->end()), 0u);
+    EXPECT_EQ(loop->GetPreHeaderBlock(), spvtest::GetBasicBlock(f, 40));
+    EXPECT_EQ(loop->GetHeaderBlock(), spvtest::GetBasicBlock(f, 41));
+    EXPECT_EQ(loop->GetLatchBlock(), spvtest::GetBasicBlock(f, 43));
+    EXPECT_EQ(loop->GetMergeBlock(), spvtest::GetBasicBlock(f, 42));
+    EXPECT_FALSE(loop->IsInsideLoop(loop->GetMergeBlock()));
+    EXPECT_FALSE(loop->IsInsideLoop(loop->GetPreHeaderBlock()));
+  }
+
+  {
+    std::unordered_set<uint32_t> basic_block_in_loop = {{50, 53, 56, 52}};
+    ir::Loop* loop = ld[50];
+    CheckLoopBlocks(loop, &basic_block_in_loop);
+
+    EXPECT_FALSE(loop->HasNestedLoops());
+    EXPECT_TRUE(loop->IsNested());
+    EXPECT_EQ(loop->GetDepth(), 3u);
+    EXPECT_EQ(std::distance(loop->begin(), loop->end()), 0u);
+    EXPECT_EQ(loop->GetPreHeaderBlock(), spvtest::GetBasicBlock(f, 39));
+    EXPECT_EQ(loop->GetHeaderBlock(), spvtest::GetBasicBlock(f, 50));
+    EXPECT_EQ(loop->GetLatchBlock(), spvtest::GetBasicBlock(f, 52));
+    EXPECT_EQ(loop->GetMergeBlock(), spvtest::GetBasicBlock(f, 51));
+    EXPECT_FALSE(loop->IsInsideLoop(loop->GetMergeBlock()));
+    EXPECT_FALSE(loop->IsInsideLoop(loop->GetPreHeaderBlock()));
+  }
+
+  // Make sure LoopDescriptor gives us the inner most loop when we query for
+  // loops.
+  for (const ir::BasicBlock& bb : *f) {
+    if (ir::Loop* loop = ld[&bb]) {
+      for (ir::Loop& sub_loop :
+           ir::make_range(++opt::TreeDFIterator<ir::Loop>(loop),
+                          opt::TreeDFIterator<ir::Loop>())) {
+        EXPECT_FALSE(sub_loop.IsInsideLoop(bb.id()));
+      }
+    }
+  }
 }
 
 }  // namespace

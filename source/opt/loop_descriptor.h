@@ -40,7 +40,7 @@ class Loop {
  public:
   using iterator = ChildrenList::iterator;
   using const_iterator = ChildrenList::const_iterator;
-  using BasicBlockListTy = std::unordered_set<const BasicBlock*>;
+  using BasicBlockListTy = std::unordered_set<uint32_t>;
 
   Loop()
       : loop_header_(nullptr),
@@ -117,15 +117,20 @@ class Loop {
     return loop_basic_blocks_;
   }
 
-  // Returns true if |bb| is inside this loop.
+  // Returns true if the basic block |bb| is inside this loop.
   inline bool IsInsideLoop(const BasicBlock* bb) const {
-    return loop_basic_blocks_.count(bb);
+    return IsInsideLoop(bb->id());
+  }
+
+  // Returns true if the basic block id |bb_id| is inside this loop.
+  inline bool IsInsideLoop(uint32_t bb_id) const {
+    return loop_basic_blocks_.count(bb_id);
   }
 
   // Adds the Basic Block |bb| this loop and its parents.
   void AddBasicBlockToLoop(const BasicBlock* bb) {
     for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
-      loop_basic_blocks_.insert(bb);
+      loop_basic_blocks_.insert(bb->id());
     }
   }
 
@@ -198,7 +203,9 @@ class LoopDescriptor {
   }
 
   // Returns the inner most loop that contains the basic block |bb|.
-  inline Loop* operator[](BasicBlock* bb) const { return (*this)[bb->id()]; }
+  inline Loop* operator[](const BasicBlock* bb) const {
+    return (*this)[bb->id()];
+  }
 
   // Iterators for post order depth first traversal of the loops.
   // Inner most loops will be visited first.
