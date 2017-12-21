@@ -134,7 +134,7 @@ void LoopDescriptor::PopulateList(const Function* f) {
         // If the current loop does not dominates the previous loop then it is
         // not nested loop.
         if (!dom_analysis->Dominates(header_bb,
-                                      previous_loop->GetHeaderBlock()))
+                                     previous_loop->GetHeaderBlock()))
           break;
         // If the current loop merge dominates the previous loop then it is
         // not nested loop.

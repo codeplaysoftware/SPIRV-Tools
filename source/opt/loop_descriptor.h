@@ -164,7 +164,8 @@ class Loop {
   inline void SetParent(Loop* parent) { parent_ = parent; }
 
   // Set the loop preheader if it exists.
-  void SetLoopPreheader(IRContext* context, opt::DominatorAnalysis* dom_analysis);
+  void SetLoopPreheader(IRContext* context,
+                        opt::DominatorAnalysis* dom_analysis);
 
   // This is only to allow LoopDescriptor::dummy_top_loop_ to add top level
   // loops as child.
@@ -193,7 +194,7 @@ class LoopDescriptor {
 
   // Returns the inner most loop that contains the basic block id |block_id|.
   inline Loop* operator[](uint32_t block_id) const {
-    return FindLoopForBasicBlock(header_id);
+    return FindLoopForBasicBlock(block_id);
   }
 
   // Returns the inner most loop that contains the basic block |bb|.
@@ -221,7 +222,7 @@ class LoopDescriptor {
   // Returns the inner most loop that contains the basic block id |block_id|.
   inline Loop* FindLoopForBasicBlock(uint32_t block_id) const {
     std::unordered_map<uint32_t, Loop*>::const_iterator it =
-        basic_block_to_loop_.find(header_id);
+        basic_block_to_loop_.find(block_id);
     return it != basic_block_to_loop_.end() ? it->second : nullptr;
   }
 
