@@ -43,7 +43,7 @@ class LICMPass : public Pass {
   // Checks for invariants in the loop and attempts to move them to the loops
   // preheader. Works from inner loop to outer when nested loops are found.
   // Returns true if a change was made to the loop, false otherwise.
-  bool ProcessLoop(Loop* loop);
+  bool ProcessLoop(Loop* loop, ir::Function* f);
 
   // Finds all basic blocks in the between the header and merge blocks of the
   // loop, not contained in a nested loop

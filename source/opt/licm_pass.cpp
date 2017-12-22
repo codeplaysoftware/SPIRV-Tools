@@ -57,17 +57,17 @@ bool LICMPass::ProcessFunction(ir::Function* f) {
 
   // Process each loop in the function
   for (size_t i = 0; i < loop_descriptor.NumLoops(); ++i) {
-    modified |= ProcessLoop(&loop_descriptor.GetLoop(i));
+    modified |= ProcessLoop(&loop_descriptor.GetLoop(i), f);
   }
   return modified;
 }
 
-bool LICMPass::ProcessLoop(Loop* loop) {
+bool LICMPass::ProcessLoop(Loop* loop, ir::Function* f) {
   // Process all nested loops first
   if (loop->HasNestedLoops()) {
     auto nested_loops = loop->GetNestedLoops();
     for (auto it = nested_loops.begin(); it != nested_loops.end(); ++it) {
-      ProcessLoop(*it);
+      ProcessLoop(*it, f);
     }
   }
 
@@ -92,9 +92,14 @@ bool LICMPass::ProcessLoop(Loop* loop) {
   // If we found any invariants, process them
   if (invariants.size() > 0) {
     // Create a new BB to hold all found invariants
-    uint32_t new_bb_result_id = ir_context->TakeNextUniqueId();
-    ir::BasicBlock invariants_bb(std::unique_ptr<ir::Instruction>((
-        new ir::Instruction(ir_context, SpvOpLabel, 0, new_bb_result_id, {}))));
+    uint32_t variants_bb_label_id = ir_context->TakeNextUniqueId();
+    std::unique_ptr<ir::Instruction> new_label{new ir::Instruction(
+        ir_context, SpvOpLabel, 0, variants_bb_label_id, {})};
+
+    ir::BasicBlock invariants_bb(std::move(new_label));
+    // TODO(Alexander: Add invariants_bb to list of bb in function if we find
+    // any invariants)
+    invariants_bb.SetParent(f);
 
     // Add all invariant instructions to the new bb
     for (auto invariant_it = invariants.begin();
@@ -120,14 +125,32 @@ bool LICMPass::ProcessLoop(Loop* loop) {
   return false;
 }
 
+// TODO(Alexander: Change this to insert the new bb between the preheader and
+// header, rather than inserting into the preheader)
 bool LICMPass::HoistInstructions(ir::BasicBlock* pre_header_bb,
                                  ir::BasicBlock* invariants_bb) {
   if (pre_header_bb == nullptr || invariants_bb == nullptr) {
     return false;
   }
-  // TODO(Alexander: Change this to insert the new bb between the preheader and
-  // header, rather than inserting into the preheader)
-  pre_header_bb->AddInstructions(invariants_bb);
+
+  // Get preheader branch instruction
+  ir::Instruction* pre_header_branch_inst = &(*--pre_header_bb->end());
+  if (pre_header_branch_inst == nullptr) return false;
+
+  // Get the result_id of the label the preheader normally branches to
+  uint32_t loop_label_id = *pre_header_branch_inst->GetOperand(0).words.begin();
+
+  // Make the preheader branch to our new bb of invariants
+  pre_header_branch_inst->SetInOperand(
+      0, {invariants_bb->GetLabelInst()->result_id()});
+
+  // Make the new invariants bb branch to the previously stored label
+  std::unique_ptr<ir::Instruction> new_branch_inst{new ir::Instruction(
+      ir_context, SpvOpBranch, 0, 0,
+      {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {loop_label_id}}})};
+
+  invariants_bb->AddInstruction(std::move(new_branch_inst));
+
   return true;
 }
 

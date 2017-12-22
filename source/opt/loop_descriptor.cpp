@@ -126,7 +126,7 @@ ir::Instruction* Loop::GetInductionStepOperation(
 
   ir::Instruction* store = nullptr;
 
-  // Move over every store in the BasicBlock to find the store assosiated with
+  // Move over every store in the BasicBlock to find the store associated with
   // the given BB.
   auto find_store = [&store, &variable_inst](ir::Instruction* inst) {
     if (inst->opcode() == SpvOp::SpvOpStore &&
