@@ -15,11 +15,13 @@
 #ifndef SPIRV_TOOLS_IR_CONTEXT_H
 #define SPIRV_TOOLS_IR_CONTEXT_H
 
+#include "assembly_grammar.h"
 #include "cfg.h"
 #include "constants.h"
 #include "decoration_manager.h"
 #include "def_use_manager.h"
 #include "dominator_analysis.h"
+#include "feature_manager.h"
 #include "module.h"
 #include "type_manager.h"
 
@@ -62,28 +64,38 @@ class IRContext {
   friend inline Analysis& operator<<=(Analysis& a, int shift);
 
   // Creates an |IRContext| that contains an owned |Module|
-  IRContext(spvtools::MessageConsumer c)
-      : unique_id_(0),
+  IRContext(spv_target_env env, spvtools::MessageConsumer c)
+      : syntax_context_(spvContextCreate(env)),
+        grammar_(syntax_context_),
+        unique_id_(0),
         module_(new Module()),
         consumer_(std::move(c)),
         def_use_mgr_(nullptr),
         valid_analyses_(kAnalysisNone),
         constant_mgr_(nullptr),
         type_mgr_(nullptr) {
+    libspirv::SetContextMessageConsumer(syntax_context_, consumer_);
     module_->SetContext(this);
   }
 
-  IRContext(std::unique_ptr<Module>&& m, spvtools::MessageConsumer c)
-      : unique_id_(0),
+  IRContext(spv_target_env env, std::unique_ptr<Module>&& m,
+            spvtools::MessageConsumer c)
+      : syntax_context_(spvContextCreate(env)),
+        grammar_(syntax_context_),
+        unique_id_(0),
         module_(std::move(m)),
         consumer_(std::move(c)),
         def_use_mgr_(nullptr),
         valid_analyses_(kAnalysisNone),
         constant_mgr_(nullptr),
         type_mgr_(nullptr) {
+    libspirv::SetContextMessageConsumer(syntax_context_, consumer_);
     module_->SetContext(this);
     InitializeCombinators();
   }
+
+  ~IRContext() { spvContextDestroy(syntax_context_); }
+
   Module* module() const { return module_.get(); }
 
   // Returns a vector of pointers to constant-creation instructions in this
@@ -198,6 +210,25 @@ class IRContext {
     return (entry != instr_to_block_.end()) ? entry->second : nullptr;
   }
 
+  // Returns the basic block for |id|. Re-builds the instruction block map, if
+  // needed.
+  //
+  // |id| must be a registered definition.
+  ir::BasicBlock* get_instr_block(uint32_t id) {
+    ir::Instruction* def = get_def_use_mgr()->GetDef(id);
+    return get_instr_block(def);
+  }
+
+  // Sets the basic block for |inst|. Re-builds the mapping if it has become
+  // invalid.
+  void set_instr_block(ir::Instruction* inst, ir::BasicBlock* block) {
+    if (AreAnalysesValid(kAnalysisInstrToBlockMapping)) {
+      instr_to_block_[inst] = block;
+    } else {
+      BuildInstrToBlockMapping();
+    }
+  }
+
   // Returns a pointer the decoration manager.  If the decoration manger is
   // invalid, it is rebuilt first.
   opt::analysis::DecorationManager* get_decoration_mgr() {
@@ -221,7 +252,7 @@ class IRContext {
   // is never re-built.
   opt::analysis::TypeManager* get_type_mgr() {
     if (!type_mgr_)
-      type_mgr_.reset(new opt::analysis::TypeManager(consumer(), *module()));
+      type_mgr_.reset(new opt::analysis::TypeManager(consumer(), this));
     return type_mgr_.get();
   }
 
@@ -280,6 +311,10 @@ class IRContext {
   // Returns true if all of the analyses that are suppose to be valid are
   // actually valid.
   bool IsConsistent();
+
+  // The IRContext will look at the def and uses of |inst| and update any valid
+  // analyses will be updated accordingly.
+  inline void AnalyzeDefUse(Instruction* inst);
 
   // Informs the IRContext that the uses of |inst| are going to change, and that
   // is should forget everything it know about the current uses.  Any valid
@@ -351,6 +386,13 @@ class IRContext {
   // Return the next available SSA id and increment it.
   inline uint32_t TakeNextId() { return module()->TakeNextIdBound(); }
 
+  opt::FeatureManager* get_feature_mgr() {
+    if (!feature_mgr_.get()) {
+      AnalyzeFeatures();
+    }
+    return feature_mgr_.get();
+  }
+
  private:
   // Builds the def-use manager from scratch, even if it was already valid.
   void BuildDefUseManager() {
@@ -381,6 +423,12 @@ class IRContext {
     valid_analyses_ = valid_analyses_ | kAnalysisCFG;
   }
 
+  // Analyzes the features in the owned module. Builds the manager if required.
+  void AnalyzeFeatures() {
+    feature_mgr_.reset(new opt::FeatureManager(grammar_));
+    feature_mgr_->Analyze(module());
+  }
+
   // Scans a module looking for it capabilities, and initializes combinator_ops_
   // accordingly.
   void InitializeCombinators();
@@ -390,6 +438,13 @@ class IRContext {
 
   // Add the combinator opcode for the given extension to combinator_ops_.
   void AddCombinatorsForExtension(ir::Instruction* extension);
+
+  // The SPIR-V syntax context containing grammar tables for opcodes and
+  // operands.
+  spv_context syntax_context_;
+
+  // Auxiliary object for querying SPIR-V grammar facts.
+  libspirv::AssemblyGrammar grammar_;
 
   // An unique identifier for instructions in |module_|. Can be used to order
   // instructions in a container.
@@ -409,6 +464,7 @@ class IRContext {
 
   // The instruction decoration manager for |module_|.
   std::unique_ptr<opt::analysis::DecorationManager> decoration_mgr_;
+  std::unique_ptr<opt::FeatureManager> feature_mgr_;
 
   // A map from instructions the the basic block they belong to. This mapping is
   // built on-demand when get_instr_block() is called.
@@ -634,6 +690,12 @@ void IRContext::AddGlobalValue(std::unique_ptr<Instruction>&& v) {
 
 void IRContext::AddFunction(std::unique_ptr<Function>&& f) {
   module()->AddFunction(std::move(f));
+}
+
+void IRContext::AnalyzeDefUse(Instruction* inst) {
+  if (AreAnalysesValid(kAnalysisDefUse)) {
+    get_def_use_mgr()->AnalyzeInstDefUse(inst);
+  }
 }
 
 }  // namespace ir

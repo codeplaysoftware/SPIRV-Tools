@@ -26,7 +26,6 @@ namespace opt {
 
 namespace {
 
-const uint32_t kAccessChainPtrIdInIdx = 0;
 const uint32_t kCopyObjectOperandInIdx = 0;
 const uint32_t kLoadPtrIdInIdx = 0;
 const uint32_t kLoopMergeMergeBlockIdInIdx = 0;
@@ -34,6 +33,7 @@ const uint32_t kStorePtrIdInIdx = 0;
 const uint32_t kStoreValIdInIdx = 1;
 const uint32_t kTypePointerStorageClassInIdx = 0;
 const uint32_t kTypePointerTypeIdInIdx = 1;
+const uint32_t kVariableInitIdInIdx = 1;
 
 }  // namespace
 
@@ -47,6 +47,7 @@ bool MemPass::IsBaseTargetType(const ir::Instruction* typeInst) const {
     case SpvOpTypeImage:
     case SpvOpTypeSampler:
     case SpvOpTypeSampledImage:
+    case SpvOpTypePointer:
       return true;
     default:
       break;
@@ -56,9 +57,13 @@ bool MemPass::IsBaseTargetType(const ir::Instruction* typeInst) const {
 
 bool MemPass::IsTargetType(const ir::Instruction* typeInst) const {
   if (IsBaseTargetType(typeInst)) return true;
-  if (typeInst->opcode() == SpvOpTypeArray)
-    return IsBaseTargetType(
-        get_def_use_mgr()->GetDef(typeInst->GetSingleWordOperand(1)));
+  if (typeInst->opcode() == SpvOpTypeArray) {
+    if (!IsTargetType(
+            get_def_use_mgr()->GetDef(typeInst->GetSingleWordOperand(1)))) {
+      return false;
+    }
+    return true;
+  }
   if (typeInst->opcode() != SpvOpTypeStruct) return false;
   // All struct members must be math type
   int nonMathComp = 0;
@@ -91,21 +96,25 @@ bool MemPass::IsPtr(uint32_t ptrId) {
 ir::Instruction* MemPass::GetPtr(uint32_t ptrId, uint32_t* varId) {
   *varId = ptrId;
   ir::Instruction* ptrInst = get_def_use_mgr()->GetDef(*varId);
+  ir::Instruction* varInst;
+
+  if (ptrInst->opcode() != SpvOpVariable &&
+      ptrInst->opcode() != SpvOpFunctionParameter) {
+    varInst = ptrInst->GetBaseAddress();
+  } else {
+    varInst = ptrInst;
+  }
+  if (varInst->opcode() == SpvOpVariable) {
+    *varId = varInst->result_id();
+  } else {
+    *varId = 0;
+  }
+
   while (ptrInst->opcode() == SpvOpCopyObject) {
-    *varId = ptrInst->GetSingleWordInOperand(kCopyObjectOperandInIdx);
-    ptrInst = get_def_use_mgr()->GetDef(*varId);
+    uint32_t temp = ptrInst->GetSingleWordInOperand(0);
+    ptrInst = get_def_use_mgr()->GetDef(temp);
   }
-  ir::Instruction* varInst = ptrInst;
-  while (varInst->opcode() != SpvOpVariable &&
-         varInst->opcode() != SpvOpFunctionParameter) {
-    if (IsNonPtrAccessChain(varInst->opcode())) {
-      *varId = varInst->GetSingleWordInOperand(kAccessChainPtrIdInIdx);
-    } else {
-      assert(varInst->opcode() == SpvOpCopyObject);
-      *varId = varInst->GetSingleWordInOperand(kCopyObjectOperandInIdx);
-    }
-    varInst = get_def_use_mgr()->GetDef(*varId);
-  }
+
   return ptrInst;
 }
 
@@ -169,6 +178,11 @@ bool MemPass::IsLiveStore(ir::Instruction* storeInst) {
   // get store's variable
   uint32_t varId;
   (void)GetPtr(storeInst, &varId);
+  if (varId == 0) {
+    // If we do not know which variable we are accessing, assume the store is
+    // live.
+    return true;
+  }
   return IsLiveVar(varId);
 }
 
@@ -489,12 +503,15 @@ void MemPass::SSABlockInit(std::list<ir::BasicBlock*>::iterator block_itr) {
 }
 
 bool MemPass::IsTargetVar(uint32_t varId) {
+  if (varId == 0) {
+    return false;
+  }
+
   if (seen_non_target_vars_.find(varId) != seen_non_target_vars_.end())
     return false;
   if (seen_target_vars_.find(varId) != seen_target_vars_.end()) return true;
   const ir::Instruction* varInst = get_def_use_mgr()->GetDef(varId);
   if (varInst->opcode() != SpvOpVariable) return false;
-  ;
   const uint32_t varTypeId = varInst->type_id();
   const ir::Instruction* varTypeInst = get_def_use_mgr()->GetDef(varTypeId);
   if (varTypeInst->GetSingleWordInOperand(kTypePointerStorageClassInIdx) !=
@@ -547,7 +564,7 @@ Pass::Status MemPass::InsertPhiInstructions(ir::Function* func) {
   // TODO(dnovillo) the current Phi placement mechanism assumes structured
   // control-flow. This should be generalized
   // (https://github.com/KhronosGroup/SPIRV-Tools/issues/893).
-  assert(get_module()->HasCapability(SpvCapabilityShader) &&
+  assert(context()->get_feature_mgr()->HasCapability(SpvCapabilityShader) &&
          "This only works on structured control flow");
 
   // Initialize the data structures used to insert Phi instructions.
@@ -581,6 +598,15 @@ Pass::Status MemPass::InsertPhiInstructions(ir::Function* func) {
           // Register new stored value for the variable
           label2ssa_map_[label][varId] =
               inst->GetSingleWordInOperand(kStoreValIdInIdx);
+        } break;
+        case SpvOpVariable: {
+          // Treat initialized OpVariable like an OpStore
+          if (inst->NumInOperands() < 2) break;
+          uint32_t varId = inst->result_id();
+          if (!IsTargetVar(varId)) break;
+          // Register new stored value for the variable
+          label2ssa_map_[label][varId] =
+              inst->GetSingleWordInOperand(kVariableInitIdInIdx);
         } break;
         case SpvOpLoad: {
           uint32_t varId;

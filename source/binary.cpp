@@ -613,7 +613,11 @@ spv_result_t Parser::parseOperand(size_t inst_offset,
     case SPV_OPERAND_TYPE_BUILT_IN:
     case SPV_OPERAND_TYPE_GROUP_OPERATION:
     case SPV_OPERAND_TYPE_KERNEL_ENQ_FLAGS:
-    case SPV_OPERAND_TYPE_KERNEL_PROFILING_INFO: {
+    case SPV_OPERAND_TYPE_KERNEL_PROFILING_INFO:
+    case SPV_OPERAND_TYPE_DEBUG_BASE_TYPE_ATTRIBUTE_ENCODING:
+    case SPV_OPERAND_TYPE_DEBUG_COMPOSITE_TYPE:
+    case SPV_OPERAND_TYPE_DEBUG_TYPE_QUALIFIER:
+    case SPV_OPERAND_TYPE_DEBUG_OPERATION: {
       // A single word that is a plain enum value.
 
       // Map an optional operand type to its corresponding concrete type.
@@ -636,7 +640,8 @@ spv_result_t Parser::parseOperand(size_t inst_offset,
     case SPV_OPERAND_TYPE_IMAGE:
     case SPV_OPERAND_TYPE_OPTIONAL_IMAGE:
     case SPV_OPERAND_TYPE_OPTIONAL_MEMORY_ACCESS:
-    case SPV_OPERAND_TYPE_SELECTION_CONTROL: {
+    case SPV_OPERAND_TYPE_SELECTION_CONTROL:
+    case SPV_OPERAND_TYPE_DEBUG_INFO_FLAGS: {
       // This operand is a mask.
 
       // Map an optional operand type to its corresponding concrete type.
@@ -678,8 +683,7 @@ spv_result_t Parser::parseOperand(size_t inst_offset,
       return diagnostic() << "Internal error: Unhandled operand type: " << type;
   }
 
-  assert(int(SPV_OPERAND_TYPE_FIRST_CONCRETE_TYPE) <= int(parsed_operand.type));
-  assert(int(SPV_OPERAND_TYPE_LAST_CONCRETE_TYPE) >= int(parsed_operand.type));
+  assert(spvOperandIsConcrete(parsed_operand.type));
 
   operands->push_back(parsed_operand);
 

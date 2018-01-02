@@ -53,6 +53,7 @@ using libspirv::DataRulesPass;
 using libspirv::Extension;
 using libspirv::IdPass;
 using libspirv::InstructionPass;
+using libspirv::LiteralsPass;
 using libspirv::ModuleLayoutPass;
 using libspirv::ValidationState_t;
 
@@ -186,6 +187,9 @@ spv_result_t ProcessInstruction(void* user_data,
   if (auto error = LogicalsPass(_, inst)) return error;
   if (auto error = BitwisePass(_, inst)) return error;
   if (auto error = ImagePass(_, inst)) return error;
+  if (auto error = AtomicsPass(_, inst)) return error;
+  if (auto error = PrimitivesPass(_, inst)) return error;
+  if (auto error = LiteralsPass(_, inst)) return error;
 
   return SPV_SUCCESS;
 }

@@ -48,6 +48,10 @@ function(add_spvtools_unittest)
       # We don't care much about that in test code.
       # Important to do since we have warnings-as-errors.
       target_compile_options(${target} PRIVATE /wd4503)
+      # Googletest accidentally turns off support for ::testing::Combine
+      # in VS 2017.  See https://github.com/google/googletest/issues/1352
+      # Forcibly turn it on again.
+      target_compile_options(${target} PRIVATE /DGTEST_HAS_COMBINE=1)
     endif()
     target_include_directories(${target} PRIVATE
       ${SPIRV_HEADER_INCLUDE_DIR}
@@ -88,6 +92,7 @@ set(TEST_SOURCES
   comment_test.cpp
   enum_string_mapping_test.cpp
   enum_set_test.cpp
+  ext_inst.debuginfo_test.cpp
   ext_inst.glsl_test.cpp
   ext_inst.opencl_test.cpp
   fix_word_test.cpp

@@ -188,8 +188,8 @@ bool LocalSingleBlockLoadStoreElimPass::AllExtensionsSupported() const {
 }
 
 Pass::Status LocalSingleBlockLoadStoreElimPass::ProcessImpl() {
-  // Assumes logical addressing only
-  if (get_module()->HasCapability(SpvCapabilityAddresses))
+  // Assumes relaxed logical addressing only (see instruction.h).
+  if (context()->get_feature_mgr()->HasCapability(SpvCapabilityAddresses))
     return Status::SuccessWithoutChange;
   // Do not process if module contains OpGroupDecorate. Additional
   // support required in KillNamesAndDecorates().
