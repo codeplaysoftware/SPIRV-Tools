@@ -56,10 +56,10 @@ static void insertLoopClosedSSAExit(ir::Function& func) {
   }
 }
 
-static void remapResultIds(Loop& loop, ir::BasicBlock* BB,
+static void remapResultIds(ir::Loop&, ir::BasicBlock* BB,ir::IRContext* context,
                            std::map<uint32_t, uint32_t>& new_inst) {
   // Label instructions aren't covered by normal traversal of the instructions.
-  uint32_t new_label_id = loop.GetContext()->TakeNextUniqueId();
+  uint32_t new_label_id = context->TakeNextUniqueId();
   new_inst[BB->GetLabelInst()->result_id()] = new_label_id;
   BB->GetLabelInst()->SetResultId(new_label_id);
 
@@ -69,7 +69,7 @@ static void remapResultIds(Loop& loop, ir::BasicBlock* BB,
     if (old_id == 0) {
       continue;
     }
-    inst.SetResultId(loop.GetContext()->TakeNextUniqueId());
+    inst.SetResultId(context->TakeNextUniqueId());
     new_inst[old_id] = inst.result_id();
   }
 }
@@ -88,27 +88,29 @@ static void remapOperands(ir::BasicBlock* BB, uint32_t old_header,
   }
 }
 
-static void copyEachBB(Loop& loop) {
+static void copyEachBB(ir::Loop& loop, ir::IRContext* context) {
   // Map of basic blocks ids
   std::map<uint32_t, ir::BasicBlock*> new_blocks;
 
   std::map<uint32_t, uint32_t> new_inst;
-  const Loop::BasicBlockListTy& basic_blocks = loop.GetBlocks();
+  const ir::Loop::BasicBlockListTy& basic_blocks = loop.GetBlocks();
 
-  for (auto& itr : basic_blocks) {
-    ir::BasicBlock* BB = itr->Clone(loop.GetContext());
-    remapResultIds(loop, BB, new_inst);
+  for (uint32_t id : basic_blocks) {
+    const ir::BasicBlock* itr = context->get_instr_block(id);
+
+    ir::BasicBlock* BB = itr->Clone(context);
+    remapResultIds(loop, BB, context, new_inst);
 
     ir::Instruction* merge_inst = BB->GetLoopMergeInst();
-    if (merge_inst) loop.GetContext()->KillInst(merge_inst);
+    if (merge_inst) context->KillInst(merge_inst);
 
-    itr->GetParent()->AddBasicBlock(loop.GetLoopHeader(),
+    itr->GetParent()->AddBasicBlock(loop.GetHeaderBlock(),
                                     std::unique_ptr<ir::BasicBlock>(BB));
 
     new_blocks[itr->id()] = BB;
   }
 
-  ir::BasicBlock* preheader = loop.GetPreheader();
+  ir::BasicBlock* preheader = loop.GetPreHeaderBlock();
 
   ir::Instruction& branch = *preheader->tail();
 
@@ -119,7 +121,7 @@ static void copyEachBB(Loop& loop) {
   uint32_t old_header = branch.GetSingleWordOperand(0);
 
   // Make all jumps to the loop merge be the Loop Closure SSA exit node.
-  ir::BasicBlock* merge = loop.GetMergeBB();
+  ir::BasicBlock* merge = loop.GetMergeBlock();
   new_inst[merge->id()] = merge->tail()->GetSingleWordOperand(0);
 
   for (auto& pair : new_blocks) {
@@ -130,16 +132,17 @@ static void copyEachBB(Loop& loop) {
   branch.SetInOperand(0, {new_pre_header_block});
 }
 
-static bool unroll(Loop& loop) {
-  Loop::LoopVariable* induction = loop.GetInductionVariable();
+static bool unroll(ir::Loop& loop, ir::IRContext* context) {
+//  ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
 
-  if (!induction) return false;
+//  if (!induction) return false;
 
-  copyEachBB(loop);
+  copyEachBB(loop, context);
   return true;
 }
 
 Pass::Status LoopUnroller::Process(ir::IRContext* c) {
+  context_ = c;
   for (ir::Function& f : *c->module()) {
     insertLoopClosedSSAExit(f);
     RunOnFunction(f);
@@ -148,14 +151,14 @@ Pass::Status LoopUnroller::Process(ir::IRContext* c) {
 }
 
 bool LoopUnroller::RunOnFunction(ir::Function& f) {
-  LoopDescriptor LD{&f};
+  ir::LoopDescriptor LD{&f};
   for (auto& loop : LD) {
-    RunOnLoop(*loop.get());
+    RunOnLoop(loop);
   }
   return true;
 }
 
-bool LoopUnroller::RunOnLoop(Loop& loop) { return unroll(loop); }
+bool LoopUnroller::RunOnLoop(ir::Loop& loop) { return unroll(loop, context_); }
 
 }  // namespace opt
 }  // namespace spvtools

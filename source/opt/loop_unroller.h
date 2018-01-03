@@ -16,8 +16,10 @@ class LoopUnroller : public Pass {
   Status Process(ir::IRContext* context) override;
 
  private:
+  ir::IRContext* context_;
+
   bool RunOnFunction(ir::Function& f);
-  bool RunOnLoop(Loop& loop);
+  bool RunOnLoop(ir::Loop& loop);
 };
 
 }  // namespace opt
