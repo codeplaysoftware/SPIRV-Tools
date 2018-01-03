@@ -23,27 +23,11 @@
 static const int kSpvFunctionCallFunctionId = 2;
 static const int kSpvFunctionCallArgumentId = 3;
 static const int kSpvReturnValueId = 0;
-static const int kSpvTypePointerStorageClass = 1;
-static const int kSpvTypePointerTypeId = 2;
 static const int kSpvLoopMergeMergeBlockId = 0;
 static const int kSpvLoopMergeContinueTargetIdInIdx = 1;
 
 namespace spvtools {
 namespace opt {
-
-uint32_t InlinePass::FindPointerToType(uint32_t type_id,
-                                       SpvStorageClass storage_class) {
-  ir::Module::inst_iterator type_itr = get_module()->types_values_begin();
-  for (; type_itr != get_module()->types_values_end(); ++type_itr) {
-    const ir::Instruction* type_inst = &*type_itr;
-    if (type_inst->opcode() == SpvOpTypePointer &&
-        type_inst->GetSingleWordOperand(kSpvTypePointerTypeId) == type_id &&
-        type_inst->GetSingleWordOperand(kSpvTypePointerStorageClass) ==
-            storage_class)
-      return type_inst->result_id();
-  }
-  return 0;
-}
 
 uint32_t InlinePass::AddPointerToType(uint32_t type_id,
                                       SpvStorageClass storage_class) {
@@ -54,6 +38,12 @@ uint32_t InlinePass::AddPointerToType(uint32_t type_id,
         {uint32_t(storage_class)}},
        {spv_operand_type_t::SPV_OPERAND_TYPE_ID, {type_id}}}));
   context()->AddType(std::move(type_inst));
+  analysis::Type* pointeeTy;
+  std::unique_ptr<analysis::Pointer> pointerTy;
+  std::tie(pointeeTy, pointerTy) =
+      context()->get_type_mgr()->GetTypeAndPointerType(type_id,
+                                                       SpvStorageClassFunction);
+  context()->get_type_mgr()->RegisterType(resultId, *pointerTy);
   return resultId;
 }
 
@@ -164,8 +154,8 @@ uint32_t InlinePass::CreateReturnVar(
       get_def_use_mgr()->id_to_defs().find(calleeTypeId)->second;
   if (calleeType->opcode() != SpvOpTypeVoid) {
     // Find or create ptr to callee return type.
-    uint32_t returnVarTypeId =
-        FindPointerToType(calleeTypeId, SpvStorageClassFunction);
+    uint32_t returnVarTypeId = context()->get_type_mgr()->FindPointerToType(
+        calleeTypeId, SpvStorageClassFunction);
     if (returnVarTypeId == 0)
       returnVarTypeId = AddPointerToType(calleeTypeId, SpvStorageClassFunction);
     // Add return var to new function scope variables.

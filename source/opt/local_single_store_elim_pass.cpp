@@ -18,7 +18,7 @@
 
 #include "cfa.h"
 #include "iterator.h"
-#include "spirv/1.0/GLSL.std.450.h"
+#include "latest_version_glsl_std_450_header.h"
 
 namespace spvtools {
 namespace opt {
@@ -60,7 +60,7 @@ void LocalSingleStoreElimPass::SingleStoreAnalyze(ir::Function* func) {
     uint32_t instIdx = 0;
     for (auto ii = bi->begin(); ii != bi->end(); ++ii, ++instIdx) {
       uint32_t varId = 0;
-      ir::Instruction* ptrInst;
+      ir::Instruction* ptrInst = nullptr;
       switch (ii->opcode()) {
         case SpvOpStore: {
           ptrInst = GetPtr(&*ii, &varId);
@@ -307,7 +307,7 @@ bool LocalSingleStoreElimPass::AllExtensionsSupported() const {
 }
 
 Pass::Status LocalSingleStoreElimPass::ProcessImpl() {
-  // Assumes logical addressing only
+  // Assumes relaxed logical addressing only (see instruction.h)
   if (get_module()->HasCapability(SpvCapabilityAddresses))
     return Status::SuccessWithoutChange;
   // Do not process if module contains OpGroupDecorate. Additional

@@ -271,7 +271,8 @@ Optimizer::PassToken CreateInlineOpaquePass();
 // The presence of access chain references and function calls can inhibit
 // the above optimization.
 //
-// Only modules with logical addressing are currently processed.
+// Only modules with relaxed logical addressing (see opt/instruction.h) are
+// currently processed.
 //
 // This pass is most effective if preceeded by Inlining and
 // LocalAccessChainConvert. This pass will reduce the work needed to be done
@@ -305,9 +306,9 @@ Optimizer::PassToken CreateDeadBranchElimPass();
 // The presence of access chain references and function calls can inhibit
 // the above optimization.
 //
-// Only shader modules with logical addressing are currently processed.
-// Currently modules with any extensions enabled are not processed. This
-// is left for future work.
+// Only shader modules with relaxed logical addressing (see opt/instruction.h)
+// are currently processed. Currently modules with any extensions enabled are
+// not processed. This is left for future work.
 //
 // This pass is most effective if preceeded by Inlining and
 // LocalAccessChainConvert. LocalSingleStoreElim and LocalSingleBlockElim
@@ -343,6 +344,9 @@ Optimizer::PassToken CreateLocalAccessChainConvertPass();
 // more effective. In additional, many non-load/store memory operations are
 // not supported and will prohibit optimization of a function. Support of
 // these operations are future work.
+//
+// Only shader modules with relaxed logical addressing (see opt/instruction.h)
+// are currently processed.
 //
 // This pass will reduce the work needed to be done by LocalSingleBlockElim
 // and LocalMultiStoreElim and can improve the effectiveness of other passes
@@ -384,8 +388,8 @@ Optimizer::PassToken CreateCommonUniformElimPass();
 // time cost over standard dead code elimination.
 //
 // This pass only processes entry point functions. It also only processes
-// shaders with logical addressing. It currently will not process functions
-// with function calls.
+// shaders with relaxed logical addressing (see opt/instruction.h). It currently
+// will not process functions with function calls.
 //
 // This pass will be made more effective by first running passes that remove
 // dead control flow and inlines function calls.
@@ -437,6 +441,17 @@ Optimizer::PassToken CreateLocalRedundancyEliminationPass();
 // This pass will look for instructions where the same value is computed on all
 // paths leading to the instruction.  Those instructions are deleted.
 Optimizer::PassToken CreateRedundancyEliminationPass();
+
+// Create scalar replacement pass.
+// This pass replaces composite function scope variables with variables for each
+// element if those elements are accessed individually.
+Optimizer::PassToken CreateScalarReplacementPass();
+
+// Create a private to local pass.
+// This pass looks for variables delcared in the private storage class that are
+// used in only one function.  Those variables are moved to the function storage
+// class in the function that they are used.
+Optimizer::PassToken CreatePrivateToLocalPass();
 }  // namespace spvtools
 
 #endif  // SPIRV_TOOLS_OPTIMIZER_HPP_

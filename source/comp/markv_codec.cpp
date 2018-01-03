@@ -34,9 +34,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include "spirv/1.2/GLSL.std.450.h"
-#include "spirv/1.2/OpenCL.std.h"
-#include "spirv/1.2/spirv.h"
+#include "latest_version_glsl_std_450_header.h"
+#include "latest_version_opencl_std_header.h"
+#include "latest_version_spirv_header.h"
 
 #include "binary.h"
 #include "diagnostic.h"
@@ -2664,8 +2664,7 @@ spv_result_t MarkvDecoder::DecodeOperand(
 
   operand_.num_words = uint16_t(inst_words_.size() - first_word_index);
 
-  assert(int(SPV_OPERAND_TYPE_FIRST_CONCRETE_TYPE) <= int(operand_.type));
-  assert(int(SPV_OPERAND_TYPE_LAST_CONCRETE_TYPE) >= int(operand_.type));
+  assert(spvOperandIsConcrete(operand_.type));
 
   parsed_operands_.push_back(operand_);
 
