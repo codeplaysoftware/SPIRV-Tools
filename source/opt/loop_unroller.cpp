@@ -95,7 +95,8 @@ static void copyEachBB(ir::Loop& loop, ir::IRContext* context) {
   std::map<uint32_t, uint32_t> new_inst;
   const ir::Loop::BasicBlockListTy& basic_blocks = loop.GetBlocks();
 
-  for (uint32_t id : basic_blocks) {
+  for (auto& pair : basic_blocks) {
+    uint32_t id = pair.first;
     const ir::BasicBlock* itr = context->get_instr_block(id);
 
     ir::BasicBlock* BB = itr->Clone(context);
@@ -133,9 +134,9 @@ static void copyEachBB(ir::Loop& loop, ir::IRContext* context) {
 }
 
 static bool unroll(ir::Loop& loop, ir::IRContext* context) {
-//  ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
+  ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
 
-//  if (!induction) return false;
+  if (!induction) return false;
 
   copyEachBB(loop, context);
   return true;
