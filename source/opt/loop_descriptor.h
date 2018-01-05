@@ -83,6 +83,12 @@ class Loop {
   // Returns the loop pre-header.
   inline const BasicBlock* GetPreHeaderBlock() const { return loop_preheader_; }
 
+  inline BasicBlock* GetConditionBlock() { return loop_condition_block_; }
+
+  inline const BasicBlock* GetConditionBlock() const {
+    return loop_condition_block_;
+  }
+
   // Returns true if this loop contains any nested loops.
   inline bool HasNestedLoops() const { return nested_loops_.size() != 0; }
 
@@ -155,11 +161,11 @@ class Loop {
   bool IsLoopInvariant(const Instruction* inst) const;
 
   // Returns true if the parent basic block of |inst| belong to this loop.
-/*  inline bool IsLoopInvariant(Instruction* inst) const {
-    const BasicBlock* parent_block = inst->context()->get_instr_block(inst);
-    if (!parent_block) return true;
-    return IsInsideLoop(parent_block);
-  }*/
+  /*  inline bool IsLoopInvariant(Instruction* inst) const {
+      const BasicBlock* parent_block = inst->context()->get_instr_block(inst);
+      if (!parent_block) return true;
+      return IsInsideLoop(parent_block);
+    }*/
 
  private:
   // The block which marks the start of the loop.
@@ -173,6 +179,9 @@ class Loop {
 
   // The block immediately before the loop header.
   BasicBlock* loop_preheader_;
+
+  // The block containing the conditional branch to either loop start or end.
+  BasicBlock* loop_condition_block_;
 
   // A parent of a loop is the loop which contains it as a nested child loop.
   Loop* parent_;

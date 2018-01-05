@@ -19,7 +19,7 @@ class LoopUnroller : public Pass {
   ir::IRContext* context_;
 
   bool RunOnFunction(ir::Function& f);
-  bool RunOnLoop(ir::Loop& loop);
+  bool RunOnLoop(ir::Loop& loop, ir::Function& f);
 };
 
 }  // namespace opt

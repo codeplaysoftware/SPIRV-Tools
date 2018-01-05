@@ -204,7 +204,7 @@ void Loop::FindLoopBasicBlocks() {
   auto begin_itr = tree.get_iterator(loop_header_);
   for (; begin_itr != tree.end(); ++begin_itr) {
     if (!dom_analysis_->Dominates(loop_merge_, begin_itr->bb_)) {
-      loop_basic_blocks_.insert({ begin_itr->bb_->id(), begin_itr->bb_ } );
+      loop_basic_blocks_.insert({begin_itr->bb_->id(), begin_itr->bb_});
     }
   };
 }
@@ -237,59 +237,49 @@ bool Loop::IsLoopInvariant(const ir::Instruction* variable_inst) {
 
 ir::Instruction* Loop::GetInductionStepOperation(
     const ir::Instruction* variable_inst) const {
-  ir::BasicBlock* bb = loop_continue_;
-
-  ir::Instruction* store = nullptr;
-
-  // Move over every store in the BasicBlock to find the store assosiated with
-  // the given BB.
-  auto find_store = [&store, &variable_inst](ir::Instruction* inst) {
-    if (inst->opcode() == SpvOp::SpvOpStore &&
-        inst->GetSingleWordOperand(0) == variable_inst->result_id()) {
-      store = inst;
-    }
-  };
-
-  bb->ForEachInst(find_store);
-  if (!store) return nullptr;
+  ir::Instruction* step = nullptr;
 
   opt::analysis::DefUseManager* def_use_manager =
       ir_context_->get_def_use_mgr();
 
-  ir::Instruction* inst =
-      def_use_manager->GetDef(store->GetSingleWordOperand(1));
+  for (uint32_t operand_id = 3; operand_id < variable_inst->NumOperands();
+       operand_id += 2) {
+    ir::BasicBlock* bb = ir_context_->cfg()->block(
+        variable_inst->GetSingleWordOperand(operand_id));
 
-  if (!inst || inst->opcode() != SpvOp::SpvOpIAdd) {
+    if (dom_analysis_->Dominates(loop_header_, bb)) {
+      step = def_use_manager->GetDef(
+          variable_inst->GetSingleWordOperand(operand_id - 1));
+    }
+  }
+
+  if (!step || step->opcode() != SpvOp::SpvOpIAdd) {
     return nullptr;
   }
 
-  return inst;
+  return step;
 }
 
 bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
                                  uint32_t* value) const {
   // We assume that the immediate dominator of the loop start block should
   // contain the initialiser for the induction variables.
-  ir::BasicBlock* bb = dom_analysis_->ImmediateDominator(loop_header_);
-  if (!bb) return false;
 
-  ir::Instruction* store = nullptr;
-  auto find_store = [&store, &variable_inst](ir::Instruction* inst) {
-    if (inst->opcode() == SpvOp::SpvOpStore &&
-        inst->GetSingleWordOperand(0) == variable_inst->result_id()) {
-      store = inst;
-    }
-  };
-
-  // Find the storing of the induction variable.
-  bb->ForEachInst(find_store);
-  if (!store) return false;
-
+  ir::Instruction* constant = nullptr;
   opt::analysis::DefUseManager* def_use_manager =
       ir_context_->get_def_use_mgr();
 
-  ir::Instruction* constant =
-      def_use_manager->GetDef(store->GetSingleWordOperand(1));
+  for (uint32_t operand_id = 3; operand_id < variable_inst->NumOperands();
+       operand_id += 2) {
+    ir::BasicBlock* bb = ir_context_->cfg()->block(
+        variable_inst->GetSingleWordOperand(operand_id));
+
+    if (!dom_analysis_->Dominates(loop_header_, bb)) {
+      constant = def_use_manager->GetDef(
+          variable_inst->GetSingleWordOperand(operand_id - 1));
+    }
+  }
+
   if (!constant) return false;
 
   return GetConstant(constant, value);
@@ -305,7 +295,8 @@ Loop::LoopVariable* Loop::GetInductionVariable() {
 
 void Loop::FindInductionVariable() {
   // Get the basic block which branches to the merge block.
-  const ir::BasicBlock* bb = dom_analysis_->ImmediateDominator(loop_merge_);
+  ir::BasicBlock* bb = dom_analysis_->ImmediateDominator(loop_merge_);
+  loop_condition_block_ = bb;
 
   // Find the branch instruction.
   const ir::Instruction& branch_inst = *bb->ctail();
@@ -327,14 +318,12 @@ void Loop::FindInductionVariable() {
       if (!GetConstant(rhs_inst, &const_value)) return;
 
       // The left hand side operand of the operation.
-      const ir::Instruction* lhs_inst =
+      ir::Instruction* variable_inst =
           def_use_manager->GetDef(condition->GetSingleWordOperand(2));
 
-      ir::Instruction* variable_inst = GetVariable(lhs_inst);
-
-      if (IsLoopInvariant(variable_inst)) {
+      /*if (IsLoopInvariant(variable_inst)) {
         return;
-      }
+      }*/
 
       uint32_t init_value = 0;
       GetInductionInitValue(variable_inst, &init_value);

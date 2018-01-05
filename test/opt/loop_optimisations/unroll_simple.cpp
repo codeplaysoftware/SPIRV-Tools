@@ -43,7 +43,8 @@ void main() {
 }
 */
 TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
-  const std::string text = R"(
+  // Unoptimised.
+  /*  const std::string text = R"(
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
@@ -98,6 +99,59 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
          %12 = OpLabel
                OpReturn
                OpFunctionEnd
+  )";*/
+
+  // With opt::LocalMultiStoreElimPass
+  const std::string text = R"(
+         OpCapability Shader
+         %1 = OpExtInstImport "GLSL.std.450"
+         OpMemoryModel Logical GLSL450
+         OpEntryPoint Fragment %2 "main" %3
+         OpExecutionMode %2 OriginUpperLeft
+         OpSource GLSL 330
+         OpName %2 "main"
+         OpName %5 "x"
+         OpName %3 "c"
+         OpDecorate %3 Location 0
+         %6 = OpTypeVoid
+         %7 = OpTypeFunction %6
+         %8 = OpTypeInt 32 1
+         %9 = OpTypePointer Function %8
+         %10 = OpConstant %8 0
+         %11 = OpConstant %8 10
+         %12 = OpTypeBool
+         %13 = OpTypeFloat 32
+         %14 = OpTypeInt 32 0
+         %15 = OpConstant %14 10
+         %16 = OpTypeArray %13 %15
+         %17 = OpTypePointer Function %16
+         %18 = OpConstant %13 1
+         %19 = OpTypePointer Function %13
+         %20 = OpConstant %8 1
+         %21 = OpTypeVector %13 4
+         %22 = OpTypePointer Output %21
+         %3 = OpVariable %22 Output
+         %2 = OpFunction %6 None %7
+         %23 = OpLabel
+         %5 = OpVariable %17 Function
+         OpBranch %24
+         %24 = OpLabel
+         %34 = OpPhi %8 %10 %23 %33 %26
+         OpLoopMerge %25 %26 None
+         OpBranch %27
+         %27 = OpLabel
+         %29 = OpSLessThan %12 %34 %11
+         OpBranchConditional %29 %30 %25
+         %30 = OpLabel
+         %31 = OpAccessChain %19 %5 %10
+         OpStore %31 %18
+         OpBranch %26
+         %26 = OpLabel
+         %33 = OpIAdd %8 %34 %20
+         OpBranch %24
+         %25 = OpLabel
+         OpReturn
+         OpFunctionEnd
   )";
   // clang-format on
   std::unique_ptr<ir::IRContext> context =
@@ -107,6 +161,9 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
 
+  std::cout << "Pre-opt binary\n";
+
+  std::cout << text << "\n\n\n";
   opt::LoopUnroller loop_unroller;
   SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
   std::cout << std::get<0>(
