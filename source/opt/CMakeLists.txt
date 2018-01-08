@@ -29,6 +29,7 @@ add_library(SPIRV-Tools-opt
   dominator_tree.h
   eliminate_dead_constant_pass.h
   eliminate_dead_functions_pass.h
+  feature_manager.h
   flatten_decoration_pass.h
   fold.h
   fold_spec_constant_op_and_composite_pass.h
@@ -56,10 +57,12 @@ add_library(SPIRV-Tools-opt
   passes.h
   pass.h
   pass_manager.h
+  private_to_local_pass.h
   propagator.h
   redundancy_elimination.h
   reflect.h
   remove_duplicates_pass.h
+  scalar_replacement_pass.h
   set_spec_constant_default_value_pass.h
   strength_reduction_pass.h
   strip_debug_info_pass.h
@@ -85,6 +88,7 @@ add_library(SPIRV-Tools-opt
   dominator_tree.cpp
   eliminate_dead_constant_pass.cpp
   eliminate_dead_functions_pass.cpp
+  feature_manager.cpp
   flatten_decoration_pass.cpp
   fold.cpp
   fold_spec_constant_op_and_composite_pass.cpp
@@ -111,9 +115,11 @@ add_library(SPIRV-Tools-opt
   optimizer.cpp
   pass.cpp
   pass_manager.cpp
+  private_to_local_pass.cpp
   propagator.cpp
   redundancy_elimination.cpp
   remove_duplicates_pass.cpp
+  scalar_replacement_pass.cpp
   set_spec_constant_default_value_pass.cpp
   strength_reduction_pass.cpp
   strip_debug_info_pass.cpp

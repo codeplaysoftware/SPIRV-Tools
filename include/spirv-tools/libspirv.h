@@ -96,11 +96,8 @@ typedef enum spv_operand_type_t {
   // A sentinel value.
   SPV_OPERAND_TYPE_NONE = 0,
 
-#define FIRST_CONCRETE(ENUM) ENUM, SPV_OPERAND_TYPE_FIRST_CONCRETE_TYPE = ENUM
-#define LAST_CONCRETE(ENUM) ENUM, SPV_OPERAND_TYPE_LAST_CONCRETE_TYPE = ENUM
-
   // Set 1:  Operands that are IDs.
-  FIRST_CONCRETE(SPV_OPERAND_TYPE_ID),
+  SPV_OPERAND_TYPE_ID,
   SPV_OPERAND_TYPE_TYPE_ID,
   SPV_OPERAND_TYPE_RESULT_ID,
   SPV_OPERAND_TYPE_MEMORY_SEMANTICS_ID,  // SPIR-V Sec 3.25
@@ -150,21 +147,14 @@ typedef enum spv_operand_type_t {
   SPV_OPERAND_TYPE_KERNEL_PROFILING_INFO,         // SPIR-V Sec 3.30
   SPV_OPERAND_TYPE_CAPABILITY,                    // SPIR-V Sec 3.31
 
-// Set 5:  Operands that are a single word bitmask.
-// Sometimes a set bit indicates the instruction requires still more operands.
-#define FIRST_CONCRETE_MASK(ENUM) \
-  ENUM, SPV_OPERAND_TYPE_FIRST_CONCRETE_MASK_TYPE = ENUM
-  FIRST_CONCRETE_MASK(SPV_OPERAND_TYPE_IMAGE),    // SPIR-V Sec 3.14
-  SPV_OPERAND_TYPE_FP_FAST_MATH_MODE,             // SPIR-V Sec 3.15
-  SPV_OPERAND_TYPE_SELECTION_CONTROL,             // SPIR-V Sec 3.22
-  SPV_OPERAND_TYPE_LOOP_CONTROL,                  // SPIR-V Sec 3.23
-  SPV_OPERAND_TYPE_FUNCTION_CONTROL,              // SPIR-V Sec 3.24
-  LAST_CONCRETE(SPV_OPERAND_TYPE_MEMORY_ACCESS),  // SPIR-V Sec 3.26
-  SPV_OPERAND_TYPE_LAST_CONCRETE_MASK_TYPE =
-      SPV_OPERAND_TYPE_LAST_CONCRETE_TYPE,
-#undef FIRST_CONCRETE_MASK
-#undef FIRST_CONCRETE
-#undef LAST_CONCRETE
+  // Set 5:  Operands that are a single word bitmask.
+  // Sometimes a set bit indicates the instruction requires still more operands.
+  SPV_OPERAND_TYPE_IMAGE,              // SPIR-V Sec 3.14
+  SPV_OPERAND_TYPE_FP_FAST_MATH_MODE,  // SPIR-V Sec 3.15
+  SPV_OPERAND_TYPE_SELECTION_CONTROL,  // SPIR-V Sec 3.22
+  SPV_OPERAND_TYPE_LOOP_CONTROL,       // SPIR-V Sec 3.23
+  SPV_OPERAND_TYPE_FUNCTION_CONTROL,   // SPIR-V Sec 3.24
+  SPV_OPERAND_TYPE_MEMORY_ACCESS,      // SPIR-V Sec 3.26
 
 // The remaining operand types are only used internally by the assembler.
 // There are two categories:
@@ -374,8 +364,8 @@ typedef enum {
   SPV_ENV_UNIVERSAL_1_0,  // SPIR-V 1.0 latest revision, no other restrictions.
   SPV_ENV_VULKAN_1_0,     // Vulkan 1.0 latest revision.
   SPV_ENV_UNIVERSAL_1_1,  // SPIR-V 1.1 latest revision, no other restrictions.
-  SPV_ENV_OPENCL_2_1,     // OpenCL 2.1 latest revision.
-  SPV_ENV_OPENCL_2_2,     // OpenCL 2.2 latest revision.
+  SPV_ENV_OPENCL_2_1,     // OpenCL Full Profile 2.1 latest revision.
+  SPV_ENV_OPENCL_2_2,     // OpenCL Full Profile 2.2 latest revision.
   SPV_ENV_OPENGL_4_0,     // OpenGL 4.0 plus GL_ARB_gl_spirv, latest revisions.
   SPV_ENV_OPENGL_4_1,     // OpenGL 4.1 plus GL_ARB_gl_spirv, latest revisions.
   SPV_ENV_OPENGL_4_2,     // OpenGL 4.2 plus GL_ARB_gl_spirv, latest revisions.
@@ -383,6 +373,16 @@ typedef enum {
   // There is no variant for OpenGL 4.4.
   SPV_ENV_OPENGL_4_5,     // OpenGL 4.5 plus GL_ARB_gl_spirv, latest revisions.
   SPV_ENV_UNIVERSAL_1_2,  // SPIR-V 1.2, latest revision, no other restrictions.
+  SPV_ENV_OPENCL_1_2,     // OpenCL Full Profile 1.2 plus cl_khr_il_program,
+                          // latest revision.
+  SPV_ENV_OPENCL_EMBEDDED_1_2,  // OpenCL Embedded Profile 1.2 plus
+                                // cl_khr_il_program, latest revision.
+  SPV_ENV_OPENCL_2_0,  // OpenCL Full Profile 2.0 plus cl_khr_il_program,
+                       // latest revision.
+  SPV_ENV_OPENCL_EMBEDDED_2_0,  // OpenCL Embedded Profile 2.0 plus
+                                // cl_khr_il_program, latest revision.
+  SPV_ENV_OPENCL_EMBEDDED_2_1,  // OpenCL Embedded Profile 2.1 latest revision.
+  SPV_ENV_OPENCL_EMBEDDED_2_2,  // OpenCL Embedded Profile 2.2 latest revision.
 } spv_target_env;
 
 // SPIR-V Validator can be parameterized with the following Universal Limits.
