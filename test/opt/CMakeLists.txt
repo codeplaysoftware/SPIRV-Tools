@@ -13,6 +13,7 @@
 # limitations under the License.
 
 add_subdirectory(dominator_tree)
+add_subdirectory(loop_optimizations)
 
 add_spvtools_unittest(TARGET instruction
   SRCS instruction_test.cpp
@@ -253,5 +254,10 @@ add_spvtools_unittest(TARGET decoration_manager
 
 add_spvtools_unittest(TARGET pass_remove_duplicates
   SRCS pass_remove_duplicates_test.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET ccp
+  SRCS ccp_test.cpp
   LIBS SPIRV-Tools-opt
 )

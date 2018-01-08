@@ -16,6 +16,7 @@ add_library(SPIRV-Tools-opt
   basic_block.h
   block_merge_pass.h
   build_module.h
+  ccp_pass.h
   cfg_cleanup_pass.h
   cfg.h
   common_uniform_elim_pass.h
@@ -48,6 +49,7 @@ add_library(SPIRV-Tools-opt
   local_single_store_elim_pass.h
   local_ssa_elim_pass.h
   log.h
+  loop_descriptor.h
   mem_pass.h
   merge_return_pass.h
   module.h
@@ -74,6 +76,7 @@ add_library(SPIRV-Tools-opt
   basic_block.cpp
   block_merge_pass.cpp
   build_module.cpp
+  ccp_pass.cpp
   cfg_cleanup_pass.cpp
   cfg.cpp
   common_uniform_elim_pass.cpp
@@ -105,6 +108,7 @@ add_library(SPIRV-Tools-opt
   local_single_block_elim_pass.cpp
   local_single_store_elim_pass.cpp
   local_ssa_elim_pass.cpp
+  loop_descriptor.cpp
   mem_pass.cpp
   merge_return_pass.cpp
   module.cpp
