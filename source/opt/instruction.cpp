@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "instruction.h"
-#include "ir_context.h"
-
 #include <initializer_list>
 
+#include "fold.h"
+#include "instruction.h"
 #include "ir_context.h"
 #include "reflect.h"
 
@@ -183,13 +182,26 @@ Instruction* Instruction::GetBaseAddress() const {
     }
   }
 
-  assert(base_inst->IsValidBasePointer() &&
-         "We cannot have a base pointer come from this load");
+  switch (opcode()) {
+    case SpvOpLoad:
+    case SpvOpStore:
+    case SpvOpAccessChain:
+    case SpvOpInBoundsAccessChain:
+    case SpvOpCopyObject:
+      // A load or store through a pointer.
+      assert(base_inst->IsValidBasePointer() &&
+             "We cannot have a base pointer come from this load");
+      break;
+    default:
+      // A load or store of an image.
+      assert(base_inst->IsValidBaseImage() && "We are expecting an image.");
+      break;
+  }
   return base_inst;
 }
 
 bool Instruction::IsReadOnlyVariable() const {
-  if (context()->module()->HasCapability(SpvCapabilityShader))
+  if (context()->get_feature_mgr()->HasCapability(SpvCapabilityShader))
     return IsReadOnlyVariableShaders();
   else
     return IsReadOnlyVariableKernel();
@@ -407,7 +419,7 @@ bool Instruction::IsValidBasePointer() const {
     return false;
   }
 
-  if (context()->module()->HasCapability(SpvCapabilityAddresses)) {
+  if (context()->get_feature_mgr()->HasCapability(SpvCapabilityAddresses)) {
     // TODO: The rules here could be more restrictive.
     return true;
   }
@@ -424,6 +436,17 @@ bool Instruction::IsValidBasePointer() const {
     return true;
   }
   return false;
+}
+
+bool Instruction::IsValidBaseImage() const {
+  uint32_t tid = type_id();
+  if (tid == 0) {
+    return false;
+  }
+
+  ir::Instruction* type = context()->get_def_use_mgr()->GetDef(tid);
+  return (type->opcode() == SpvOpTypeImage ||
+          type->opcode() == SpvOpTypeSampledImage);
 }
 
 bool Instruction::IsOpaqueType() const {
@@ -444,5 +467,8 @@ bool Instruction::IsOpaqueType() const {
            spvOpcodeIsBaseOpaqueType(opcode());
   }
 }
+
+bool Instruction::IsFoldable() const { return opt::IsFoldableOpcode(opcode()); }
+
 }  // namespace ir
 }  // namespace spvtools

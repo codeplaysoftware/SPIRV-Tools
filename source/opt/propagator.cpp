@@ -36,17 +36,37 @@ void SSAPropagator::AddControlEdge(const Edge& edge) {
   blocks_.push(dest_bb);
 }
 
-void SSAPropagator::AddSSAEdges(uint32_t id) {
-  get_def_use_mgr()->ForEachUser(id, [this](ir::Instruction* instr) {
-    // If the basic block for |instr| has not been simulated yet, do nothing.
-    if (!BlockHasBeenSimulated(ctx_->get_instr_block(instr))) {
-      return;
-    }
+void SSAPropagator::AddSSAEdges(ir::Instruction* instr) {
+  if (instr->result_id() == 0 || instr->opcode() == SpvOpPhi) {
+    // Ignore instructions that produce no result and Phi instructions. The SSA
+    // edges out of Phi instructions are never added.  Phi instructions can
+    // produce cycles in the def-use web and they are always simulated when a
+    // block is visited.
+    return;
+  }
 
-    if (ShouldSimulateAgain(instr)) {
-      ssa_edge_uses_.push(instr);
-    }
-  });
+  get_def_use_mgr()->ForEachUser(
+      instr->result_id(), [this](ir::Instruction* use_instr) {
+        // If the basic block for |use_instr| has not been simulated yet, do
+        // nothing.
+        if (!BlockHasBeenSimulated(ctx_->get_instr_block(use_instr))) {
+          return;
+        }
+
+        if (ShouldSimulateAgain(use_instr)) {
+          ssa_edge_uses_.push(use_instr);
+        }
+      });
+}
+
+bool SSAPropagator::IsPhiArgExecutable(ir::Instruction* phi, uint32_t i) const {
+  ir::BasicBlock* phi_bb = ctx_->get_instr_block(phi);
+
+  uint32_t in_label_id = phi->GetSingleWordOperand(i + 1);
+  ir::Instruction* in_label_instr = get_def_use_mgr()->GetDef(in_label_id);
+  ir::BasicBlock* in_bb = ctx_->get_instr_block(in_label_instr);
+
+  return IsEdgeExecutable(Edge(in_bb, phi_bb));
 }
 
 bool SSAPropagator::Simulate(ir::Instruction* instr) {
@@ -64,9 +84,7 @@ bool SSAPropagator::Simulate(ir::Instruction* instr) {
     // The statement produces a varying result, add it to the list of statements
     // not to simulate anymore and add its SSA def-use edges for simulation.
     DontSimulateAgain(instr);
-    if (instr->result_id() > 0) {
-      AddSSAEdges(instr->result_id());
-    }
+    AddSSAEdges(instr);
 
     // If |instr| is a block terminator, add all the control edges out of its
     // block.
@@ -78,11 +96,8 @@ bool SSAPropagator::Simulate(ir::Instruction* instr) {
     }
     return false;
   } else if (status == kInteresting) {
-    // If the instruction produced a new interesting value, add the SSA edge
-    // for its result ID.
-    if (instr->result_id() > 0) {
-      AddSSAEdges(instr->result_id());
-    }
+    // Add the SSA edges coming out of this instruction.
+    AddSSAEdges(instr);
 
     // If there are multiple outgoing control flow edges and we know which one
     // will be taken, add the destination block to the CFG work list.
@@ -98,7 +113,6 @@ bool SSAPropagator::Simulate(ir::Instruction* instr) {
   // defined at an instruction D that should be simulated again, then the output
   // of D might affect |instr|, so we should simulate |instr| again.
   bool has_operands_to_simulate = false;
-  ir::BasicBlock* instr_bb = ctx_->get_instr_block(instr);
   if (instr->opcode() == SpvOpPhi) {
     // For Phi instructions, an operand causes the Phi to be simulated again if
     // the operand comes from an edge that has not yet been traversed or if its
@@ -111,12 +125,7 @@ bool SSAPropagator::Simulate(ir::Instruction* instr) {
 
       uint32_t arg_id = instr->GetSingleWordOperand(i);
       ir::Instruction* arg_def_instr = get_def_use_mgr()->GetDef(arg_id);
-      uint32_t in_label_id = instr->GetSingleWordOperand(i + 1);
-      ir::Instruction* in_label_instr = get_def_use_mgr()->GetDef(in_label_id);
-      ir::BasicBlock* in_bb = ctx_->get_instr_block(in_label_instr);
-      Edge edge(in_bb, instr_bb);
-
-      if (!IsEdgeExecutable(edge) || ShouldSimulateAgain(arg_def_instr)) {
+      if (!IsPhiArgExecutable(instr, i) || ShouldSimulateAgain(arg_def_instr)) {
         has_operands_to_simulate = true;
         break;
       }
@@ -189,7 +198,7 @@ void SSAPropagator::Initialize(ir::Function* fn) {
       bb_succs_[&block].push_back(Edge(&block, succ_bb));
       bb_preds_[succ_bb].push_back(Edge(succ_bb, &block));
     });
-    if (block.IsReturn()) {
+    if (block.IsReturnOrAbort()) {
       bb_succs_[&block].push_back(
           Edge(&block, ctx_->cfg()->pseudo_exit_block()));
       bb_preds_[ctx_->cfg()->pseudo_exit_block()].push_back(

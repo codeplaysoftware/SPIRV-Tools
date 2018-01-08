@@ -256,3 +256,8 @@ add_spvtools_unittest(TARGET pass_remove_duplicates
   SRCS pass_remove_duplicates_test.cpp
   LIBS SPIRV-Tools-opt
 )
+
+add_spvtools_unittest(TARGET ccp
+  SRCS ccp_test.cpp
+  LIBS SPIRV-Tools-opt
+)

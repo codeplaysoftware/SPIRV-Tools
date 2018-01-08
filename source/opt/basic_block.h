@@ -64,7 +64,7 @@ class BasicBlock {
 
   // The label starting this basic block.
   Instruction* GetLabelInst() { return label_.get(); }
-  const Instruction& GetLabelInst() const { return *label_; }
+  const Instruction* GetLabelInst() const { return label_.get(); }
 
   // Returns the merge instruction in this basic block, if it exists.
   // Otherwise return null.  May be used whenever tail() can be used.
@@ -143,9 +143,15 @@ class BasicBlock {
   // this block, if any.  If none, returns zero.
   uint32_t ContinueBlockIdIfAny() const;
 
+  // Returns the terminator instruction.  Assumes the terminator exists.
+  Instruction* terminator() { return &*tail(); }
+
   // Returns true if this basic block exits this function and returns to its
   // caller.
   bool IsReturn() const { return ctail()->IsReturn(); }
+
+  // Returns true if this basic block exits this function or aborts execution.
+  bool IsReturnOrAbort() const { return ctail()->IsReturnOrAbort(); }
 
  private:
   // The enclosing function.

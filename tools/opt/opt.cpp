@@ -81,6 +81,12 @@ standard output.
 NOTE: The optimizer is a work in progress.
 
 Options (in lexicographical order):
+  --ccp
+               Apply the conditional constant propagation transform.  This will
+               propagate constant values throughout the program, and simplify
+               expressions and conditional jumps with known predicate
+               values.  Performed on entry point call tree functions and
+               exported functions.
   --cfg-cleanup
                Cleanup the control flow graph. This will remove any unnecessary
                code from the CFG like unreachable code. Performed on entry
@@ -212,6 +218,9 @@ Options (in lexicographical order):
                'spirv-opt --merge-blocks -O ...' applies the transformation
                --merge-blocks followed by all the transformations implied by
                -O.
+  --print-all
+               Print SPIR-V assembly to standard error output before each pass
+               and after the last pass.
   --private-to-local
                Change the scope of private variables that are used in a single
                function to that function.
@@ -449,6 +458,10 @@ OptStatus ParseFlags(int argc, const char** argv, Optimizer* optimizer,
         if (status.action != OPT_CONTINUE) {
           return status;
         }
+      } else if (0 == strcmp(cur_arg, "--ccp")) {
+        optimizer->RegisterPass(CreateCCPPass());
+      } else if (0 == strcmp(cur_arg, "--print-all")) {
+        optimizer->SetPrintAll(&std::cerr);
       } else if ('\0' == cur_arg[1]) {
         // Setting a filename of "-" to indicate stdin.
         if (!*in_file) {
