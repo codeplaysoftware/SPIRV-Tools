@@ -18,36 +18,35 @@
 namespace spvtools {
 namespace opt {
 
-// TODO: Roll these static functions into utility classes.
-static void insertLoopClosedSSAExit(ir::Function& func) {
-  ir::IRContext* context = func.GetParent()->context();
+void LoopUtils::InsertLoopClosedSSA() {
+  opt::analysis::DefUseManager* def_use_manager =
+      ir_context_->get_def_use_mgr();
 
-  opt::analysis::DefUseManager* def_use_manager = context->get_def_use_mgr();
-
-  for (ir::BasicBlock& bb : func) {
+  for (ir::BasicBlock& bb : function_) {
     for (ir::Instruction& inst : bb) {
       if (inst.opcode() == SpvOpLoopMerge) {
-        std::unique_ptr<ir::Instruction> new_label{new ir::Instruction(
-            context, SpvOp::SpvOpLabel, 0, context->TakeNextUniqueId(), {})};
+        std::unique_ptr<ir::Instruction> new_label{
+            new ir::Instruction(ir_context_, SpvOp::SpvOpLabel, 0,
+                                ir_context_->TakeNextUniqueId(), {})};
 
         std::unique_ptr<ir::BasicBlock> new_exit_bb{
             new ir::BasicBlock(std::move(new_label))};
 
         uint32_t merge_block_id = inst.GetSingleWordOperand(0);
-        ir::BasicBlock* current_loop_exit =
-            context->get_instr_block(def_use_manager->GetDef(merge_block_id));
+        ir::BasicBlock* current_loop_exit = ir_context_->get_instr_block(
+            def_use_manager->GetDef(merge_block_id));
 
         ir::BasicBlock* new_exit_bb_soft_copy = new_exit_bb.get();
         uint32_t new_id = new_exit_bb->id();
-        func.AddBasicBlock(current_loop_exit, std::move(new_exit_bb));
+        function_.AddBasicBlock(current_loop_exit, std::move(new_exit_bb));
 
-        context->InvalidateAnalysesExceptFor(
+        ir_context_->InvalidateAnalysesExceptFor(
             ir::IRContext::Analysis::kAnalysisNone);
 
-        context->ReplaceAllUsesWith(merge_block_id, new_id);
+        ir_context_->ReplaceAllUsesWith(merge_block_id, new_id);
 
         std::unique_ptr<ir::Instruction> new_branch{
-            new ir::Instruction(context, SpvOp::SpvOpBranch, 0, 0,
+            new ir::Instruction(ir_context_, SpvOp::SpvOpBranch, 0, 0,
                                 {{SPV_OPERAND_TYPE_ID, {merge_block_id}}})};
 
         new_exit_bb_soft_copy->AddInstruction(std::move(new_branch));
@@ -56,11 +55,10 @@ static void insertLoopClosedSSAExit(ir::Function& func) {
   }
 }
 
-static void remapResultIds(ir::Loop&, ir::BasicBlock* BB,
-                           ir::IRContext* context,
-                           std::map<uint32_t, uint32_t>& new_inst) {
+void LoopUtils::RemapResultIDs(ir::Loop&, ir::BasicBlock* BB,
+                               std::map<uint32_t, uint32_t>& new_inst) const {
   // Label instructions aren't covered by normal traversal of the instructions.
-  uint32_t new_label_id = context->TakeNextUniqueId();
+  uint32_t new_label_id = ir_context_->TakeNextUniqueId();
   new_inst[BB->GetLabelInst()->result_id()] = new_label_id;
   BB->GetLabelInst()->SetResultId(new_label_id);
 
@@ -70,13 +68,13 @@ static void remapResultIds(ir::Loop&, ir::BasicBlock* BB,
     if (old_id == 0) {
       continue;
     }
-    inst.SetResultId(context->TakeNextUniqueId());
+    inst.SetResultId(ir_context_->TakeNextUniqueId());
     new_inst[old_id] = inst.result_id();
   }
 }
 
-static void remapOperands(ir::BasicBlock* BB, uint32_t old_header,
-                          std::map<uint32_t, uint32_t>& new_inst) {
+void LoopUtils::RemapOperands(ir::BasicBlock* BB, uint32_t old_header,
+                              std::map<uint32_t, uint32_t>& new_inst) const {
   for (ir::Instruction& inst : *BB) {
     auto remap_operands_to_new_ids = [&new_inst, old_header](uint32_t* id) {
       auto itr = new_inst.find(*id);
@@ -89,9 +87,7 @@ static void remapOperands(ir::BasicBlock* BB, uint32_t old_header,
   }
 }
 
-static ir::BasicBlock* copyEachBB(ir::Loop& loop, ir::Function& func,
-                                  ir::BasicBlock* preheader,
-                                  ir::IRContext* context) {
+ir::BasicBlock* LoopUtils::CopyLoop(ir::Loop& loop, ir::BasicBlock* preheader) {
   // Map of basic blocks ids
   std::map<uint32_t, ir::BasicBlock*> new_blocks;
 
@@ -100,19 +96,19 @@ static ir::BasicBlock* copyEachBB(ir::Loop& loop, ir::Function& func,
 
   for (auto& pair : basic_blocks) {
     uint32_t id = pair.first;
-    const ir::BasicBlock* itr = context->get_instr_block(id);
+    const ir::BasicBlock* itr = ir_context_->get_instr_block(id);
 
     // Copy the loop basicblock.
-    ir::BasicBlock* BB = itr->Clone(context);
+    ir::BasicBlock* BB = itr->Clone(ir_context_);
 
     if (itr == loop.GetConditionBlock()) {
       ir::Instruction& branch = *BB->tail();
 
       std::unique_ptr<ir::Instruction> new_branch{new ir::Instruction(
-          context, SpvOp::SpvOpBranch, 0, 0,
+          ir_context_, SpvOp::SpvOpBranch, 0, 0,
           {{SPV_OPERAND_TYPE_ID, {branch.GetSingleWordOperand(1)}}})};
 
-      context->KillInst(&branch);
+      ir_context_->KillInst(&branch);
       BB->AddInstruction(std::move(new_branch));
     }
 
@@ -120,19 +116,19 @@ static ir::BasicBlock* copyEachBB(ir::Loop& loop, ir::Function& func,
       ir::Instruction& branch = *BB->tail();
 
       std::unique_ptr<ir::Instruction> new_branch{new ir::Instruction(
-          context, SpvOp::SpvOpBranch, 0, 0,
+          ir_context_, SpvOp::SpvOpBranch, 0, 0,
           {{SPV_OPERAND_TYPE_ID, {loop.GetMergeBlock()->id()}}})};
 
-      context->KillInst(&branch);
+      ir_context_->KillInst(&branch);
       BB->AddInstruction(std::move(new_branch));
     }
 
     // Assign each result a new unique ID and keep a mapping of the old ids to
     // the new ones.
-    remapResultIds(loop, BB, context, new_inst);
+    RemapResultIDs(loop, BB, new_inst);
 
     ir::Instruction* merge_inst = BB->GetLoopMergeInst();
-    if (merge_inst) context->KillInst(merge_inst);
+    if (merge_inst) ir_context_->KillInst(merge_inst);
 
     itr->GetParent()->AddBasicBlock(loop.GetHeaderBlock(),
                                     std::unique_ptr<ir::BasicBlock>(BB));
@@ -153,50 +149,42 @@ static ir::BasicBlock* copyEachBB(ir::Loop& loop, ir::Function& func,
   new_inst[merge->id()] = old_header;
 
   for (auto& pair : new_blocks) {
-    remapOperands(pair.second, old_header, new_inst);
+    RemapOperands(pair.second, old_header, new_inst);
   }
 
   uint32_t new_pre_header_block = new_blocks[old_header]->id();
   branch.SetInOperand(0, {new_pre_header_block});
 
   // Invalidate all.
-  context->InvalidateAnalysesExceptFor(ir::IRContext::Analysis::kAnalysisNone);
+  ir_context_->InvalidateAnalysesExceptFor(
+      ir::IRContext::Analysis::kAnalysisNone);
 
   opt::DominatorAnalysis* dom =
-      context->GetDominatorAnalysis(&func, *context->cfg());
+      ir_context_->GetDominatorAnalysis(&function_, *(ir_context_->cfg()));
   return dom->ImmediateDominator(old_header);  // We want to see node 79 here.
 }
 
-static bool unroll(ir::Loop& loop, ir::Function& func, ir::IRContext* context) {
+bool LoopUtils::FullyUnroll(ir::Loop& loop) {
   ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
 
   if (!induction) return false;
 
-  // ir::BasicBlock* preheader =
-  copyEachBB(loop, func, loop.GetPreHeaderBlock(), context);
-  //  copyEachBB(loop, func, preheader, context);
+  ir::BasicBlock* preheader = CopyLoop(loop, loop.GetPreHeaderBlock());
+  CopyLoop(loop, preheader);
   return true;
 }
 
 Pass::Status LoopUnroller::Process(ir::IRContext* c) {
   context_ = c;
   for (ir::Function& f : *c->module()) {
-    insertLoopClosedSSAExit(f);
-    RunOnFunction(f);
+    LoopUtils loop_utils{f, c};
+    loop_utils.InsertLoopClosedSSA();
+
+    for (auto& loop : loop_utils.GetLoopDescriptor()) {
+      loop_utils.FullyUnroll(loop);
+    }
   }
   return Pass::Status::SuccessWithChange;
-}
-
-bool LoopUnroller::RunOnFunction(ir::Function& f) {
-  ir::LoopDescriptor LD{&f};
-  for (auto& loop : LD) {
-    RunOnLoop(loop, f);
-  }
-  return true;
-}
-
-bool LoopUnroller::RunOnLoop(ir::Loop& loop, ir::Function& f) {
-  return unroll(loop, f, context_);
 }
 
 }  // namespace opt
