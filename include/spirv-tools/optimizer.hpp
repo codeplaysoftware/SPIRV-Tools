@@ -16,6 +16,7 @@
 #define SPIRV_TOOLS_OPTIMIZER_HPP_
 
 #include <memory>
+#include <ostream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -112,6 +113,11 @@ class Optimizer {
   // optimizer's pass manager. These strings are valid until the associated
   // pass manager is destroyed.
   std::vector<const char*> GetPassNames() const;
+
+  // Sets the option to print the disassembly before each pass and after the
+  // last pass.  If |out| is null, then no output is generated.  Otherwise,
+  // output is sent to the |out| output stream.
+  Optimizer& SetPrintAll(std::ostream* out);
 
  private:
   struct Impl;                  // Opaque struct for holding internal data.
@@ -404,7 +410,12 @@ Optimizer::PassToken CreateAggressiveDCEPass();
 // The pass remaps result ids to a compact and gapless range starting from %1.
 Optimizer::PassToken CreateCompactIdsPass();
 
-// Creates a remove duplicate capabilities pass.
+// Creates a remove duplicate pass.
+// This pass removes various duplicates:
+// * duplicate capabilities;
+// * duplicate extended instruction imports;
+// * duplicate types;
+// * duplicate decorations.
 Optimizer::PassToken CreateRemoveDuplicatesPass();
 
 // Creates a CFG cleanup pass.
@@ -457,6 +468,18 @@ Optimizer::PassToken CreateScalarReplacementPass();
 // used in only one function.  Those variables are moved to the function storage
 // class in the function that they are used.
 Optimizer::PassToken CreatePrivateToLocalPass();
+
+// Creates a conditional constant propagation (CCP) pass.
+// This pass implements the SSA-CCP algorithm in
+//
+//      Constant propagation with conditional branches,
+//      Wegman and Zadeck, ACM TOPLAS 13(2):181-210.
+//
+// Constant values in expressions and conditional jumps are folded and
+// simplified. This may reduce code size by removing never executed jump targets
+// and computations with constant operands.
+Optimizer::PassToken CreateCCPPass();
+
 }  // namespace spvtools
 
 #endif  // SPIRV_TOOLS_OPTIMIZER_HPP_
