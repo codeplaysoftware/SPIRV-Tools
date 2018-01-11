@@ -195,6 +195,7 @@ ir::Instruction* Loop::GetVariable(const ir::Instruction* load_inst) {
 
 void Loop::FindLoopBasicBlocks() {
   loop_basic_blocks_.clear();
+  loop_basic_blocks_in_order_.clear();
 
   opt::DominatorTree& tree = dom_analysis_->GetDomTree();
 
@@ -205,6 +206,7 @@ void Loop::FindLoopBasicBlocks() {
   for (; begin_itr != tree.end(); ++begin_itr) {
     if (!dom_analysis_->Dominates(loop_merge_, begin_itr->bb_)) {
       loop_basic_blocks_.insert({begin_itr->bb_->id(), begin_itr->bb_});
+      loop_basic_blocks_in_order_.push_back(begin_itr->bb_);
     }
   };
 }

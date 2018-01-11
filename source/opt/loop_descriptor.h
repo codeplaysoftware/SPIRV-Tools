@@ -41,6 +41,7 @@ class Loop {
   using iterator = ChildrenList::iterator;
   using const_iterator = ChildrenList::const_iterator;
   using BasicBlockListTy = std::unordered_map<uint32_t, const ir::BasicBlock*>;
+  using BasicBlockOrderedListTy = std::vector<const ir::BasicBlock*>;
 
   Loop()
       : loop_header_(nullptr),
@@ -137,8 +138,9 @@ class Loop {
   // Returns the set of all basic blocks contained within the loop. Will be all
   // BasicBlocks dominated by the header which are not also dominated by the
   // loop merge block.
-  inline const BasicBlockListTy& GetBlocks() const {
-    return loop_basic_blocks_;
+  inline const BasicBlockOrderedListTy& GetBlocks() {
+    if (loop_basic_blocks_in_order_.size() == 0) FindLoopBasicBlocks();
+    return loop_basic_blocks_in_order_;
   }
 
   // Returns true if the basic block |bb| is inside this loop.
@@ -196,6 +198,7 @@ class Loop {
   // computed only when needed on demand.
   BasicBlockListTy loop_basic_blocks_;
 
+  BasicBlockOrderedListTy loop_basic_blocks_in_order_;
   // Sets the parent loop of this loop, that is, a loop which contains this loop
   // as a nested child loop.
   inline void SetParent(Loop* parent) { parent_ = parent; }
