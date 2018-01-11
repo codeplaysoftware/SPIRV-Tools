@@ -109,80 +109,6 @@ void LoopUtils::RemapOperands(ir::BasicBlock* BB, uint32_t old_header,
   }
 }
 
-ir::BasicBlock* LoopUtils::CopyLoop(ir::Loop& loop, ir::BasicBlock* preheader) {
-  // Map of basic blocks ids
-  std::map<uint32_t, ir::BasicBlock*> new_blocks;
-
-  std::map<uint32_t, uint32_t> new_inst;
-  const ir::Loop::BasicBlockOrderedListTy& basic_blocks = loop.GetBlocks();
-
-  for (const ir::BasicBlock* itr : basic_blocks) {
-    // Copy the loop basicblock.
-    ir::BasicBlock* BB = itr->Clone(ir_context_);
-
-    if (itr == loop.GetConditionBlock()) {
-      ir::Instruction& branch = *BB->tail();
-
-      std::unique_ptr<ir::Instruction> new_branch{new ir::Instruction(
-          ir_context_, SpvOp::SpvOpBranch, 0, 0,
-          {{SPV_OPERAND_TYPE_ID, {branch.GetSingleWordOperand(1)}}})};
-
-      ir_context_->KillInst(&branch);
-      BB->AddInstruction(std::move(new_branch));
-    }
-
-    if (itr == loop.GetLatchBlock()) {
-      ir::Instruction& branch = *BB->tail();
-
-      std::unique_ptr<ir::Instruction> new_branch{new ir::Instruction(
-          ir_context_, SpvOp::SpvOpBranch, 0, 0,
-          {{SPV_OPERAND_TYPE_ID, {loop.GetMergeBlock()->id()}}})};
-
-      ir_context_->KillInst(&branch);
-      BB->AddInstruction(std::move(new_branch));
-    }
-
-    // Assign each result a new unique ID and keep a mapping of the old ids to
-    // the new ones.
-    RemapResultIDs(loop, BB, new_inst);
-
-    ir::Instruction* merge_inst = BB->GetLoopMergeInst();
-    if (merge_inst) ir_context_->KillInst(merge_inst);
-
-    function_.AddBasicBlock(loop.GetMergeBlock(),
-                            std::unique_ptr<ir::BasicBlock>(BB));
-
-    new_blocks[itr->id()] = BB;
-  }
-
-  ir::Instruction& branch = *preheader->tail();
-
-  // TODO: Move this up.
-  if (branch.opcode() != SpvOpBranch) {
-    return nullptr;
-  }
-  uint32_t old_header = branch.GetSingleWordOperand(0);
-
-  // Make all jumps to the loop merge be the Loop Closure SSA exit node.
-  ir::BasicBlock* merge = loop.GetMergeBlock();
-  new_inst[merge->id()] = old_header;
-
-  for (auto& pair : new_blocks) {
-    RemapOperands(pair.second, old_header, new_inst);
-  }
-
-  uint32_t new_pre_header_block = new_blocks[old_header]->id();
-  branch.SetInOperand(0, {new_pre_header_block});
-
-  // Invalidate all.
-  ir_context_->InvalidateAnalysesExceptFor(
-      ir::IRContext::Analysis::kAnalysisNone);
-
-  opt::DominatorAnalysis* dom =
-      ir_context_->GetDominatorAnalysis(&function_, *(ir_context_->cfg()));
-  return dom->ImmediateDominator(old_header);
-}
-
 ir::Instruction* LoopUtils::CopyBody(ir::Loop& loop, int,
                                      ir::Instruction* previous_phi) {
   // Map of basic blocks ids
@@ -240,20 +166,6 @@ ir::Instruction* LoopUtils::CopyBody(ir::Loop& loop, int,
   // Update the previous continue block tracker.
   previous_continue_block_ = new_continue_block;
 
-  // Make all jumps to the loop merge be the Loop Closure SSA exit node.
-  /*
-    ir::BasicBlock* merge_block = loop.GetMergeBlock();
-    ir::Instruction& merge_branch = *merge_block->tail();
-    new_inst[merge_branch->id()] = merge_branch.GetSingleWordOperand(0);
-  */
-
-  /*
-     ir::Instruction* induction = loop.GetInductionVariable()->def_;
-
-    uint32_t phi_index = 5;
-    new_inst[induction->result_id()] =
-        GetPhiVariableID(induction, latch_block_id);*/
-
   // Update references to the old phi node with the actual variable.
   ir::Instruction* induction = loop.GetInductionVariable()->def_;
   new_inst[induction->result_id()] =
@@ -262,9 +174,6 @@ ir::Instruction* LoopUtils::CopyBody(ir::Loop& loop, int,
   // Only reference to the header block is the backedge in the latch block,
   // don't change this.
   new_inst[loop.GetHeaderBlock()->id()] = loop.GetHeaderBlock()->id();
-  if (GetPhiVariableID(previous_phi, previous_latch_block_id_) == 0) {
-    printf("Help! Error");
-  }
 
   previous_latch_block_id_ = latch_block_id;
   for (auto& pair : new_blocks) {
@@ -324,13 +233,13 @@ bool LoopUtils::FullyUnroll(ir::Loop& loop) {
   ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
 
   if (!induction) return false;
-
+/*
   ir::BasicBlock* preheader = loop.GetPreHeaderBlock();
   for (int i = 0; i < 1; ++i) {
     preheader = CopyLoop(loop, preheader);
   }
 
-  RemoveLoopFromFunction(loop, preheader);
+  RemoveLoopFromFunction(loop, preheader);*/
   return true;
 }
 
