@@ -69,10 +69,13 @@ bool LICMPass::ProcessLoop(ir::Loop* loop, ir::Function* f) {
     }
   }
 
-  ir::InstructionList invariants_list = FindLoopInvariants(loop);
-  ir::BasicBlock* pre_header = loop->GetPreHeaderBlock();
-  // Insert the new list of invariants into the pre_header block
-  return HoistInstructions(pre_header, &invariants_list);
+  ir::InstructionList invariants_list{};
+  if (FindLoopInvariants(loop, &invariants_list)) {
+    ir::BasicBlock* pre_header = loop->GetPreHeaderBlock();
+    // Insert the new list of invariants into the pre_header block
+    return HoistInstructions(pre_header, &invariants_list);
+  }
+  return false;
 }
 
 bool LICMPass::HoistInstructions(ir::BasicBlock* pre_header_bb,
@@ -161,9 +164,10 @@ std::vector<ir::BasicBlock*> LICMPass::FindAllNestedBasicBlocks(
   return blocks;
 }
 
-ir::InstructionList LICMPass::FindLoopInvariants(ir::Loop* loop) {
+bool LICMPass::FindLoopInvariants(ir::Loop* loop,
+                                  ir::InstructionList* invariants_list) {
   std::map<ir::Instruction*, bool> invariants_map{};
-  ir::InstructionList invariants{};
+  std::vector<ir::Instruction*> invars{};
 
   // There are some initial variants from the loop
   // The loop header
@@ -175,6 +179,10 @@ ir::InstructionList LICMPass::FindLoopInvariants(ir::Loop* loop) {
   ir::Instruction* branch_to_latch_inst =
       &*--dom_analysis->ImmediateDominator(loop->GetLatchBlock()->id())->end();
   invariants_map.emplace(branch_to_latch_inst, false);
+  // The loop condition branch
+  ir::BasicBlock* loop_condition_bb = ir_context->get_instr_block(
+      (--loop->GetHeaderBlock()->end())->begin()->words.front());
+  invariants_map.emplace(&*--loop_condition_bb->end(), false);
 
   std::vector<ir::BasicBlock*> valid_blocks = FindValidBasicBlocks(loop);
   for (auto bb_it = valid_blocks.begin(); bb_it != valid_blocks.end();
@@ -183,20 +191,25 @@ ir::InstructionList LICMPass::FindLoopInvariants(ir::Loop* loop) {
          ++inst_it) {
       if (invariants_map.find(&(*inst_it)) == invariants_map.end()) {
         if (IsInvariant(loop, &invariants_map, &(*inst_it))) {
-          //  invariants_map.emplace(std::make_pair(&(*inst_it), true));
-          //  invariants.push_back(std::unique_ptr<ir::Instruction>(&(*inst_it)));
+          invariants_map.emplace(std::make_pair(&(*inst_it), true));
+          invars.push_back(&*inst_it);
         } else {
-          //  invariants_map.emplace(std::make_pair(&(*inst_it), false));
+          invariants_map.emplace(std::make_pair(&(*inst_it), false));
         }
       }
     }
   }
 
-  return invariants;
+  for (auto invar_it = invars.begin(); invar_it != invars.end(); ++invar_it) {
+    invariants_list->push_back(std::unique_ptr<ir::Instruction>(*invar_it));
+  }
+
+  // Return if there were invariants found
+  return invariants_list->begin() != invariants_list->end();
 }
 
 bool LICMPass::IsInvariant(ir::Loop* loop,
-                           std::map<ir::Instruction*, bool>* invariant_map,
+                           std::map<ir::Instruction*, bool>* invariants_map,
                            ir::Instruction* inst) {
   // The following always are or are not invariant
   // TODO(Alexander) OpStore is invariant iff
@@ -217,7 +230,7 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
     case SpvOpFunctionCall:
     // Nops can't be moved
     case SpvOpNop:
-      invariant_map->emplace(std::make_pair(inst, false));
+      invariants_map->emplace(std::make_pair(inst, false));
       return false;
     // Type definitions are invariant
     case SpvOpTypeVoid:
@@ -244,15 +257,15 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
     case SpvOpConstantTrue:
     case SpvOpConstantFalse:
     case SpvOpConstant:
-      invariant_map->emplace(std::make_pair(inst, true));
+      invariants_map->emplace(std::make_pair(inst, true));
       return true;
     default:
       break;
   }
 
   // Check if this instruction has already been calculated
-  auto map_val = invariant_map->find(inst);
-  if (map_val != invariant_map->end()) {
+  auto map_val = invariants_map->find(inst);
+  if (map_val != invariants_map->end()) {
     return map_val->second;
   }
 
@@ -272,7 +285,7 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
           uint32_t operand_id = operand_it->words.front();
           ir::Instruction* next_inst =
               ir_context->get_def_use_mgr()->GetDef(operand_id);
-          invariant &= IsInvariant(loop, invariant_map, next_inst);
+          invariant &= IsInvariant(loop, invariants_map, next_inst);
       }
     }
   }
@@ -288,18 +301,22 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
         }
       };
 
-  ir_context->get_def_use_mgr()->ForEachUser(inst, collect_users);
+  if (inst->result_id() != 0) {
+    ir_context->get_def_use_mgr()->ForEachUser(inst, collect_users);
+  }
 
-  // auto detect_restore = []() {
-  //
-  //}
-
-  // for (auto inst_it = using_insts.begin(); inst_it != using_insts.end();
-  //     ++inst_it) {
-  //}
+  for (auto inst_it = using_insts.begin(); inst_it != using_insts.end();
+       ++inst_it) {
+    if ((*inst_it)->opcode() == SpvOpStore) {
+      if ((*inst_it)->begin()->words.front() == inst->result_id()) {
+        invariants_map->emplace(std::make_pair(*inst_it, false));
+        invariant = false;
+      }
+    }
+  }
 
   // The instructions has been proved variant or invariant, so cache the result
-  invariant_map->emplace(std::make_pair(inst, invariant));
+  invariants_map->emplace(std::make_pair(inst, invariant));
 
   return invariant;
 }

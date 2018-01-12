@@ -61,12 +61,13 @@ class LICMPass : public Pass {
   bool HoistInstructions(ir::BasicBlock* pre_header_bb,
                          ir::InstructionList* invariants_list);
 
-  // Builds and returns list of all invariant instructions inside the given loop
-  ir::InstructionList FindLoopInvariants(ir::Loop* loop);
+  // Finds all invariants in the loop and pushes them to invariants_list
+  // Returns true if any invariants were found
+  bool FindLoopInvariants(ir::Loop* loop, ir::InstructionList* invariants_list);
 
   // Tests if an individual instruction is invariant
   bool IsInvariant(ir::Loop* loop,
-                   std::map<ir::Instruction*, bool>* invariant_map,
+                   std::map<ir::Instruction*, bool>* invariants_map,
                    ir::Instruction* inst);
 
   ir::IRContext* ir_context;
