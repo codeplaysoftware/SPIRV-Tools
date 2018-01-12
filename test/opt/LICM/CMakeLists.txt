@@ -18,6 +18,12 @@ add_spvtools_unittest(TARGET LICM_simple_hoist
     LIBS SPIRV-Tools-opt
 )
 
+add_spvtools_unittest(TARGET LICM_simple_hoist_3_loops
+    SRCS ../function_utils.h
+        simple_hoist_3_loops.cpp
+    LIBS SPIRV-Tools-opt
+)
+
 add_spvtools_unittest(TARGET LICM_hoist_no_hoist
     SRCS ../function_utils.h
          hoist_no_hoist.cpp

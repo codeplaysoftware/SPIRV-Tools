@@ -280,7 +280,7 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
         // variant
         case SPV_OPERAND_TYPE_RESULT_ID:
         case SPV_OPERAND_TYPE_LITERAL_INTEGER:
-          continue;
+          break;
         default:
           uint32_t operand_id = operand_it->words.front();
           ir::Instruction* next_inst =
@@ -289,11 +289,18 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
           // later uses, so we provide the instructions unique_id to avoid
           // finding ourselves in a loop when searching uses of the instruction
           // later
-          if (inst->opcode() == SpvOpStore) {
-            invariant &=
-                IsInvariant(loop, invariants_map, next_inst, inst->unique_id());
-          } else {
-            invariant &= IsInvariant(loop, invariants_map, next_inst, 0);
+          switch (inst->opcode()) {
+            case SpvOpStore:
+              invariant &= IsInvariant(loop, invariants_map, next_inst,
+                                       inst->unique_id());
+              break;
+            // Stops infinite looping when a variable is redeclared
+            case SpvOpVariable:
+              if (*--operand_it->words.end() == inst->result_id()) {
+                break;
+              }
+            default:
+              invariant &= IsInvariant(loop, invariants_map, next_inst, 0);
           }
       }
     }
