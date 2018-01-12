@@ -190,7 +190,7 @@ bool LICMPass::FindLoopInvariants(ir::Loop* loop,
     for (auto inst_it = (*bb_it)->begin(); inst_it != (*bb_it)->end();
          ++inst_it) {
       if (invariants_map.find(&(*inst_it)) == invariants_map.end()) {
-        if (IsInvariant(loop, &invariants_map, &(*inst_it))) {
+        if (IsInvariant(loop, &invariants_map, &(*inst_it), 0)) {
           invariants_map.emplace(std::make_pair(&(*inst_it), true));
           invars.push_back(&*inst_it);
         } else {
@@ -210,7 +210,7 @@ bool LICMPass::FindLoopInvariants(ir::Loop* loop,
 
 bool LICMPass::IsInvariant(ir::Loop* loop,
                            std::map<ir::Instruction*, bool>* invariants_map,
-                           ir::Instruction* inst) {
+                           ir::Instruction* inst, const uint32_t ignore_id) {
   // The following always are or are not invariant
   // TODO(Alexander) OpStore is invariant iff
   // the stored value is invariant wrt the loop
@@ -285,7 +285,16 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
           uint32_t operand_id = operand_it->words.front();
           ir::Instruction* next_inst =
               ir_context->get_def_use_mgr()->GetDef(operand_id);
-          invariant &= IsInvariant(loop, invariants_map, next_inst);
+          // If we are at an OpStore, we should ignore this store when searching
+          // later uses, so we provide the instructions unique_id to avoid
+          // finding ourselves in a loop when searching uses of the instruction
+          // later
+          if (inst->opcode() == SpvOpStore) {
+            invariant &=
+                IsInvariant(loop, invariants_map, next_inst, inst->unique_id());
+          } else {
+            invariant &= IsInvariant(loop, invariants_map, next_inst, 0);
+          }
       }
     }
   }
@@ -309,8 +318,10 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
        ++inst_it) {
     if ((*inst_it)->opcode() == SpvOpStore) {
       if ((*inst_it)->begin()->words.front() == inst->result_id()) {
-        invariants_map->emplace(std::make_pair(*inst_it, false));
-        invariant = false;
+        if ((*inst_it)->unique_id() != ignore_id) {
+          invariants_map->emplace(std::make_pair(*inst_it, false));
+          invariant = false;
+        }
       }
     }
   }

@@ -132,11 +132,11 @@ OpName %i "i"
 OpStore %a %int_1
 OpStore %b %int_2
 OpStore %hoist %int_0
+OpStore %i %int_0
 %24 = OpLoad %int %a
 %25 = OpLoad %int %b
 %26 = OpIAdd %int %24 %25
 OpStore %hoist %26
-OpStore %i %int_0
 OpBranch %17
 %17 = OpLabel
 OpLoopMerge %18 %19 None
