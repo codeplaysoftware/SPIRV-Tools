@@ -116,7 +116,11 @@ class BasicBlock {
                              bool run_on_debug_line_insts = false);
 
   // Runs the given function |f| on each label id of each successor block
-  void ForEachSuccessorLabel(const std::function<void(const uint32_t)>& f);
+  void ForEachSuccessorLabel(
+      const std::function<void(const uint32_t)>& f) const;
+
+  // Returns true if |block| is a direct successor of |this|.
+  bool IsSuccessor(const ir::BasicBlock* block) const;
 
   // Runs the given function |f| on the merge and continue label, if any
   void ForMergeAndContinueLabel(const std::function<void(const uint32_t)>& f);
@@ -135,8 +139,7 @@ class BasicBlock {
   bool IsLoopHeader() const { return GetLoopMergeInst() != nullptr; }
 
   // Returns the ID of the merge block declared by a merge instruction in this
-  // block, if any.  If none, returns zero.  If |cbid| is not nullptr, the ID of
-  // the continue block in the merge instruction is set in |*cbid|.
+  // block, if any.  If none, returns zero.
   uint32_t MergeBlockIdIfAny() const;
 
   // Returns the ID of the continue block declared by a merge instruction in
@@ -145,6 +148,7 @@ class BasicBlock {
 
   // Returns the terminator instruction.  Assumes the terminator exists.
   Instruction* terminator() { return &*tail(); }
+  const Instruction* terminator() const { return &*ctail(); }
 
   // Returns true if this basic block exits this function and returns to its
   // caller.
@@ -161,6 +165,9 @@ class BasicBlock {
   // Instructions inside this basic block, but not the OpLabel.
   InstructionList insts_;
 };
+
+// Pretty-prints |block| to |str|. Returns |str|.
+std::ostream& operator<<(std::ostream& str, const BasicBlock& block);
 
 inline BasicBlock::BasicBlock(std::unique_ptr<Instruction> label)
     : function_(nullptr), label_(std::move(label)) {}

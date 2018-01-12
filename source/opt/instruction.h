@@ -347,6 +347,19 @@ class Instruction : public utils::IntrusiveNodeBase<Instruction> {
   Instruction* InsertBefore(std::unique_ptr<Instruction>&& i);
   using utils::IntrusiveNodeBase<Instruction>::InsertBefore;
 
+  // Returns true if |this| is an instruction defining a constant, but not a
+  // Spec constant.
+  inline bool IsConstant() const;
+
+  // Pretty-prints |inst|.
+  //
+  // Provides the disassembly of a specific instruction. Utilizes |inst|'s
+  // context to provide the correct interpretation of types, constants, etc.
+  //
+  // |options| are the disassembly options. SPV_BINARY_TO_TEXT_OPTION_NO_HEADER
+  // is always added to |options|.
+  std::string PrettyPrint(uint32_t options = 0u) const;
+
  private:
   // Returns the total count of result type id and result id.
   uint32_t TypeResultIdCount() const {
@@ -383,6 +396,14 @@ class Instruction : public utils::IntrusiveNodeBase<Instruction> {
 
   friend InstructionList;
 };
+
+// Pretty-prints |inst| to |str| and returns |str|.
+//
+// Provides the disassembly of a specific instruction. Utilizes |inst|'s context
+// to provide the correct interpretation of types, constants, etc.
+//
+// Disassembly uses raw ids (not pretty printed names).
+std::ostream& operator<<(std::ostream& str, const ir::Instruction& inst);
 
 inline bool Instruction::operator==(const Instruction& other) const {
   return unique_id() == other.unique_id();
@@ -545,6 +566,11 @@ bool Instruction::IsDecoration() const {
 bool Instruction::IsLoad() const { return spvOpcodeIsLoad(opcode()); }
 
 bool Instruction::IsAtomicOp() const { return spvOpcodeIsAtomicOp(opcode()); }
+
+bool Instruction::IsConstant() const {
+  return spvOpcodeIsConstant(opcode()) &&
+         !spvOpcodeIsScalarSpecConstant(opcode());
+}
 }  // namespace ir
 }  // namespace spvtools
 

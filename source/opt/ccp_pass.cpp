@@ -27,6 +27,25 @@
 namespace spvtools {
 namespace opt {
 
+namespace {
+
+// This SSA id is never defined nor referenced in the IR.  It is a special ID
+// which represents varying values.  When an ID is found to have a varying
+// value, its entry in the |values_| table maps to kVaryingSSAId.
+const uint32_t kVaryingSSAId = std::numeric_limits<uint32_t>::max();
+
+}  // namespace
+
+bool CCPPass::IsVaryingValue(uint32_t id) const { return id == kVaryingSSAId; }
+
+SSAPropagator::PropStatus CCPPass::MarkInstructionVarying(
+    ir::Instruction* instr) {
+  assert(instr->result_id() != 0 &&
+         "Instructions with no result cannot be marked varying.");
+  values_[instr->result_id()] = kVaryingSSAId;
+  return SSAPropagator::kVarying;
+}
+
 SSAPropagator::PropStatus CCPPass::VisitPhi(ir::Instruction* phi) {
   uint32_t meet_val_id = 0;
 
@@ -52,9 +71,10 @@ SSAPropagator::PropStatus CCPPass::VisitPhi(ir::Instruction* phi) {
         // looking.
         continue;
       } else {
-        // We found another constant value, but it is different from the
-        // previous computed meet value.  This Phi will never be constant.
-        return SSAPropagator::kVarying;
+        // We either found a varying value, or another constant value different
+        // from the previous computed meet value.  This Phi will never be
+        // constant.
+        return MarkInstructionVarying(phi);
       }
     } else {
       // If any argument is not a constant, the Phi produces nothing
@@ -85,58 +105,56 @@ SSAPropagator::PropStatus CCPPass::VisitAssignment(ir::Instruction* instr) {
     uint32_t rhs_id = instr->GetSingleWordInOperand(0);
     auto it = values_.find(rhs_id);
     if (it != values_.end()) {
-      values_[instr->result_id()] = it->second;
-      return SSAPropagator::kInteresting;
+      if (IsVaryingValue(it->second)) {
+        return MarkInstructionVarying(instr);
+      } else {
+        values_[instr->result_id()] = it->second;
+        return SSAPropagator::kInteresting;
+      }
     }
     return SSAPropagator::kNotInteresting;
   }
 
   // Instructions with a RHS that cannot produce a constant are always varying.
   if (!instr->IsFoldable()) {
-    return SSAPropagator::kVarying;
+    return MarkInstructionVarying(instr);
   }
 
-  // Otherwise, see if the RHS of the assignment folds into a constant value.
-  std::vector<uint32_t> cst_val_ids;
-  bool missing_constants = false;
-  instr->ForEachInId([this, &cst_val_ids, &missing_constants](uint32_t* op_id) {
+  // See if the RHS of the assignment folds into a constant value.
+  auto map_func = [this](uint32_t id) {
+    auto it = values_.find(id);
+    if (it == values_.end() || IsVaryingValue(it->second)) {
+      return id;
+    }
+    return it->second;
+  };
+  ir::Instruction* folded_inst =
+      opt::FoldInstructionToConstant(instr, map_func);
+  if (folded_inst != nullptr) {
+    // We do not want to change the body of the function by adding new
+    // instructions.  When folding we can only generate new constants.
+    assert(folded_inst->IsConstant() && "CCP is only interested in constant.");
+    values_[instr->result_id()] = folded_inst->result_id();
+    return SSAPropagator::kInteresting;
+  }
+
+  // If not, see if there is a least one unknown operand to the instruction.  If
+  // so, we might be able to fold it later.
+  bool could_be_improved = false;
+  instr->ForEachInId([this, &could_be_improved](uint32_t* op_id) {
     auto it = values_.find(*op_id);
     if (it == values_.end()) {
-      missing_constants = true;
+      could_be_improved = true;
       return;
     }
-    cst_val_ids.push_back(it->second);
   });
-
-  // If we did not find a constant value for every operand in the instruction,
-  // do not bother folding it.  Indicate that this instruction does not produce
-  // an interesting value for now.
-  if (missing_constants) {
+  if (could_be_improved) {
     return SSAPropagator::kNotInteresting;
   }
 
-  auto constants = const_mgr_->GetConstantsFromIds(cst_val_ids);
-  assert(constants.size() != 0 && "Found undeclared constants");
-
-  // If any of the constants are not supported by the folder, we will not be
-  // able to produce a constant out of this instruction.  Consider it varying
-  // in that case.
-  if (!std::all_of(constants.begin(), constants.end(),
-                   [](const analysis::Constant* cst) {
-                     return IsFoldableConstant(cst);
-                   })) {
-    return SSAPropagator::kVarying;
-  }
-
-  // Otherwise, fold the instruction with all the operands to produce a new
-  // constant.
-  uint32_t result_val = FoldScalars(instr->opcode(), constants);
-  const analysis::Constant* result_const =
-      const_mgr_->GetConstant(const_mgr_->GetType(instr), {result_val});
-  ir::Instruction* const_decl =
-      const_mgr_->GetDefiningInstruction(result_const);
-  values_[instr->result_id()] = const_decl->result_id();
-  return SSAPropagator::kInteresting;
+  // Otherwise, we will never be able to fold this instruction, so mark it
+  // varying.
+  return MarkInstructionVarying(instr);
 }
 
 SSAPropagator::PropStatus CCPPass::VisitBranch(ir::Instruction* instr,
@@ -154,7 +172,7 @@ SSAPropagator::PropStatus CCPPass::VisitBranch(ir::Instruction* instr,
     // according to the selector's boolean value.
     uint32_t pred_id = instr->GetSingleWordOperand(0);
     auto it = values_.find(pred_id);
-    if (it == values_.end()) {
+    if (it == values_.end() || IsVaryingValue(it->second)) {
       // The predicate has an unknown value, either branch could be taken.
       return SSAPropagator::kVarying;
     }
@@ -179,7 +197,7 @@ SSAPropagator::PropStatus CCPPass::VisitBranch(ir::Instruction* instr,
     }
     uint32_t select_id = instr->GetSingleWordOperand(0);
     auto it = values_.find(select_id);
-    if (it == values_.end()) {
+    if (it == values_.end() || IsVaryingValue(it->second)) {
       // The selector has an unknown value, any of the branches could be taken.
       return SSAPropagator::kVarying;
     }
@@ -225,7 +243,7 @@ bool CCPPass::ReplaceValues() {
   for (const auto& it : values_) {
     uint32_t id = it.first;
     uint32_t cst_id = it.second;
-    if (id != cst_id) {
+    if (!IsVaryingValue(cst_id) && id != cst_id) {
       retval |= context()->ReplaceAllUsesWith(id, cst_id);
     }
   }

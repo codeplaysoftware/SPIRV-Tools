@@ -224,8 +224,6 @@ class IRContext {
   void set_instr_block(ir::Instruction* inst, ir::BasicBlock* block) {
     if (AreAnalysesValid(kAnalysisInstrToBlockMapping)) {
       instr_to_block_[inst] = block;
-    } else {
-      BuildInstrToBlockMapping();
     }
   }
 
@@ -392,6 +390,9 @@ class IRContext {
     }
     return feature_mgr_.get();
   }
+
+  // Returns the grammar for this context.
+  const libspirv::AssemblyGrammar& grammar() const { return grammar_; }
 
  private:
   // Builds the def-use manager from scratch, even if it was already valid.
