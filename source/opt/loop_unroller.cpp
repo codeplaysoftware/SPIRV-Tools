@@ -25,9 +25,8 @@ void LoopUtils::InsertLoopClosedSSA() {
   for (ir::BasicBlock& bb : function_) {
     for (ir::Instruction& inst : bb) {
       if (inst.opcode() == SpvOpLoopMerge) {
-        std::unique_ptr<ir::Instruction> new_label{
-            new ir::Instruction(ir_context_, SpvOp::SpvOpLabel, 0,
-                                ir_context_->TakeNextUniqueId(), {})};
+        std::unique_ptr<ir::Instruction> new_label{new ir::Instruction(
+            ir_context_, SpvOp::SpvOpLabel, 0, ir_context_->TakeNextId(), {})};
 
         std::unique_ptr<ir::BasicBlock> new_exit_bb{
             new ir::BasicBlock(std::move(new_label))};
@@ -62,7 +61,7 @@ ir::Instruction* LoopUtils::RemapResultIDs(
     ir::Loop& loop, ir::BasicBlock* BB,
     std::map<uint32_t, uint32_t>& new_inst) const {
   // Label instructions aren't covered by normal traversal of the instructions.
-  uint32_t new_label_id = ir_context_->TakeNextUniqueId();
+  uint32_t new_label_id = ir_context_->TakeNextId();
   new_inst[BB->GetLabelInst()->result_id()] = new_label_id;
   BB->GetLabelInst()->SetResultId(new_label_id);
 
@@ -74,7 +73,7 @@ ir::Instruction* LoopUtils::RemapResultIDs(
       continue;
     }
 
-    inst.SetResultId(ir_context_->TakeNextUniqueId());
+    inst.SetResultId(ir_context_->TakeNextId());
     new_inst[old_id] = inst.result_id();
     if (loop.GetInductionVariable()->def_->result_id() == old_id) {
       new_induction = &inst;
@@ -82,6 +81,19 @@ ir::Instruction* LoopUtils::RemapResultIDs(
   }
 
   return new_induction;
+}
+
+bool LoopUtils::CanPerformPartialUnroll(ir::Loop& loop) {
+  // Loop descriptor must be able to extract the induction variable.
+  ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
+  if (!induction) return false;
+
+  if (!induction->def_ || induction->def_->opcode() != SpvOpPhi) return false;
+
+  if (!induction->end_condition_ ||
+      induction->end_condition_->opcode() != SpvOpSLessThan)
+    return false;
+  return true;
 }
 
 uint32_t LoopUtils::GetPhiVariableID(const ir::Instruction* phi,
@@ -109,7 +121,21 @@ void LoopUtils::RemapOperands(ir::BasicBlock* BB, uint32_t old_header,
   }
 }
 
+void LoopUtils::FoldConditionBlock(ir::BasicBlock* condition_block,
+                                   uint32_t operand_label) {
+  ir::Instruction& old_branch = *condition_block->tail();
+
+  uint32_t new_target = old_branch.GetSingleWordOperand(operand_label);
+  std::unique_ptr<ir::Instruction> new_branch{
+      new ir::Instruction(ir_context_, SpvOp::SpvOpBranch, 0, 0,
+                          {{SPV_OPERAND_TYPE_ID, {new_target}}})};
+
+  ir_context_->KillInst(&old_branch);
+  condition_block->AddInstruction(std::move(new_branch));
+}
+
 ir::Instruction* LoopUtils::CopyBody(ir::Loop& loop, int,
+                                     bool eliminate_conditions,
                                      ir::Instruction* previous_phi) {
   // Map of basic blocks ids
   std::map<uint32_t, ir::BasicBlock*> new_blocks;
@@ -122,6 +148,7 @@ ir::Instruction* LoopUtils::CopyBody(ir::Loop& loop, int,
 
   ir::Instruction* phi = nullptr;
   ir::BasicBlock* new_continue_block = nullptr;
+  ir::BasicBlock* new_condition_block = nullptr;
   for (const ir::BasicBlock* itr : basic_blocks) {
     // Copy the loop basicblock.
     ir::BasicBlock* BB = itr->Clone(ir_context_);
@@ -140,6 +167,10 @@ ir::Instruction* LoopUtils::CopyBody(ir::Loop& loop, int,
     if (itr == loop.GetHeaderBlock()) {
       new_header_id = BB->id();
       phi = new_phi;
+    }
+
+    if (itr == loop.GetConditionBlock()) {
+      new_condition_block = BB;
     }
 
     ir::Instruction* merge_inst = BB->GetLoopMergeInst();
@@ -171,6 +202,13 @@ ir::Instruction* LoopUtils::CopyBody(ir::Loop& loop, int,
   new_inst[induction->result_id()] =
       GetPhiVariableID(previous_phi, previous_latch_block_id_);
 
+  if (eliminate_conditions &&
+      previous_condition_block_ != loop.GetConditionBlock()) {
+    FoldConditionBlock(previous_condition_block_, 1);
+  }
+
+  previous_condition_block_ = new_condition_block;
+
   // Only reference to the header block is the backedge in the latch block,
   // don't change this.
   new_inst[loop.GetHeaderBlock()->id()] = loop.GetHeaderBlock()->id();
@@ -192,18 +230,30 @@ void LoopUtils::RemoveLoopFromFunction(ir::Loop& loop,
   branch.AddOperand({SPV_OPERAND_TYPE_ID, {loop.GetMergeBlock()->id()}});
 }
 
-bool LoopUtils::PartiallyUnroll(ir::Loop& loop, int) {
+void LoopUtils::CloseUnrolledLoop(ir::Loop& loop) {
+  // Remove the OpLoopMerge instruction from the function.
+  ir::Instruction* merge_inst = loop.GetHeaderBlock()->GetLoopMergeInst();
+  ir_context_->KillInst(merge_inst);
+
+  // Remove the final backedge to the header and make it point instead to the
+  // merge block.
+  previous_continue_block_->tail()->SetInOperand(0,
+                                                 {loop.GetMergeBlock()->id()});
+}
+
+void LoopUtils::PartiallyUnrollImpl(ir::Loop& loop, int factor) {
   ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
-
-  blocks_to_add_.clear();
-
-  if (!induction) return false;
   previous_latch_block_id_ = loop.GetLatchBlock()->id();
   ir::Instruction* phi = induction->def_;
   previous_continue_block_ = loop.GetLatchBlock();
-  for (int i = 0; i < 10; ++i) {
-    phi = CopyBody(loop, i + 1, phi);
+  previous_condition_block_ = loop.GetConditionBlock();
+
+  for (int i = 0; i < factor; ++i) {
+    phi = CopyBody(loop, i + 1, true, phi);
   }
+
+  // The first condition block is perserved until now so it can be copied.
+  FoldConditionBlock(loop.GetConditionBlock(), 1);
 
   uint32_t phi_index = 5;
   uint32_t phi_variable = phi->GetSingleWordOperand(phi_index - 1);
@@ -213,33 +263,53 @@ bool LoopUtils::PartiallyUnroll(ir::Loop& loop, int) {
   // SetInOperands are offset by two.
   original_phi->SetInOperand(phi_index - 3, {phi_variable});
   original_phi->SetInOperand(phi_index - 2, {phi_label});
+}
 
+bool LoopUtils::PartiallyUnroll(ir::Loop& loop, int factor) {
+  if (!CanPerformPartialUnroll(loop)) return false;
+  blocks_to_add_.clear();
+
+  /*  ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
+
+    if (induction->end_condition_->opcode() == SpvOpSLessThan) {
+
+    }*/
+
+  PartiallyUnrollImpl(loop, factor);
+
+  CloseUnrolledLoop(loop);
+
+  AddBlocksToFunction(loop.GetMergeBlock());
+
+  return true;
+}
+
+void LoopUtils::AddBlocksToFunction(const ir::BasicBlock* insert_point) {
   for (auto basic_block_iterator = function_.begin();
        basic_block_iterator != function_.end(); ++basic_block_iterator) {
-    if (basic_block_iterator->id() == loop.GetMergeBlock()->id()) {
+    if (basic_block_iterator->id() == insert_point->id()) {
       basic_block_iterator.InsertBefore(&blocks_to_add_);
       break;
     }
   }
-
-  // Invalidate all.
-  ir_context_->InvalidateAnalysesExceptFor(
-      ir::IRContext::Analysis::kAnalysisNone);
-
-  return true;
 }
 
 bool LoopUtils::FullyUnroll(ir::Loop& loop) {
   ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
 
   if (!induction) return false;
-/*
-  ir::BasicBlock* preheader = loop.GetPreHeaderBlock();
-  for (int i = 0; i < 1; ++i) {
-    preheader = CopyLoop(loop, preheader);
-  }
 
-  RemoveLoopFromFunction(loop, preheader);*/
+  blocks_to_add_.clear();
+
+  PartiallyUnrollImpl(loop, 9);
+
+  CloseUnrolledLoop(loop);
+
+  AddBlocksToFunction(loop.GetMergeBlock());
+  // Invalidate all analyses.
+  ir_context_->InvalidateAnalysesExceptFor(
+      ir::IRContext::Analysis::kAnalysisNone);
+
   return true;
 }
 
@@ -250,7 +320,7 @@ Pass::Status LoopUnroller::Process(ir::IRContext* c) {
     //    loop_utils.InsertLoopClosedSSA();
 
     for (auto& loop : loop_utils.GetLoopDescriptor()) {
-      loop_utils.PartiallyUnroll(loop, 2);
+      loop_utils.FullyUnroll(loop);
     }
   }
   return Pass::Status::SuccessWithChange;

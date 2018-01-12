@@ -53,6 +53,14 @@ class Loop {
   Loop(IRContext* context, opt::DominatorAnalysis* analysis, BasicBlock* header,
        BasicBlock* continue_target, BasicBlock* merge_target);
 
+  // Constructor for storage only.
+  /*  Loop(ir::BasicBlock* header, ir::BasicBlock* BasicBlock* continue_target,
+         BasicBlock* merge_target, ir::BasicBlock* condition_block)
+        : loop_header_(header),
+          loop_condition_block_(continue_target),
+          loop_merge_(merge_target),
+          loop_condition_block_(condition_block) {}*/
+
   // Iterators which allows access to the nested loops.
   inline iterator begin() { return nested_loops_.begin(); }
   inline iterator end() { return nested_loops_.end(); }

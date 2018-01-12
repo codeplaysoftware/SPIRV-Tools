@@ -19,7 +19,8 @@ class LoopUtils {
 
   ir::BasicBlock* CopyLoop(ir::Loop& loop, ir::BasicBlock* preheader);
 
-  ir::Instruction* CopyBody(ir::Loop& loop, int, ir::Instruction*);
+  ir::Instruction* CopyBody(ir::Loop& loop, int, bool eliminate_conditions,
+                            ir::Instruction*);
 
   bool PartiallyUnroll(ir::Loop& loop, int factor);
   bool FullyUnroll(ir::Loop& loop);
@@ -28,12 +29,21 @@ class LoopUtils {
 
   void RemoveLoopFromFunction(ir::Loop& loop, ir::BasicBlock* preheader);
 
+  bool CanEliminateConditionBlocks(ir::Loop& loop) const;
+
+  void FoldConditionBlock(ir::BasicBlock* condtion_block, uint32_t new_target);
+
+  bool CanPerformPartialUnroll(ir::Loop& loop);
+
+  bool CanPerformFullUnroll() const;
+
  private:
   ir::Function& function_;
   ir::IRContext* ir_context_;
   ir::LoopDescriptor loop_descriptor_;
   uint32_t previous_latch_block_id_;
   ir::BasicBlock* previous_continue_block_;
+  ir::BasicBlock* previous_condition_block_;
 
   std::vector<std::unique_ptr<ir::BasicBlock>> blocks_to_add_;
 
@@ -44,6 +54,10 @@ class LoopUtils {
                      std::map<uint32_t, uint32_t>& new_inst) const;
 
   uint32_t GetPhiVariableID(const ir::Instruction* phi, uint32_t label) const;
+
+  void PartiallyUnrollImpl(ir::Loop& loop, int factor);
+  void AddBlocksToFunction(const ir::BasicBlock* insert_point);
+  void CloseUnrolledLoop(ir::Loop& loop);
 };
 
 class LoopUnroller : public Pass {
