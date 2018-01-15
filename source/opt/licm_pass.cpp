@@ -104,7 +104,7 @@ std::vector<ir::BasicBlock*> LICMPass::FindValidBasicBlocks(ir::Loop* loop) {
   for (; begin_it != tree.end(); ++begin_it) {
     ir::BasicBlock* cur_block = begin_it->bb_;
     if (cur_block == loop->GetHeaderBlock()) continue;
-    if (dom_analysis->Dominates(loop->GetMergeBlock(), cur_block)) break;
+    if (dom_analysis->Dominates(loop->GetMergeBlock(), cur_block)) continue;
 
     // Check block is not nested within another loop
     bool nested = false;
@@ -280,6 +280,7 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
         // variant
         case SPV_OPERAND_TYPE_RESULT_ID:
         case SPV_OPERAND_TYPE_LITERAL_INTEGER:
+        case SPV_OPERAND_TYPE_STORAGE_CLASS:
           break;
         default:
           uint32_t operand_id = operand_it->words.front();
