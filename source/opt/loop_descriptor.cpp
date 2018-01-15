@@ -39,30 +39,30 @@ Loop::Loop(IRContext* context, opt::DominatorAnalysis* dom_analysis,
       induction_variable_(nullptr) {
   assert(context);
   assert(dom_analysis);
-  SetLoopPreheader(context, dom_analysis);
+  loop_preheader_ = FindLoopPreheader(context, dom_analysis);
   AddBasicBlockToLoop(header);
   AddBasicBlockToLoop(continue_target);
   FindInductionVariable();
 }
 
-void Loop::SetLoopPreheader(IRContext* ir_context,
-                            opt::DominatorAnalysis* dom_analysis) {
+BasicBlock* Loop::FindLoopPreheader(IRContext* ir_context,
+                                    opt::DominatorAnalysis* dom_analysis) {
   CFG* cfg = ir_context->cfg();
   opt::DominatorTree& dom_tree = dom_analysis->GetDomTree();
-  opt::DominatorTreeNode* header_node = dom_tree[loop_header_];
+  opt::DominatorTreeNode* header_node = dom_tree.GetTreeNode(loop_header_);
 
   // The loop predecessor.
   BasicBlock* loop_pred = nullptr;
 
   auto header_pred = cfg->preds(loop_header_->id());
   for (uint32_t p_id : header_pred) {
-    opt::DominatorTreeNode* node = dom_tree[p_id];
+    opt::DominatorTreeNode* node = dom_tree.GetTreeNode(p_id);
     if (node && !dom_tree.Dominates(header_node, node)) {
       // The predecessor is not part of the loop, so potential loop preheader.
       if (loop_pred && node->bb_ != loop_pred) {
         // If we saw 2 distinct predecessors that are outside the loop, we don't
         // have a loop preheader.
-        return;
+        return nullptr;
       }
       loop_pred = node->bb_;
     }
@@ -83,7 +83,8 @@ void Loop::SetLoopPreheader(IRContext* ir_context,
       [&is_preheader, loop_header_id](const uint32_t id) {
         if (id != loop_header_id) is_preheader = false;
       });
-  if (is_preheader) loop_preheader_ = loop_pred;
+  if (is_preheader) return loop_pred;
+  return nullptr;
 }
 
 LoopDescriptor::LoopDescriptor(const Function* f) { PopulateList(f); }
@@ -108,22 +109,22 @@ void LoopDescriptor::PopulateList(const Function* f) {
        ir::make_range(dom_tree.post_begin(), dom_tree.post_end())) {
     Instruction* merge_inst = node.bb_->GetLoopMergeInst();
     if (merge_inst) {
-      // The id of the continue basic block of this loop.
+      // The id of the merge basic block of this loop.
       uint32_t merge_bb_id = merge_inst->GetSingleWordOperand(0);
 
       // The id of the continue basic block of this loop.
       uint32_t continue_bb_id = merge_inst->GetSingleWordOperand(1);
 
-      // The continue target of this loop.
+      // The merge target of this loop.
       BasicBlock* merge_bb = context->cfg()->block(merge_bb_id);
 
       // The continue target of this loop.
       BasicBlock* continue_bb = context->cfg()->block(continue_bb_id);
 
-      // The basicblock containing the merge instruction.
+      // The basic block containing the merge instruction.
       BasicBlock* header_bb = context->get_instr_block(merge_inst);
 
-      // Add the loop the list of all the loops in the function.
+      // Add the loop to the list of all the loops in the function.
       loops_.emplace_back(MakeUnique<Loop>(context, dom_analysis, header_bb,
                                            continue_bb, merge_bb));
       Loop* current_loop = loops_.back().get();
@@ -134,21 +135,21 @@ void LoopDescriptor::PopulateList(const Function* f) {
         Loop* previous_loop = itr->get();
 
         // If the loop already has a parent, then it has been processed.
-        if (previous_loop->HasParent()) break;
+        if (previous_loop->HasParent()) continue;
 
         // If the current loop does not dominates the previous loop then it is
         // not nested loop.
         if (!dom_analysis->Dominates(header_bb,
                                      previous_loop->GetHeaderBlock()))
-          break;
+          continue;
         // If the current loop merge dominates the previous loop then it is
         // not nested loop.
         if (dom_analysis->Dominates(merge_bb, previous_loop->GetHeaderBlock()))
-          break;
+          continue;
 
         current_loop->AddNestedLoop(previous_loop);
       }
-      opt::DominatorTreeNode* dom_merge_node = dom_tree[merge_bb];
+      opt::DominatorTreeNode* dom_merge_node = dom_tree.GetTreeNode(merge_bb);
       for (opt::DominatorTreeNode& loop_node :
            make_range(node.df_begin(), node.df_end())) {
         // Check if we are in the loop.

@@ -2426,6 +2426,48 @@ TEST_F(ValidateIdWithMessage, OpStoreTypeBadRelaxedStruct2) {
                 "<id> '16's layout."));
 }
 
+TEST_F(ValidateIdWithMessage, OpStoreTypeRelaxedLogicalPointerReturnPointer) {
+  const string spirv = R"(
+     OpCapability Shader
+     OpCapability Linkage
+     OpMemoryModel Logical GLSL450
+%1 = OpTypeInt 32 1
+%2 = OpTypePointer Function %1
+%3 = OpTypeFunction %2 %2
+%4 = OpFunction %2 None %3
+%5 = OpFunctionParameter %2
+%6 = OpLabel
+     OpReturnValue %5
+     OpFunctionEnd)";
+
+  spvValidatorOptionsSetRelaxLogicalPointer(options_, true);
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
+}
+
+TEST_F(ValidateIdWithMessage, OpStoreTypeRelaxedLogicalPointerAllocPointer) {
+  const string spirv = R"(
+      OpCapability Shader
+      OpCapability Linkage
+      OpMemoryModel Logical GLSL450
+ %1 = OpTypeVoid
+ %2 = OpTypeInt 32 1
+ %3 = OpTypeFunction %1          ; void(void)
+ %4 = OpTypePointer Uniform %2   ; int*
+ %5 = OpTypePointer Private %4   ; int** (Private)
+ %6 = OpTypePointer Function %4  ; int** (Function)
+ %7 = OpVariable %5 Private
+ %8 = OpFunction %1 None %3
+ %9 = OpLabel
+%10 = OpVariable %6 Function
+      OpReturn
+      OpFunctionEnd)";
+
+  spvValidatorOptionsSetRelaxLogicalPointer(options_, true);
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
+}
+
 TEST_F(ValidateIdWithMessage, OpStoreVoid) {
   string spirv = kGLSL450MemoryModel + R"(
 %1 = OpTypeVoid
@@ -3505,345 +3547,6 @@ TEST_F(ValidateIdWithMessage, CompositeExtractInsertGood) {
               OpFunctionEnd)";
   CompileSuccessfully(spirv.str());
   EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
-}
-
-// Valid. Tests both CompositeExtract and CompositeInsert with 255 indexes.
-TEST_F(ValidateIdWithMessage, CompositeExtractInsertLimitsGood) {
-  int depth = 255;
-  std::string header = kGLSL450MemoryModel + kDeeplyNestedStructureSetup;
-  header.erase(header.find("%func"));
-  std::ostringstream spirv;
-  spirv << header << std::endl;
-
-  // Build nested structures. Struct 'i' contains struct 'i-1'
-  spirv << "%s_depth_1 = OpTypeStruct %float\n";
-  for (int i = 2; i <= depth; ++i) {
-    spirv << "%s_depth_" << i << " = OpTypeStruct %s_depth_" << i - 1 << "\n";
-  }
-
-  // Define Pointer and Variable to use for CompositeExtract/Insert.
-  spirv << "%_ptr_Uniform_deep_struct = OpTypePointer Uniform %s_depth_"
-        << depth << "\n";
-  spirv << "%deep_var = OpVariable %_ptr_Uniform_deep_struct Uniform\n";
-
-  // Function Start
-  spirv << R"(
-  %func = OpFunction %void None %void_f
-  %my_label = OpLabel
-  )";
-
-  // OpCompositeExtract/Insert with 'n' indexes (n = depth)
-  spirv << "%deep = OpLoad %s_depth_" << depth << " %deep_var" << std::endl;
-  spirv << "%entry = OpCompositeExtract  %float %deep";
-  for (int i = 0; i < depth; ++i) {
-    spirv << " 0";
-  }
-  spirv << std::endl;
-  spirv << "%new_composite = OpCompositeInsert %s_depth_" << depth
-        << " %entry %deep";
-  for (int i = 0; i < depth; ++i) {
-    spirv << " 0";
-  }
-  spirv << std::endl;
-
-  // Function end
-  spirv << R"(
-    OpReturn
-    OpFunctionEnd
-  )";
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
-}
-
-// Invalid: 256 indexes passed to OpCompositeExtract. Limit is 255.
-TEST_F(ValidateIdWithMessage, CompositeExtractArgCountExceededLimitBad) {
-  std::ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup;
-  spirv << "%matrix = OpLoad %mat4x3 %my_matrix" << std::endl;
-  spirv << "%entry = OpCompositeExtract %float %matrix";
-  for (int i = 0; i < 256; ++i) {
-    spirv << " 0";
-  }
-  spirv << R"(
-    OpReturn
-    OpFunctionEnd
-  )";
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("The number of indexes in OpCompositeExtract may not "
-                        "exceed 255. Found 256 indexes."));
-}
-
-// Invalid: 256 indexes passed to OpCompositeInsert. Limit is 255.
-TEST_F(ValidateIdWithMessage, CompositeInsertArgCountExceededLimitBad) {
-  std::ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup;
-  spirv << "%matrix = OpLoad %mat4x3 %my_matrix" << std::endl;
-  spirv << "%new_composite = OpCompositeInsert %mat4x3 %int_0 %matrix";
-  for (int i = 0; i < 256; ++i) {
-    spirv << " 0";
-  }
-  spirv << R"(
-    OpReturn
-    OpFunctionEnd
-  )";
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("The number of indexes in OpCompositeInsert may not "
-                        "exceed 255. Found 256 indexes."));
-}
-
-// Invalid: In OpCompositeInsert, result type must be the same as composite type
-TEST_F(ValidateIdWithMessage, CompositeInsertWrongResultTypeBad) {
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << std::endl;
-  spirv << "%matrix = OpLoad %mat4x3 %my_matrix" << std::endl;
-  spirv << "%float_entry = OpCompositeExtract  %float %matrix 0 1" << std::endl;
-  spirv << "%new_composite = OpCompositeInsert %float %float_entry %matrix 0 1"
-        << std::endl;
-  spirv << R"(OpReturn
-              OpFunctionEnd)";
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("The Result Type must be the same as Composite type"));
-}
-
-// Valid: No Indexes were passed to OpCompositeExtract, and the Result Type is
-// the same as the Base Composite type.
-TEST_F(ValidateIdWithMessage, CompositeExtractNoIndexesGood) {
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << std::endl;
-  spirv << "%matrix = OpLoad %mat4x3 %my_matrix" << std::endl;
-  spirv << "%float_entry = OpCompositeExtract  %mat4x3 %matrix" << std::endl;
-  spirv << R"(OpReturn
-              OpFunctionEnd)";
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
-}
-
-// Invalid: No Indexes were passed to OpCompositeExtract, but the Result Type is
-// different from the Base Composite type.
-TEST_F(ValidateIdWithMessage, CompositeExtractNoIndexesBad) {
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << std::endl;
-  spirv << "%matrix = OpLoad %mat4x3 %my_matrix" << std::endl;
-  spirv << "%float_entry = OpCompositeExtract  %float %matrix" << std::endl;
-  spirv << R"(OpReturn
-              OpFunctionEnd)";
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("OpCompositeExtract result type (OpTypeFloat) does not "
-                        "match the type that results from indexing into the "
-                        "composite (OpTypeMatrix)."));
-}
-
-// Valid: No Indexes were passed to OpCompositeInsert, and the type of the
-// Object<id> argument matches the Composite type.
-TEST_F(ValidateIdWithMessage, CompositeInsertMissingIndexesGood) {
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << std::endl;
-  spirv << "%matrix   = OpLoad %mat4x3 %my_matrix" << std::endl;
-  spirv << "%matrix_2 = OpLoad %mat4x3 %my_matrix" << std::endl;
-  spirv << "%new_composite = OpCompositeInsert %mat4x3 %matrix_2 %matrix";
-  spirv << R"(
-              OpReturn
-              OpFunctionEnd)";
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
-}
-
-// Invalid: No Indexes were passed to OpCompositeInsert, but the type of the
-// Object<id> argument does not match the Composite type.
-TEST_F(ValidateIdWithMessage, CompositeInsertMissingIndexesBad) {
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << std::endl;
-  spirv << "%matrix = OpLoad %mat4x3 %my_matrix" << std::endl;
-  spirv << "%new_composite = OpCompositeInsert %mat4x3 %int_0 %matrix";
-  spirv << R"(
-              OpReturn
-              OpFunctionEnd)";
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("The Object type (OpTypeInt) in OpCompositeInsert does "
-                        "not match the type that results from indexing into "
-                        "the Composite (OpTypeMatrix)."));
-}
-
-// Valid: Tests that we can index into Struct, Array, Matrix, and Vector!
-TEST_F(ValidateIdWithMessage, CompositeExtractInsertIndexIntoAllTypesGood) {
-  // indexes that we are passing are: 0, 3, 1, 2, 0
-  // 0 will select the struct_s within the base struct (blockName)
-  // 3 will select the Array that contains 5 matrices
-  // 1 will select the Matrix that is at index 1 of the array
-  // 2 will select the column (which is a vector) within the matrix at index 2
-  // 0 will select the element at the index 0 of the vector. (which is a float).
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << R"(
-    %myblock = OpLoad %struct_blockName %blockName_var
-    %ss = OpCompositeExtract %struct_s %myblock 0
-    %sa = OpCompositeExtract %array5_mat4x3 %myblock 0 3
-    %sm = OpCompositeExtract %mat4x3 %myblock 0 3 1
-    %sc = OpCompositeExtract %v3float %myblock 0 3 1 2
-    %fl = OpCompositeExtract %float %myblock 0 3 1 2 0
-    ;
-    ; Now let's insert back at different levels...
-    ;
-    %b1 = OpCompositeInsert %struct_blockName %ss %myblock 0
-    %b2 = OpCompositeInsert %struct_blockName %sa %myblock 0 3
-    %b3 = OpCompositeInsert %struct_blockName %sm %myblock 0 3 1
-    %b4 = OpCompositeInsert %struct_blockName %sc %myblock 0 3 1 2
-    %b5 = OpCompositeInsert %struct_blockName %fl %myblock 0 3 1 2 0
-    OpReturn
-    OpFunctionEnd
-  )";
-
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
-}
-
-// Invalid. More indexes are provided than needed for OpCompositeExtract.
-TEST_F(ValidateIdWithMessage, CompositeExtractReachedScalarBad) {
-  // indexes that we are passing are: 0, 3, 1, 2, 0
-  // 0 will select the struct_s within the base struct (blockName)
-  // 3 will select the Array that contains 5 matrices
-  // 1 will select the Matrix that is at index 1 of the array
-  // 2 will select the column (which is a vector) within the matrix at index 2
-  // 0 will select the element at the index 0 of the vector. (which is a float).
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << R"(
-    %myblock = OpLoad %struct_blockName %blockName_var
-    %fl = OpCompositeExtract %float %myblock 0 3 1 2 0 1
-    OpReturn
-    OpFunctionEnd
-  )";
-
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("OpCompositeExtract reached non-composite type while "
-                        "indexes still remain to be traversed."));
-}
-
-// Invalid. More indexes are provided than needed for OpCompositeInsert.
-TEST_F(ValidateIdWithMessage, CompositeInsertReachedScalarBad) {
-  // indexes that we are passing are: 0, 3, 1, 2, 0
-  // 0 will select the struct_s within the base struct (blockName)
-  // 3 will select the Array that contains 5 matrices
-  // 1 will select the Matrix that is at index 1 of the array
-  // 2 will select the column (which is a vector) within the matrix at index 2
-  // 0 will select the element at the index 0 of the vector. (which is a float).
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << R"(
-    %myblock = OpLoad %struct_blockName %blockName_var
-    %fl = OpCompositeExtract %float %myblock 0 3 1 2 0
-    %b5 = OpCompositeInsert %struct_blockName %fl %myblock 0 3 1 2 0 1
-    OpReturn
-    OpFunctionEnd
-  )";
-
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("OpCompositeInsert reached non-composite type while "
-                        "indexes still remain to be traversed."));
-}
-
-// Invalid. Result type doesn't match the type we get from indexing into
-// the composite.
-TEST_F(ValidateIdWithMessage,
-       CompositeExtractResultTypeDoesntMatchIndexedTypeBad) {
-  // indexes that we are passing are: 0, 3, 1, 2, 0
-  // 0 will select the struct_s within the base struct (blockName)
-  // 3 will select the Array that contains 5 matrices
-  // 1 will select the Matrix that is at index 1 of the array
-  // 2 will select the column (which is a vector) within the matrix at index 2
-  // 0 will select the element at the index 0 of the vector. (which is a float).
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << R"(
-    %myblock = OpLoad %struct_blockName %blockName_var
-    %fl = OpCompositeExtract %int %myblock 0 3 1 2 0
-    OpReturn
-    OpFunctionEnd
-  )";
-
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("OpCompositeExtract result type (OpTypeInt) does not "
-                        "match the type that results from indexing into the "
-                        "composite (OpTypeFloat)."));
-}
-
-// Invalid. Given object type doesn't match the type we get from indexing into
-// the composite.
-TEST_F(ValidateIdWithMessage,
-       CompositeInsertObjectTypeDoesntMatchIndexedTypeBad) {
-  // indexes that we are passing are: 0, 3, 1, 2, 0
-  // 0 will select the struct_s within the base struct (blockName)
-  // 3 will select the Array that contains 5 matrices
-  // 1 will select the Matrix that is at index 1 of the array
-  // 2 will select the column (which is a vector) within the matrix at index 2
-  // 0 will select the element at the index 0 of the vector. (which is a float).
-  // We are trying to insert an integer where we should be inserting a float.
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << R"(
-    %myblock = OpLoad %struct_blockName %blockName_var
-    %b5 = OpCompositeInsert %struct_blockName %int_0 %myblock 0 3 1 2 0
-    OpReturn
-    OpFunctionEnd
-  )";
-
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("he Object type (OpTypeInt) in OpCompositeInsert does "
-                        "not match the type that results from indexing into "
-                        "the Composite (OpTypeFloat)."));
-}
-
-// Invalid. Index into a struct is larger than the number of struct members.
-TEST_F(ValidateIdWithMessage, CompositeExtractStructIndexOutOfBoundBad) {
-  // struct_blockName has 3 members (index 0,1,2). We'll try to access index 3.
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << R"(
-    %myblock = OpLoad %struct_blockName %blockName_var
-    %ss = OpCompositeExtract %struct_s %myblock 3
-    OpReturn
-    OpFunctionEnd
-  )";
-
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("Index is out of bounds: OpCompositeExtract can not "
-                        "find index 3 into the structure <id> '26'. This "
-                        "structure has 3 members. Largest valid index is 2."));
-}
-
-// Invalid. Index into a struct is larger than the number of struct members.
-TEST_F(ValidateIdWithMessage, CompositeInsertStructIndexOutOfBoundBad) {
-  // struct_blockName has 3 members (index 0,1,2). We'll try to access index 3.
-  ostringstream spirv;
-  spirv << kGLSL450MemoryModel << kDeeplyNestedStructureSetup << R"(
-    %myblock = OpLoad %struct_blockName %blockName_var
-    %ss = OpCompositeExtract %struct_s %myblock 0
-    %new_composite = OpCompositeInsert %struct_blockName %ss %myblock 3
-    OpReturn
-    OpFunctionEnd
-  )";
-
-  CompileSuccessfully(spirv.str());
-  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(
-      getDiagnosticString(),
-      HasSubstr("Index is out of bounds: OpCompositeInsert can not find "
-                "index 3 into the structure <id> '26'. This structure "
-                "has 3 members. Largest valid index is 2."));
 }
 
 #if 0

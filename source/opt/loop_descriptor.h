@@ -32,7 +32,7 @@ namespace ir {
 class CFG;
 class LoopDescriptor;
 
-// A class to represent and manipulate a loop.
+// A class to represent and manipulate a loop in structured control flow.
 class Loop {
   // The type used to represent nested child loops.
   using ChildrenList = std::vector<Loop*>;
@@ -53,15 +53,7 @@ class Loop {
   Loop(IRContext* context, opt::DominatorAnalysis* analysis, BasicBlock* header,
        BasicBlock* continue_target, BasicBlock* merge_target);
 
-  // Constructor for storage only.
-  /*  Loop(ir::BasicBlock* header, ir::BasicBlock* BasicBlock* continue_target,
-         BasicBlock* merge_target, ir::BasicBlock* condition_block)
-        : loop_header_(header),
-          loop_condition_block_(continue_target),
-          loop_merge_(merge_target),
-          loop_condition_block_(condition_block) {}*/
-
-  // Iterators which allows access to the nested loops.
+  // Iterators over the immediate sub-loops.
   inline iterator begin() { return nested_loops_.begin(); }
   inline iterator end() { return nested_loops_.end(); }
   inline const_iterator begin() const { return cbegin(); }
@@ -144,17 +136,37 @@ class Loop {
   }
 
   // Adds the Basic Block |bb| this loop and its parents.
-  void AddBasicBlockToLoop(const BasicBlock* bb) {
+ /* void AddBasicBlockToLoop(const BasicBlock* bb) {
     for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
       loop_basic_blocks_.insert({bb->id(), bb});
     }
-  }
+  }*/
 
   // Returns true if the parent basic block of |inst| belong to this loop.
   inline bool IsLoopInvariant(Instruction* inst) const {
     const BasicBlock* parent_block = inst->context()->get_instr_block(inst);
     if (!parent_block) return true;
     return IsInsideLoop(parent_block);
+  }
+
+  // Adds the Basic Block |bb| this loop and its parents.
+  void AddBasicBlockToLoop(const BasicBlock* bb) {
+#ifndef NDEBUG
+    assert(bb->GetParent() && "The basic block does not belong to a function");
+    IRContext* context = bb->GetParent()->GetParent()->context();
+
+    opt::DominatorAnalysis* dom_analysis =
+        context->GetDominatorAnalysis(bb->GetParent(), *context->cfg());
+    assert(dom_analysis->Dominates(GetHeaderBlock(), bb));
+
+    opt::PostDominatorAnalysis* postdom_analysis =
+        context->GetPostDominatorAnalysis(bb->GetParent(), *context->cfg());
+    assert(postdom_analysis->Dominates(GetMergeBlock(), bb));
+#endif  // NDEBUG
+
+    for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
+      loop_basic_blocks_.insert({bb->id(), bb});
+    }
   }
 
   bool CouldFindNumberOfIterations() const {
@@ -205,9 +217,9 @@ class Loop {
   // as a nested child loop.
   inline void SetParent(Loop* parent) { parent_ = parent; }
 
-  // Set the loop preheader if it exists.
-  void SetLoopPreheader(IRContext* context,
-                        opt::DominatorAnalysis* dom_analysis);
+  // Returns the loop preheader if it exists, returns nullptr otherwise.
+  BasicBlock* FindLoopPreheader(IRContext* context,
+                                opt::DominatorAnalysis* dom_analysis);
 
   // This is only to allow LoopDescriptor::dummy_top_loop_ to add top level
   // loops as child.
@@ -231,6 +243,9 @@ class Loop {
   bool IsConstantOnEntryToLoop(const ir::Instruction* variable_inst) const;
 };
 
+// Loop descriptions class for a given function.
+// For a given function, the class builds loop nests information.
+// The analysis expects a structured control flow.
 class LoopDescriptor {
  public:
   // Iterator interface (depth first postorder traversal).

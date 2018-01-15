@@ -268,16 +268,17 @@ class Instruction : public utils::IntrusiveNodeBase<Instruction> {
   bool IsReadOnlyLoad() const;
 
   // Returns the instruction that gives the base address of an address
-  // calculation.  The instruction must be a load instruction.  In logical
-  // addressing mode, will return an OpVariable or OpFunctionParameter
-  // instruction. For relaxed logical addressing, it would also return a load of
-  // a pointer to an opaque object.  For physical addressing mode, could return
-  // other types of instructions.
+  // calculation.  The instruction must be a load, as defined by |IsLoad|,
+  // store, copy, or access chain instruction.  In logical addressing mode, will
+  // return an OpVariable or OpFunctionParameter instruction. For relaxed
+  // logical addressing, it would also return a load of a pointer to an opaque
+  // object.  For physical addressing mode, could return other types of
+  // instructions.
   Instruction* GetBaseAddress() const;
 
-  // Returns true if the instruction is a load from memory into a result id. It
-  // considers only core instructions. Memory-to-memory instructions are not
-  // considered loads.
+  // Returns true if the instruction loads from memory or samples an image, and
+  // stores the result into an id. It considers only core instructions.
+  // Memory-to-memory instructions are not considered loads.
   inline bool IsLoad() const;
 
   // Returns true if the instruction declares a variable that is read-only.
@@ -316,6 +317,9 @@ class Instruction : public utils::IntrusiveNodeBase<Instruction> {
   // Returns true if this instruction causes the function to finish execution
   // and return to its caller
   bool IsReturn() const { return spvOpcodeIsReturn(opcode()); }
+
+  // Returns true if this instruction exits this function or aborts execution.
+  bool IsReturnOrAbort() const { return spvOpcodeIsReturnOrAbort(opcode()); }
 
   // Returns the id for the |element|'th subtype. If the |this| is not a
   // composite type, this function returns 0.
@@ -360,6 +364,10 @@ class Instruction : public utils::IntrusiveNodeBase<Instruction> {
   // logical addressing rules when using logical addressing.  Normal validation
   // rules for physical addressing.
   bool IsValidBasePointer() const;
+
+  // Returns true if the result of |inst| can be used as the base image for an
+  // instruction that samples a image, reads an image, or writes to an image.
+  bool IsValidBaseImage() const;
 
   IRContext* context_;  // IR Context
   SpvOp opcode_;        // Opcode
