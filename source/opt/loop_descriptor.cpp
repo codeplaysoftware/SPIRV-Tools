@@ -35,12 +35,14 @@ Loop::Loop(IRContext* context, opt::DominatorAnalysis* dom_analysis,
       loop_preheader_(nullptr),
       parent_(nullptr),
       ir_context_(context),
-      dom_analysis_(dom_analysis) {
+      dom_analysis_(dom_analysis),
+      induction_variable_(nullptr) {
   assert(context);
   assert(dom_analysis);
   SetLoopPreheader(context, dom_analysis);
   AddBasicBlockToLoop(header);
   AddBasicBlockToLoop(continue_target);
+  FindInductionVariable();
 }
 
 void Loop::SetLoopPreheader(IRContext* ir_context,
@@ -211,32 +213,6 @@ void Loop::FindLoopBasicBlocks() {
   };
 }
 
-bool Loop::IsLoopInvariant(const ir::Instruction* variable_inst) {
-  opt::analysis::DefUseManager* def_use_manager =
-      ir_context_->get_def_use_mgr();
-
-  FindLoopBasicBlocks();
-
-  bool is_invariant = true;
-  auto find_stores = [&is_invariant, this](ir::Instruction* user) {
-    if (user->opcode() == SpvOp::SpvOpStore) {
-      // Get the BasicBlock this block belongs to.
-      const ir::BasicBlock* parent_block =
-          user->context()->get_instr_block(user);
-
-      // If any of the stores are in the loop.
-      if (loop_basic_blocks_.count(parent_block->id()) != 0) {
-        // Then the variable is variant to the loop.
-        is_invariant = false;
-      }
-    }
-  };
-
-  def_use_manager->ForEachUser(variable_inst, find_stores);
-
-  return is_invariant;
-}
-
 ir::Instruction* Loop::GetInductionStepOperation(
     const ir::Instruction* variable_inst) const {
   ir::Instruction* step = nullptr;
@@ -287,14 +263,6 @@ bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
   return GetConstant(constant, value);
 }
 
-Loop::LoopVariable* Loop::GetInductionVariable() {
-  if (!induction_variable_) {
-    FindInductionVariable();
-  }
-
-  return induction_variable_.get();
-}
-
 void Loop::FindInductionVariable() {
   // Get the basic block which branches to the merge block.
   ir::BasicBlock* bb = dom_analysis_->ImmediateDominator(loop_merge_);
@@ -314,18 +282,14 @@ void Loop::FindInductionVariable() {
       const ir::Instruction* rhs_inst =
           def_use_manager->GetDef(condition->GetSingleWordOperand(3));
 
-      uint32_t const_value = 0;
+      uint32_t condition_value = 0;
       // Exit out if we couldn't resolve the rhs to be a constant integer.
       // TODO: Make this work for other values on rhs.
-      if (!GetConstant(rhs_inst, &const_value)) return;
+      if (!GetConstant(rhs_inst, &condition_value)) return;
 
       // The left hand side operand of the operation.
       ir::Instruction* variable_inst =
           def_use_manager->GetDef(condition->GetSingleWordOperand(2));
-
-      /*if (IsLoopInvariant(variable_inst)) {
-        return;
-      }*/
 
       uint32_t init_value = 0;
       GetInductionInitValue(variable_inst, &init_value);
@@ -342,9 +306,9 @@ void Loop::FindInductionVariable() {
       // Exit out if we couldn't resolve the rhs to be a constant integer.
       if (!GetConstant(step_amount_inst, &step_value)) return;
 
-      induction_variable_ =
-          std::unique_ptr<Loop::LoopVariable>(new Loop::LoopVariable(
-              variable_inst, step_value, step_value, const_value, condition));
+      iterations_ = (condition_value / step_value) - init_value;
+      could_find_num_iterations_ = true;
+      induction_variable_ = variable_inst;
     }
   }
 }

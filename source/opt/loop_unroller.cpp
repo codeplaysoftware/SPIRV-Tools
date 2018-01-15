@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Google Inc.
+// Copyright (c) 2018 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -75,7 +75,7 @@ ir::Instruction* LoopUtils::RemapResultIDs(
 
     inst.SetResultId(ir_context_->TakeNextId());
     new_inst[old_id] = inst.result_id();
-    if (loop.GetInductionVariable()->def_->result_id() == old_id) {
+    if (loop.GetInductionVariable()->result_id() == old_id) {
       new_induction = &inst;
     }
   }
@@ -85,14 +85,9 @@ ir::Instruction* LoopUtils::RemapResultIDs(
 
 bool LoopUtils::CanPerformPartialUnroll(ir::Loop& loop) {
   // Loop descriptor must be able to extract the induction variable.
-  ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
-  if (!induction) return false;
+  const ir::Instruction* induction = loop.GetInductionVariable();
+  if (!induction || induction->opcode() != SpvOpPhi) return false;
 
-  if (!induction->def_ || induction->def_->opcode() != SpvOpPhi) return false;
-
-  if (!induction->end_condition_ ||
-      induction->end_condition_->opcode() != SpvOpSLessThan)
-    return false;
   return true;
 }
 
@@ -198,7 +193,7 @@ ir::Instruction* LoopUtils::CopyBody(ir::Loop& loop, int,
   previous_continue_block_ = new_continue_block;
 
   // Update references to the old phi node with the actual variable.
-  ir::Instruction* induction = loop.GetInductionVariable()->def_;
+  const ir::Instruction* induction = loop.GetInductionVariable();
   new_inst[induction->result_id()] =
       GetPhiVariableID(previous_phi, previous_latch_block_id_);
 
@@ -242,9 +237,9 @@ void LoopUtils::CloseUnrolledLoop(ir::Loop& loop) {
 }
 
 void LoopUtils::PartiallyUnrollImpl(ir::Loop& loop, int factor) {
-  ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
+  ir::Instruction* induction = loop.GetInductionVariable();
   previous_latch_block_id_ = loop.GetLatchBlock()->id();
-  ir::Instruction* phi = induction->def_;
+  ir::Instruction* phi = induction;
   previous_continue_block_ = loop.GetLatchBlock();
   previous_condition_block_ = loop.GetConditionBlock();
 
@@ -259,8 +254,10 @@ void LoopUtils::PartiallyUnrollImpl(ir::Loop& loop, int factor) {
   uint32_t phi_variable = phi->GetSingleWordOperand(phi_index - 1);
   uint32_t phi_label = phi->GetSingleWordOperand(phi_index);
 
-  ir::Instruction* original_phi = induction->def_;
+  ir::Instruction* original_phi = induction;
+
   // SetInOperands are offset by two.
+  // TODO: Work out why.
   original_phi->SetInOperand(phi_index - 3, {phi_variable});
   original_phi->SetInOperand(phi_index - 2, {phi_label});
 }
@@ -269,15 +266,7 @@ bool LoopUtils::PartiallyUnroll(ir::Loop& loop, int factor) {
   if (!CanPerformPartialUnroll(loop)) return false;
   blocks_to_add_.clear();
 
-  /*  ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
-
-    if (induction->end_condition_->opcode() == SpvOpSLessThan) {
-
-    }*/
-
   PartiallyUnrollImpl(loop, factor);
-
-  CloseUnrolledLoop(loop);
 
   AddBlocksToFunction(loop.GetMergeBlock());
 
@@ -295,17 +284,19 @@ void LoopUtils::AddBlocksToFunction(const ir::BasicBlock* insert_point) {
 }
 
 bool LoopUtils::FullyUnroll(ir::Loop& loop) {
-  ir::Loop::LoopVariable* induction = loop.GetInductionVariable();
-
-  if (!induction) return false;
-
   blocks_to_add_.clear();
 
-  PartiallyUnrollImpl(loop, 9);
+  PartiallyUnrollImpl(loop, loop.NumIterations() - 1);
 
+  // When fully unrolling we can eliminate the last condition block.
+  FoldConditionBlock(previous_condition_block_, 1);
+
+  // Delete the OpLoopMerge and remove the backedge to the header.
   CloseUnrolledLoop(loop);
 
+  // Add the blocks to the function.
   AddBlocksToFunction(loop.GetMergeBlock());
+
   // Invalidate all analyses.
   ir_context_->InvalidateAnalysesExceptFor(
       ir::IRContext::Analysis::kAnalysisNone);
@@ -317,9 +308,10 @@ Pass::Status LoopUnroller::Process(ir::IRContext* c) {
   context_ = c;
   for (ir::Function& f : *c->module()) {
     LoopUtils loop_utils{f, c};
-    //    loop_utils.InsertLoopClosedSSA();
 
     for (auto& loop : loop_utils.GetLoopDescriptor()) {
+      if (!loop_utils.CanPerformPartialUnroll(loop)) continue;
+
       loop_utils.FullyUnroll(loop);
     }
   }

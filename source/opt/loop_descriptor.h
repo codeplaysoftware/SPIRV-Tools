@@ -125,24 +125,6 @@ class Loop {
   // Returns true if this loop is itself nested within another loop.
   inline bool IsNested() const { return parent_ != nullptr; }
 
-  struct LoopVariable {
-    LoopVariable(ir::Instruction* d, int32_t init_value, int32_t step_amount,
-                 int32_t end_val, ir::Instruction* condition)
-        : def_(d),
-          init_value_(init_value),
-          step_amount_(step_amount),
-          end_value_(end_val),
-          end_condition_(condition) {}
-    ir::Instruction* def_;
-    int32_t init_value_;
-    int32_t step_amount_;
-    int32_t end_value_;
-    ir::Instruction* end_condition_;
-  };
-
-  // Gets or if unitialised, sets, the induction variable for the loop.
-  LoopVariable* GetInductionVariable();
-
   // Returns the set of all basic blocks contained within the loop. Will be all
   // BasicBlocks dominated by the header which are not also dominated by the
   // loop merge block.
@@ -168,14 +150,23 @@ class Loop {
     }
   }
 
-  bool IsLoopInvariant(const Instruction* inst) const;
-
   // Returns true if the parent basic block of |inst| belong to this loop.
-  /*  inline bool IsLoopInvariant(Instruction* inst) const {
-      const BasicBlock* parent_block = inst->context()->get_instr_block(inst);
-      if (!parent_block) return true;
-      return IsInsideLoop(parent_block);
-    }*/
+  inline bool IsLoopInvariant(Instruction* inst) const {
+    const BasicBlock* parent_block = inst->context()->get_instr_block(inst);
+    if (!parent_block) return true;
+    return IsInsideLoop(parent_block);
+  }
+
+  bool CouldFindNumberOfIterations() const {
+    return could_find_num_iterations_;
+  }
+
+  int32_t NumIterations() const {
+    assert(could_find_num_iterations_);
+    return iterations_;
+  }
+
+  ir::Instruction* GetInductionVariable() { return induction_variable_; }
 
  private:
   // The block which marks the start of the loop.
@@ -199,14 +190,17 @@ class Loop {
   // Nested child loops of this loop.
   ChildrenList nested_loops_;
 
-  // Induction variable.
-  std::unique_ptr<LoopVariable> induction_variable_;
-
   // A set of all the basic blocks which comprise the loop structure. Will be
   // computed only when needed on demand.
   BasicBlockListTy loop_basic_blocks_;
 
   BasicBlockOrderedListTy loop_basic_blocks_in_order_;
+
+  ir::IRContext* ir_context_;
+  opt::DominatorAnalysis* dom_analysis_;
+  ir::Instruction* induction_variable_;
+  int32_t iterations_;
+  bool could_find_num_iterations_;
   // Sets the parent loop of this loop, that is, a loop which contains this loop
   // as a nested child loop.
   inline void SetParent(Loop* parent) { parent_ = parent; }
@@ -218,9 +212,6 @@ class Loop {
   // This is only to allow LoopDescriptor::dummy_top_loop_ to add top level
   // loops as child.
   friend class LoopDescriptor;
-
-  ir::IRContext* ir_context_;
-  opt::DominatorAnalysis* dom_analysis_;
 
   void FindInductionVariable();
   bool GetConstant(const ir::Instruction* inst, uint32_t* value) const;
