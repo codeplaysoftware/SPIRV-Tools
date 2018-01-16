@@ -40,7 +40,7 @@ class Loop {
  public:
   using iterator = ChildrenList::iterator;
   using const_iterator = ChildrenList::const_iterator;
-  using BasicBlockListTy = std::unordered_map<uint32_t, const ir::BasicBlock*>;
+  using BasicBlockListTy = std::unordered_set<uint32_t>;
   using BasicBlockOrderedListTy = std::vector<const ir::BasicBlock*>;
 
   Loop()
@@ -120,11 +120,15 @@ class Loop {
   // Returns the set of all basic blocks contained within the loop. Will be all
   // BasicBlocks dominated by the header which are not also dominated by the
   // loop merge block.
-  inline const BasicBlockOrderedListTy& GetBlocks() {
+  inline const BasicBlockListTy& GetBlocks() {
+    if (loop_basic_blocks_.size() == 0) FindLoopBasicBlocks();
+    return loop_basic_blocks_;
+  }
+
+  inline const BasicBlockOrderedListTy& GetOrderedBlocks() {
     if (loop_basic_blocks_in_order_.size() == 0) FindLoopBasicBlocks();
     return loop_basic_blocks_in_order_;
   }
-
   // Returns true if the basic block |bb| is inside this loop.
   inline bool IsInsideLoop(const BasicBlock* bb) const {
     return IsInsideLoop(bb->id());
@@ -134,13 +138,6 @@ class Loop {
   inline bool IsInsideLoop(uint32_t bb_id) const {
     return loop_basic_blocks_.count(bb_id);
   }
-
-  // Adds the Basic Block |bb| this loop and its parents.
- /* void AddBasicBlockToLoop(const BasicBlock* bb) {
-    for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
-      loop_basic_blocks_.insert({bb->id(), bb});
-    }
-  }*/
 
   // Returns true if the parent basic block of |inst| belong to this loop.
   inline bool IsLoopInvariant(Instruction* inst) const {
@@ -165,7 +162,8 @@ class Loop {
 #endif  // NDEBUG
 
     for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
-      loop_basic_blocks_.insert({bb->id(), bb});
+      loop_basic_blocks_.insert(bb->id());
+      loop_basic_blocks_in_order_.push_back(bb);
     }
   }
 

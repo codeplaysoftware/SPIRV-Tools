@@ -40,8 +40,6 @@ Loop::Loop(IRContext* context, opt::DominatorAnalysis* dom_analysis,
   assert(context);
   assert(dom_analysis);
   loop_preheader_ = FindLoopPreheader(context, dom_analysis);
-  AddBasicBlockToLoop(header);
-  AddBasicBlockToLoop(continue_target);
   FindInductionVariable();
 }
 
@@ -208,8 +206,8 @@ void Loop::FindLoopBasicBlocks() {
   auto begin_itr = tree.get_iterator(loop_header_);
   for (; begin_itr != tree.end(); ++begin_itr) {
     if (!dom_analysis_->Dominates(loop_merge_, begin_itr->bb_)) {
-      loop_basic_blocks_.insert({begin_itr->bb_->id(), begin_itr->bb_});
       loop_basic_blocks_in_order_.push_back(begin_itr->bb_);
+      AddBasicBlockToLoop(begin_itr->bb_);
     }
   };
 }
@@ -292,12 +290,26 @@ void Loop::FindInductionVariable() {
       ir::Instruction* variable_inst =
           def_use_manager->GetDef(condition->GetSingleWordOperand(2));
 
+      // Make sure the variable instruction used is a phi.
+      if (!variable_inst || variable_inst->opcode() != SpvOpPhi) return;
+
+      if (variable_inst->NumOperands() != 6 ||
+          variable_inst->GetSingleWordOperand(3) != loop_preheader_->id() ||
+          variable_inst->GetSingleWordOperand(5) != loop_continue_->id())
+        return;
+
       uint32_t init_value = 0;
       GetInductionInitValue(variable_inst, &init_value);
 
       ir::Instruction* step_inst = GetInductionStepOperation(variable_inst);
 
       if (!step_inst) return;
+
+      const ir::Instruction* phi_rhs =
+          def_use_manager->GetDef(variable_inst->GetSingleWordOperand(4));
+
+      // Make sure the right hand side of the phi is the step instruction.
+      if (phi_rhs != step_inst) return;
 
       // The instruction representing the constant value.
       const ir::Instruction* step_amount_inst =

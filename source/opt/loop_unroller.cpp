@@ -136,7 +136,8 @@ ir::Instruction* LoopUtils::CopyBody(ir::Loop& loop, int,
   std::map<uint32_t, ir::BasicBlock*> new_blocks;
 
   std::map<uint32_t, uint32_t> new_inst;
-  const ir::Loop::BasicBlockOrderedListTy& basic_blocks = loop.GetBlocks();
+  const ir::Loop::BasicBlockOrderedListTy& basic_blocks =
+      loop.GetOrderedBlocks();
 
   uint32_t new_header_id = 0;
   uint32_t latch_block_id = 0;
@@ -300,12 +301,12 @@ bool LoopUtils::FullyUnroll(ir::Loop& loop) {
   // Invalidate all analyses.
   ir_context_->InvalidateAnalysesExceptFor(
       ir::IRContext::Analysis::kAnalysisNone);
-
   return true;
 }
 
 Pass::Status LoopUnroller::Process(ir::IRContext* c) {
   context_ = c;
+  bool changed = false;
   for (ir::Function& f : *c->module()) {
     LoopUtils loop_utils{f, c};
 
@@ -313,9 +314,13 @@ Pass::Status LoopUnroller::Process(ir::IRContext* c) {
       if (!loop_utils.CanPerformPartialUnroll(loop)) continue;
 
       loop_utils.FullyUnroll(loop);
+
+      changed = true;
     }
   }
-  return Pass::Status::SuccessWithChange;
+
+  if (changed) return Pass::Status::SuccessWithChange;
+  return Pass::Status::SuccessWithoutChange;
 }
 
 }  // namespace opt
