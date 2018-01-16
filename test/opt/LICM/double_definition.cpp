@@ -36,26 +36,27 @@ using PassClassTest = PassTest<::testing::Test>;
   Generated from the following GLSL
 #version 440 core
 layout(location = 0) out vec4 c;
-layout(location = 1) in vec4 in_val;
+layout(location = 1) out vec4 d;
+layout(location = 2) in vec4 in_val;
 void main(){
   int a = 1;
   int b = 2;
   int hoist = 0;
   c = vec4(0,0,0,0);
   for (int i = int(in_val.x); i < int(in_val.y); i++) {
-    // invariant
+    // hoist is not invariant, due to double definition
     hoist = a + b;
-    // don't hoist c
     c = vec4(i,i,i,i);
+    hoist = 0;
+    d = vec4(hoist, i, in_val.z, in_val.w);
   }
-  int x = hoist;
 }
 */
-TEST_F(PassClassTest, InsideOutsideUse) {
+TEST_F(PassClassTest, DoubleDefinition) {
   const std::string before_hoist = R"(OpCapability Shader
 %1 = OpExtInstImport "GLSL.std.450"
 OpMemoryModel Logical GLSL450
-OpEntryPoint Fragment %main "main" %c %in_val
+OpEntryPoint Fragment %main "main" %c %in_val %d
 OpExecutionMode %main OriginUpperLeft
 OpSource GLSL 440
 OpName %main "main"
@@ -65,9 +66,10 @@ OpName %hoist "hoist"
 OpName %c "c"
 OpName %i "i"
 OpName %in_val "in_val"
-OpName %x "x"
+OpName %d "d"
 OpDecorate %c Location 0
-OpDecorate %in_val Location 1
+OpDecorate %in_val Location 2
+OpDecorate %d Location 1
 %void = OpTypeVoid
 %11 = OpTypeFunction %void
 %int = OpTypeInt 32 1
@@ -88,56 +90,67 @@ OpDecorate %in_val Location 1
 %_ptr_Input_float = OpTypePointer Input %float
 %uint_1 = OpConstant %uint 1
 %bool = OpTypeBool
+%d = OpVariable %_ptr_Output_v4float Output
+%uint_2 = OpConstant %uint 2
+%uint_3 = OpConstant %uint 3
 %main = OpFunction %void None %11
-%28 = OpLabel
+%30 = OpLabel
 %a = OpVariable %_ptr_Function_int Function
 %b = OpVariable %_ptr_Function_int Function
 %hoist = OpVariable %_ptr_Function_int Function
 %i = OpVariable %_ptr_Function_int Function
-%x = OpVariable %_ptr_Function_int Function
 OpStore %a %int_1
 OpStore %b %int_2
 OpStore %hoist %int_0
 OpStore %c %21
-%29 = OpAccessChain %_ptr_Input_float %in_val %uint_0
-%30 = OpLoad %float %29
-%31 = OpConvertFToS %int %30
-OpStore %i %31
-OpBranch %32
-%32 = OpLabel
-OpLoopMerge %33 %34 None
-OpBranch %35
-%35 = OpLabel
-%36 = OpLoad %int %i
-%37 = OpAccessChain %_ptr_Input_float %in_val %uint_1
-%38 = OpLoad %float %37
-%39 = OpConvertFToS %int %38
-%40 = OpSLessThan %bool %36 %39
-OpBranchConditional %40 %41 %33
-%41 = OpLabel
-%42 = OpLoad %int %a
-%43 = OpLoad %int %b
-%44 = OpIAdd %int %42 %43
-OpStore %hoist %44
-%45 = OpLoad %int %i
-%46 = OpConvertSToF %float %45
+%31 = OpAccessChain %_ptr_Input_float %in_val %uint_0
+%32 = OpLoad %float %31
+%33 = OpConvertFToS %int %32
+OpStore %i %33
+OpBranch %34
+%34 = OpLabel
+OpLoopMerge %35 %36 None
+OpBranch %37
+%37 = OpLabel
+%38 = OpLoad %int %i
+%39 = OpAccessChain %_ptr_Input_float %in_val %uint_1
+%40 = OpLoad %float %39
+%41 = OpConvertFToS %int %40
+%42 = OpSLessThan %bool %38 %41
+OpBranchConditional %42 %43 %35
+%43 = OpLabel
+%44 = OpLoad %int %a
+%45 = OpLoad %int %b
+%46 = OpIAdd %int %44 %45
+OpStore %hoist %46
 %47 = OpLoad %int %i
 %48 = OpConvertSToF %float %47
 %49 = OpLoad %int %i
 %50 = OpConvertSToF %float %49
 %51 = OpLoad %int %i
 %52 = OpConvertSToF %float %51
-%53 = OpCompositeConstruct %v4float %46 %48 %50 %52
-OpStore %c %53
-OpBranch %34
-%34 = OpLabel
-%54 = OpLoad %int %i
-%55 = OpIAdd %int %54 %int_1
-OpStore %i %55
-OpBranch %32
-%33 = OpLabel
+%53 = OpLoad %int %i
+%54 = OpConvertSToF %float %53
+%55 = OpCompositeConstruct %v4float %48 %50 %52 %54
+OpStore %c %55
+OpStore %hoist %int_0
 %56 = OpLoad %int %hoist
-OpStore %x %56
+%57 = OpConvertSToF %float %56
+%58 = OpLoad %int %i
+%59 = OpConvertSToF %float %58
+%60 = OpAccessChain %_ptr_Input_float %in_val %uint_2
+%61 = OpLoad %float %60
+%62 = OpAccessChain %_ptr_Input_float %in_val %uint_3
+%63 = OpLoad %float %62
+%64 = OpCompositeConstruct %v4float %57 %59 %61 %63
+OpStore %d %64
+OpBranch %36
+%36 = OpLabel
+%65 = OpLoad %int %i
+%66 = OpIAdd %int %65 %int_1
+OpStore %i %66
+OpBranch %34
+%35 = OpLabel
 OpReturn
 OpFunctionEnd
 )";

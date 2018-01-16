@@ -58,7 +58,7 @@ void main(){
   }
 }
 */
-TEST_F(PassClassTest, SimpleHoist) {
+TEST_F(PassClassTest, SimpleHoist3Loops) {
   const std::string before_hoist = R"(OpCapability Shader
 %1 = OpExtInstImport "GLSL.std.450"
 OpMemoryModel Logical GLSL450

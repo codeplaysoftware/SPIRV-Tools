@@ -30,6 +30,18 @@ add_spvtools_unittest(TARGET LICM_hoist_no_hoist
     LIBS SPIRV-Tools-opt
 )
 
+add_spvtools_unittest(TARGET LICM_inside_outside_use
+    SRCS ../function_utils.h
+        inside_outside_use.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET LICM_double_definition
+    SRCS ../function_utils.h
+        double_definition.cpp
+    LIBS SPIRV-Tools-opt
+)
+
 add_spvtools_unittest(TARGET LICM_nested_single_hoist
     SRCS ../function_utils.h
         nested_single_hoist.cpp
@@ -39,5 +51,29 @@ add_spvtools_unittest(TARGET LICM_nested_single_hoist
 add_spvtools_unittest(TARGET LICM_nested_double_hoist
     SRCS ../function_utils.h
         nested_double_hoist.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET LICM_if_hoist
+    SRCS ../function_utils.h
+        if_hoist.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET LICM_if_single_hoist
+    SRCS ../function_utils.h
+        if_single_hoist.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET LICM_if_double_hoist
+    SRCS ../function_utils.h
+        if_double_hoist.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET LICM_hoist_nested_loop_with_if
+    SRCS ../function_utils.h
+        hoist_nested_loop_with_if.cpp
     LIBS SPIRV-Tools-opt
 )
