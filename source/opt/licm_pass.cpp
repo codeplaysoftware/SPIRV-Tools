@@ -37,41 +37,39 @@ Pass::Status LICMPass::Process(ir::IRContext* context) {
 bool LICMPass::ProcessIRContext() {
   bool modified = false;
   ir::Module* module = ir_context->module();
+  ir::CFG cfg(ir_context->module());
 
   // Process each function in the module
   for (ir::Function& f : *module) {
-    modified |= ProcessFunction(&f);
+    modified |= ProcessFunction(&f, cfg);
   }
   return modified;
 }
 
-bool LICMPass::ProcessFunction(ir::Function* f) {
+bool LICMPass::ProcessFunction(ir::Function* f, ir::CFG& cfg) {
   bool modified = false;
   ir::LoopDescriptor loop_descriptor{f};
 
-  // TODO(Alexander: remove this debug dom_analysis stuff)
-  ir::CFG cfg(ir_context->module());
   dom_analysis = ir_context->GetDominatorAnalysis(f, cfg);
-  dom_analysis->DumpAsDot(std::cout);
 
   // Process each loop in the function
-  for (size_t i = 0; i < loop_descriptor.NumLoops(); ++i) {
-    modified |= ProcessLoop(&loop_descriptor.GetLoopByIndex(i), f);
+  for (ir::Loop& loop : loop_descriptor) {
+    modified |= ProcessLoop(loop, f);
   }
   return modified;
 }
 
-bool LICMPass::ProcessLoop(ir::Loop* loop, ir::Function* f) {
+bool LICMPass::ProcessLoop(ir::Loop& loop, ir::Function* f) {
   // Process all nested loops first
-  if (loop->HasNestedLoops()) {
-    for (auto it = loop->begin(); it != loop->end(); ++it) {
-      ProcessLoop(*it, f);
+  if (loop.HasNestedLoops()) {
+    for (ir::Loop*& nested_loop : loop) {
+      ProcessLoop(*nested_loop, f);
     }
   }
 
   ir::InstructionList invariants_list{};
   if (FindLoopInvariants(loop, &invariants_list)) {
-    ir::BasicBlock* pre_header = loop->GetPreHeaderBlock();
+    ir::BasicBlock* pre_header = loop.GetPreHeaderBlock();
     // Insert the new list of invariants into the pre_header block
     return HoistInstructions(pre_header, &invariants_list);
   }
@@ -92,7 +90,7 @@ bool LICMPass::HoistInstructions(ir::BasicBlock* pre_header_bb,
   return true;
 }
 
-std::vector<ir::BasicBlock*> LICMPass::FindValidBasicBlocks(ir::Loop* loop) {
+std::vector<ir::BasicBlock*> LICMPass::FindValidBasicBlocks(ir::Loop& loop) {
   std::vector<ir::BasicBlock*> blocks = {};
   std::vector<ir::BasicBlock*> nested_blocks = FindAllNestedBasicBlocks(loop);
 
@@ -100,11 +98,11 @@ std::vector<ir::BasicBlock*> LICMPass::FindValidBasicBlocks(ir::Loop* loop) {
 
   // Find every basic block in the loop, excluding the header, merge, and blocks
   // belonging to a nested loop
-  auto begin_it = tree.get_iterator(loop->GetHeaderBlock());
+  auto begin_it = tree.get_iterator(loop.GetHeaderBlock());
   for (; begin_it != tree.end(); ++begin_it) {
     ir::BasicBlock* cur_block = begin_it->bb_;
-    if (cur_block == loop->GetHeaderBlock()) continue;
-    if (dom_analysis->Dominates(loop->GetMergeBlock(), cur_block)) continue;
+    if (cur_block == loop.GetHeaderBlock()) continue;
+    if (dom_analysis->Dominates(loop.GetMergeBlock(), cur_block)) continue;
 
     // Check block is not nested within another loop
     bool nested = false;
@@ -138,63 +136,61 @@ std::vector<ir::BasicBlock*> LICMPass::FindAllLoopBlocks(ir::Loop* loop) {
 }
 
 std::vector<ir::BasicBlock*> LICMPass::FindAllNestedBasicBlocks(
-    ir::Loop* loop) {
+    ir::Loop& loop) {
   std::vector<ir::BasicBlock*> blocks = {};
 
   opt::DominatorTree& tree = dom_analysis->GetDomTree();
 
-  if (loop->HasNestedLoops()) {
+  if (loop.HasNestedLoops()) {
     // Go through each nested loop
-    for (auto loop_it = loop->begin(); loop_it != loop->end(); ++loop_it) {
+    for (ir::Loop* nested_loop : loop) {
       // Test the blocks of the nested loop against the dominator tree
-      auto tree_it = tree.get_iterator((*loop_it)->GetHeaderBlock());
+      auto tree_it = tree.get_iterator(nested_loop->GetHeaderBlock());
       for (; tree_it != tree.end(); ++tree_it) {
-        if (dom_analysis->Dominates((*loop_it)->GetMergeBlock(), tree_it->bb_))
+        if (dom_analysis->Dominates(nested_loop->GetMergeBlock(), tree_it->bb_))
           break;
         blocks.push_back(tree_it->bb_);
       }
 
       // Add the header and merge blocks, as they won't be caught in the above
       // loop
-      blocks.push_back((*loop_it)->GetHeaderBlock());
-      blocks.push_back((*loop_it)->GetMergeBlock());
+      blocks.push_back(nested_loop->GetHeaderBlock());
+      blocks.push_back(nested_loop->GetMergeBlock());
     }
   }
 
   return blocks;
 }
 
-bool LICMPass::FindLoopInvariants(ir::Loop* loop,
+bool LICMPass::FindLoopInvariants(ir::Loop& loop,
                                   ir::InstructionList* invariants_list) {
   std::map<ir::Instruction*, bool> invariants_map{};
   std::vector<ir::Instruction*> invars{};
 
   // There are some initial variants from the loop
-  // The loop header
-  invariants_map.emplace(&*loop->GetHeaderBlock()->begin(), false);
-  invariants_map.emplace(&*--loop->GetHeaderBlock()->end(), false);
-  // The loop latch branch
-  invariants_map.emplace(&*--loop->GetLatchBlock()->end(), false);
-  // The loop end of the loop body branch to latch
+  // The loop header OpLabel and OpBranch
+  invariants_map.emplace(&*loop.GetHeaderBlock()->begin(), false);
+  invariants_map.emplace(&*loop.GetHeaderBlock()->tail(), false);
+  // The loop latch OpBranch
+  invariants_map.emplace(&*loop.GetLatchBlock()->tail(), false);
+  // The loop end of the loop body OpBranch to latch
   ir::Instruction* branch_to_latch_inst =
-      &*--dom_analysis->ImmediateDominator(loop->GetLatchBlock()->id())->end();
+      &*dom_analysis->ImmediateDominator(loop.GetLatchBlock()->id())->tail();
   invariants_map.emplace(branch_to_latch_inst, false);
-  // The loop condition branch
+  // The loop condition OpBranch
   ir::BasicBlock* loop_condition_bb = ir_context->get_instr_block(
-      (--loop->GetHeaderBlock()->end())->begin()->words.front());
-  invariants_map.emplace(&*--loop_condition_bb->end(), false);
+      (loop.GetHeaderBlock()->tail())->begin()->words.front());
+  invariants_map.emplace(&*loop_condition_bb->tail(), false);
 
   std::vector<ir::BasicBlock*> valid_blocks = FindValidBasicBlocks(loop);
-  for (auto bb_it = valid_blocks.begin(); bb_it != valid_blocks.end();
-       ++bb_it) {
-    for (auto inst_it = (*bb_it)->begin(); inst_it != (*bb_it)->end();
-         ++inst_it) {
-      if (invariants_map.find(&(*inst_it)) == invariants_map.end()) {
-        if (IsInvariant(loop, &invariants_map, &(*inst_it), 0)) {
-          invariants_map.emplace(std::make_pair(&(*inst_it), true));
-          invars.push_back(&*inst_it);
+  for (ir::BasicBlock* block : valid_blocks) {
+    for (ir::Instruction& inst : *block) {
+      if (invariants_map.find(&inst) == invariants_map.end()) {
+        if (IsInvariant(loop, &invariants_map, &inst, 0)) {
+          invariants_map.emplace(std::make_pair(&inst, true));
+          invars.push_back(&inst);
         } else {
-          invariants_map.emplace(std::make_pair(&(*inst_it), false));
+          invariants_map.emplace(std::make_pair(&inst, false));
         }
       }
     }
@@ -208,7 +204,7 @@ bool LICMPass::FindLoopInvariants(ir::Loop* loop,
   return invariants_list->begin() != invariants_list->end();
 }
 
-bool LICMPass::IsInvariant(ir::Loop* loop,
+bool LICMPass::IsInvariant(ir::Loop& loop,
                            std::map<ir::Instruction*, bool>* invariants_map,
                            ir::Instruction* inst, const uint32_t ignore_id) {
   // The following always are or are not invariant
@@ -232,7 +228,7 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
     case SpvOpNop:
       invariants_map->emplace(std::make_pair(inst, false));
       return false;
-    // Type definitions are invariant
+    // Type definitions and OpName are invariant
     case SpvOpTypeVoid:
     case SpvOpTypeBool:
     case SpvOpTypeInt:
@@ -257,6 +253,7 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
     case SpvOpConstantTrue:
     case SpvOpConstantFalse:
     case SpvOpConstant:
+    case SpvOpName:
       invariants_map->emplace(std::make_pair(inst, true));
       return true;
     default:
@@ -272,38 +269,35 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
   // Recurse though all instructions leading this instruction. If any of them is
   // variant wrt the loop, all instructions using that instruction are variant.
   bool invariant = true;
-  if (inst->NumOperands() != 0) {
-    for (auto operand_it = inst->begin(); operand_it != inst->end();
-         ++operand_it) {
-      switch (operand_it->type) {
-        // These operands types do not lead to further instructions which may be
-        // variant
-        case SPV_OPERAND_TYPE_RESULT_ID:
-        case SPV_OPERAND_TYPE_LITERAL_INTEGER:
-        case SPV_OPERAND_TYPE_STORAGE_CLASS:
-          break;
-        default:
-          uint32_t operand_id = operand_it->words.front();
-          ir::Instruction* next_inst =
-              ir_context->get_def_use_mgr()->GetDef(operand_id);
-          // If we are at an OpStore, we should ignore this store when searching
-          // later uses, so we provide the instructions unique_id to avoid
-          // finding ourselves in a loop when searching uses of the instruction
-          // later
-          switch (inst->opcode()) {
-            case SpvOpStore:
-              invariant &= IsInvariant(loop, invariants_map, next_inst,
-                                       inst->unique_id());
+  for (ir::Operand& operand : *inst) {
+    switch (operand.type) {
+      // These operand types do not lead to further instructions which may be
+      // variant
+      case SPV_OPERAND_TYPE_RESULT_ID:
+      case SPV_OPERAND_TYPE_LITERAL_INTEGER:
+      case SPV_OPERAND_TYPE_STORAGE_CLASS:
+        break;
+      default:
+        uint32_t operand_id = operand.words.front();
+        ir::Instruction* next_inst =
+            ir_context->get_def_use_mgr()->GetDef(operand_id);
+        // If we are at an OpStore, we should ignore this store when searching
+        // later uses, so we provide the instructions unique_id to avoid
+        // finding ourselves in a loop when searching uses of the instruction
+        // later
+        switch (inst->opcode()) {
+          case SpvOpStore:
+            invariant &=
+                IsInvariant(loop, invariants_map, next_inst, inst->unique_id());
+            break;
+          // Stops infinite looping when a variable is redeclared
+          case SpvOpVariable:
+            if (*--operand.words.end() == inst->result_id()) {
               break;
-            // Stops infinite looping when a variable is redeclared
-            case SpvOpVariable:
-              if (*--operand_it->words.end() == inst->result_id()) {
-                break;
-              }
-            default:
-              invariant &= IsInvariant(loop, invariants_map, next_inst, 0);
-          }
-      }
+            }
+          default:
+            invariant &= IsInvariant(loop, invariants_map, next_inst, 0);
+        }
     }
   }
 
@@ -312,9 +306,12 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
   std::vector<ir::Instruction*> using_insts = {};
 
   std::function<void(ir::Instruction*)> collect_users =
-      [loop, &using_insts](ir::Instruction* using_inst) {
-        if (loop->IsInsideLoop(using_inst)) {
-          using_insts.push_back(using_inst);
+      [this, &loop, &using_insts, &collect_users](ir::Instruction* user) {
+        if (loop.IsInsideLoop(user)) {
+          using_insts.push_back(user);
+          if (user->result_id() != 0) {
+            ir_context->get_def_use_mgr()->ForEachUser(user, collect_users);
+          }
         }
       };
 
@@ -322,15 +319,12 @@ bool LICMPass::IsInvariant(ir::Loop* loop,
     ir_context->get_def_use_mgr()->ForEachUser(inst, collect_users);
   }
 
-  for (auto inst_it = using_insts.begin(); inst_it != using_insts.end();
-       ++inst_it) {
-    if ((*inst_it)->opcode() == SpvOpStore) {
-      if ((*inst_it)->begin()->words.front() == inst->result_id()) {
-        if ((*inst_it)->unique_id() != ignore_id) {
-          invariants_map->emplace(std::make_pair(*inst_it, false));
-          invariant = false;
-        }
-      }
+  for (ir::Instruction* user : using_insts) {
+    if (user->opcode() == SpvOpStore &&
+        user->begin()->words.front() == inst->result_id() &&
+        user->unique_id() != ignore_id) {
+      invariants_map->emplace(std::make_pair(user, false));
+      invariant = false;
     }
   }
 

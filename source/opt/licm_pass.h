@@ -38,23 +38,23 @@ class LICMPass : public Pass {
 
   // Checks the function for loops, calling ProcessLoop on each one found.
   // Returns true if a change was made to the function, false otherwise.
-  bool ProcessFunction(ir::Function* f);
+  bool ProcessFunction(ir::Function* f, ir::CFG& cfg);
 
   // Checks for invariants in the loop and attempts to move them to the loops
   // preheader. Works from inner loop to outer when nested loops are found.
   // Returns true if a change was made to the loop, false otherwise.
-  bool ProcessLoop(ir::Loop* loop, ir::Function* f);
+  bool ProcessLoop(ir::Loop& loop, ir::Function* f);
 
   // Finds all basic blocks in the between the header and merge blocks of the
   // loop, not contained in a nested loop
-  std::vector<ir::BasicBlock*> FindValidBasicBlocks(ir::Loop* loop);
+  std::vector<ir::BasicBlock*> FindValidBasicBlocks(ir::Loop& loop);
 
   // Finds all basic blocks in the loop, including the header and blocks inside
   // nested loops
   std::vector<ir::BasicBlock*> FindAllLoopBlocks(ir::Loop* loop);
 
   // Finds and returns a vector of all basic blocks in nested loops
-  std::vector<ir::BasicBlock*> FindAllNestedBasicBlocks(ir::Loop* loop);
+  std::vector<ir::BasicBlock*> FindAllNestedBasicBlocks(ir::Loop& loop);
 
   // Moves the given basic block out of the loop and into the loops
   // preheader
@@ -63,10 +63,10 @@ class LICMPass : public Pass {
 
   // Finds all invariants in the loop and pushes them to invariants_list
   // Returns true if any invariants were found
-  bool FindLoopInvariants(ir::Loop* loop, ir::InstructionList* invariants_list);
+  bool FindLoopInvariants(ir::Loop& loop, ir::InstructionList* invariants_list);
 
   // Tests if an individual instruction is invariant
-  bool IsInvariant(ir::Loop* loop,
+  bool IsInvariant(ir::Loop& loop,
                    std::map<ir::Instruction*, bool>* invariants_map,
                    ir::Instruction* inst, const uint32_t ignore_id);
 
