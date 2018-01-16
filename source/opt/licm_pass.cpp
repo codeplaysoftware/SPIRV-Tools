@@ -61,10 +61,8 @@ bool LICMPass::ProcessFunction(ir::Function* f, ir::CFG& cfg) {
 
 bool LICMPass::ProcessLoop(ir::Loop& loop, ir::Function* f) {
   // Process all nested loops first
-  if (loop.HasNestedLoops()) {
-    for (ir::Loop*& nested_loop : loop) {
-      ProcessLoop(*nested_loop, f);
-    }
+  for (ir::Loop*& nested_loop : loop) {
+    ProcessLoop(*nested_loop, f);
   }
 
   ir::InstructionList invariants_list{};
@@ -84,7 +82,6 @@ bool LICMPass::HoistInstructions(ir::BasicBlock* pre_header_bb,
 
   // Get preheader branch instruction
   auto pre_header_branch_inst_it = --pre_header_bb->end();
-
   pre_header_branch_inst_it.MoveBefore(invariants_list);
 
   return true;
@@ -96,8 +93,8 @@ std::vector<ir::BasicBlock*> LICMPass::FindValidBasicBlocks(ir::Loop& loop) {
 
   opt::DominatorTree& tree = dom_analysis->GetDomTree();
 
-  // Find every basic block in the loop, excluding the header, merge, and blocks
-  // belonging to a nested loop
+  // Find every basic block in the loop, excluding the header, merge, and any
+  // blocks belonging to a nested loop
   auto begin_it = tree.get_iterator(loop.GetHeaderBlock());
   for (; begin_it != tree.end(); ++begin_it) {
     ir::BasicBlock* cur_block = begin_it->bb_;
@@ -303,12 +300,12 @@ bool LICMPass::IsInvariant(ir::Loop& loop,
 
   // If this instruction has no invariants leading to it wrt to the loop, we
   // must now look at it's uses within the loop to find it is invariant
-  std::vector<ir::Instruction*> using_insts = {};
+  std::vector<ir::Instruction*> users = {};
 
   std::function<void(ir::Instruction*)> collect_users =
-      [this, &loop, &using_insts, &collect_users](ir::Instruction* user) {
+      [this, &loop, &users, &collect_users](ir::Instruction* user) {
         if (loop.IsInsideLoop(user)) {
-          using_insts.push_back(user);
+          users.push_back(user);
           if (user->result_id() != 0) {
             ir_context->get_def_use_mgr()->ForEachUser(user, collect_users);
           }
@@ -319,12 +316,20 @@ bool LICMPass::IsInvariant(ir::Loop& loop,
     ir_context->get_def_use_mgr()->ForEachUser(inst, collect_users);
   }
 
-  for (ir::Instruction* user : using_insts) {
+  for (ir::Instruction* user : users) {
+    // Check if we restore the value we are using in the loop.
     if (user->opcode() == SpvOpStore &&
         user->begin()->words.front() == inst->result_id() &&
         user->unique_id() != ignore_id) {
       invariants_map->emplace(std::make_pair(user, false));
       invariant = false;
+    }
+    // Check if the current instruction is used by a variant.
+    auto user_map_val = invariants_map->find(user);
+    if (loop.IsInsideLoop(user) && user_map_val != invariants_map->end() &&
+        user_map_val->second == false) {
+      invariant = false;
+      break;
     }
   }
 
