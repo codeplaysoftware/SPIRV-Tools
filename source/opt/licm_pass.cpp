@@ -76,7 +76,9 @@ bool LICMPass::ProcessLoop(ir::Loop& loop, ir::Function* f) {
 
 bool LICMPass::HoistInstructions(ir::BasicBlock* pre_header_bb,
                                  ir::InstructionList* invariants_list) {
-  if (pre_header_bb == nullptr || invariants_list == nullptr) {
+  // If there is no preheader, we have nowhere to insert the invariants, so
+  // can't move them
+  if (pre_header_bb == nullptr) {
     return false;
   }
 
@@ -161,11 +163,11 @@ std::vector<ir::BasicBlock*> LICMPass::FindAllNestedBasicBlocks(
 
 bool LICMPass::FindLoopInvariants(ir::Loop& loop,
                                   ir::InstructionList* invariants_list) {
-  std::map<ir::Instruction*, bool> invariants_map{};
+  std::unordered_map<ir::Instruction*, bool> invariants_map{};
   std::vector<ir::Instruction*> invars{};
 
   // There are some initial variants from the loop
-  // The loop header OpLabel and OpBranch
+  // The loop header OpLoopMerge and OpBranch
   invariants_map.emplace(&*loop.GetHeaderBlock()->begin(), false);
   invariants_map.emplace(&*loop.GetHeaderBlock()->tail(), false);
   // The loop latch OpBranch
@@ -178,6 +180,16 @@ bool LICMPass::FindLoopInvariants(ir::Loop& loop,
   ir::BasicBlock* loop_condition_bb = ir_context->get_instr_block(
       (loop.GetHeaderBlock()->tail())->begin()->words.front());
   invariants_map.emplace(&*loop_condition_bb->tail(), false);
+
+  // We also need mark all nested loop instructions as variant wrt this loop
+  // to ensure any OpBranch instructions to the nested loops are marked variant
+  std::vector<ir::BasicBlock*> nested_blocks = FindAllNestedBasicBlocks(loop);
+  for (ir::BasicBlock* nested_block : nested_blocks) {
+    invariants_map.emplace(std::make_pair(nested_block->GetLabelInst(), false));
+    for (ir::Instruction& nested_inst : *nested_block) {
+      invariants_map.emplace(std::make_pair(&nested_inst, false));
+    }
+  }
 
   std::vector<ir::BasicBlock*> valid_blocks = FindValidBasicBlocks(loop);
   for (ir::BasicBlock* block : valid_blocks) {
@@ -201,9 +213,9 @@ bool LICMPass::FindLoopInvariants(ir::Loop& loop,
   return invariants_list->begin() != invariants_list->end();
 }
 
-bool LICMPass::IsInvariant(ir::Loop& loop,
-                           std::map<ir::Instruction*, bool>* invariants_map,
-                           ir::Instruction* inst, const uint32_t ignore_id) {
+bool LICMPass::IsInvariant(
+    ir::Loop& loop, std::unordered_map<ir::Instruction*, bool>* invariants_map,
+    ir::Instruction* inst, const uint32_t ignore_id) {
   // The following always are or are not invariant
   // TODO(Alexander) OpStore is invariant iff
   // the stored value is invariant wrt the loop
