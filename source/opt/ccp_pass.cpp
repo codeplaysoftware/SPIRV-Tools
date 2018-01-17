@@ -140,15 +140,11 @@ SSAPropagator::PropStatus CCPPass::VisitAssignment(ir::Instruction* instr) {
 
   // If not, see if there is a least one unknown operand to the instruction.  If
   // so, we might be able to fold it later.
-  bool could_be_improved = false;
-  instr->ForEachInId([this, &could_be_improved](uint32_t* op_id) {
-    auto it = values_.find(*op_id);
-    if (it == values_.end()) {
-      could_be_improved = true;
-      return;
-    }
-  });
-  if (could_be_improved) {
+  if (!instr->WhileEachInId([this](uint32_t* op_id) {
+        auto it = values_.find(*op_id);
+        if (it == values_.end()) return false;
+        return true;
+      })) {
     return SSAPropagator::kNotInteresting;
   }
 
@@ -273,11 +269,10 @@ void CCPPass::Initialize(ir::IRContext* c) {
   // Populate the constant table with values from constant declarations in the
   // module.  The values of each OpConstant declaration is the identity
   // assignment (i.e., each constant is its own value).
-  for (const auto& inst : c->module()->GetConstants()) {
-    values_[inst->result_id()] = inst->result_id();
-    if (!const_mgr_->MapInst(inst)) {
-      assert(false &&
-             "Could not map a new constant value to its defining instruction");
+  for (const auto& inst : context()->module()->GetConstants()) {
+    // Skip specialization constants.
+    if (inst->IsConstant()) {
+      values_[inst->result_id()] = inst->result_id();
     }
   }
 }
