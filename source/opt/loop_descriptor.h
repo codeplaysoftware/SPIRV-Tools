@@ -66,13 +66,27 @@ class Loop {
   inline BasicBlock* GetHeaderBlock() { return loop_header_; }
   inline const BasicBlock* GetHeaderBlock() const { return loop_header_; }
 
+  void SetHeaderBlock(ir::BasicBlock* new_header) { loop_header_ = new_header; }
+
   // Returns the latch basic block (basic block that holds the back-edge).
   inline BasicBlock* GetLatchBlock() { return loop_continue_; }
   inline const BasicBlock* GetLatchBlock() const { return loop_continue_; }
+  void SetLatchBlock(ir::BasicBlock* new_continue) {
+    loop_continue_ = new_continue;
+  }
 
   // Returns the BasicBlock which marks the end of the loop.
   inline BasicBlock* GetMergeBlock() { return loop_merge_; }
   inline const BasicBlock* GetMergeBlock() const { return loop_merge_; }
+  void SetMergeBlock(ir::BasicBlock* new_merge) { loop_merge_ = new_merge; }
+
+  inline BasicBlock* GetConditionBlock() { return loop_condition_block_; }
+  inline const BasicBlock* GetConditionBlock() const {
+    return loop_condition_block_;
+  }
+  void SetConditionBlock(ir::BasicBlock* new_condition) {
+    loop_condition_block_ = new_condition;
+  }
 
   // Returns the loop pre-header, nullptr means that the loop predecessor does
   // not qualify as a preheader.
@@ -83,12 +97,6 @@ class Loop {
 
   // Returns the loop pre-header.
   inline const BasicBlock* GetPreHeaderBlock() const { return loop_preheader_; }
-
-  inline BasicBlock* GetConditionBlock() { return loop_condition_block_; }
-
-  inline const BasicBlock* GetConditionBlock() const {
-    return loop_condition_block_;
-  }
 
   // Returns true if this loop contains any nested loops.
   inline bool HasNestedLoops() const { return nested_loops_.size() != 0; }
@@ -123,6 +131,10 @@ class Loop {
   inline const BasicBlockListTy& GetBlocks() {
     if (loop_basic_blocks_.size() == 0) FindLoopBasicBlocks();
     return loop_basic_blocks_;
+  }
+
+  BasicBlockOrderedListTy& GetOrderedBlocksRef() {
+    return loop_basic_blocks_in_order_;
   }
 
   inline const BasicBlockOrderedListTy& GetOrderedBlocks() {
@@ -177,6 +189,9 @@ class Loop {
   }
 
   ir::Instruction* GetInductionVariable() { return induction_variable_; }
+  void SetInductionVariable(ir::Instruction* induction) {
+    induction_variable_ = induction;
+  }
 
  private:
   // The block which marks the start of the loop.

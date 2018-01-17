@@ -32,9 +32,9 @@ class LoopUtils {
 
   ir::BasicBlock* CopyLoop(ir::Loop& loop, ir::BasicBlock* preheader);
 
-  ir::Instruction* CopyBody(ir::Loop& loop, int, bool eliminate_conditions,
-                            ir::Instruction*);
+  void CopyBody(ir::Loop& loop, int, bool eliminate_conditions);
 
+  ir::Loop DuplicateLoop(ir::Loop& loop);
   bool PartiallyUnroll(ir::Loop& loop, int factor);
 
   bool FullyUnroll(ir::Loop& loop);
@@ -53,7 +53,8 @@ class LoopUtils {
   ir::Function& function_;
   ir::IRContext* ir_context_;
   ir::LoopDescriptor loop_descriptor_;
-  uint32_t previous_latch_block_id_;
+
+  ir::Instruction* previous_phi_;
   ir::BasicBlock* previous_continue_block_;
   ir::BasicBlock* previous_condition_block_;
 
@@ -62,14 +63,21 @@ class LoopUtils {
   ir::Instruction* RemapResultIDs(ir::Loop&, ir::BasicBlock* BB,
                                   std::map<uint32_t, uint32_t>& new_inst) const;
 
-  void RemapOperands(ir::BasicBlock* BB, uint32_t old_header,
+  void RemapOperands(ir::BasicBlock* BB,
                      std::map<uint32_t, uint32_t>& new_inst) const;
 
   uint32_t GetPhiVariableID(const ir::Instruction* phi, uint32_t label) const;
 
   void PartiallyUnrollImpl(ir::Loop& loop, int factor);
+  void PartiallyUnrollImpl(ir::Loop& loop, int factor,
+                           ir::Instruction* induction,
+                           ir::BasicBlock* initial_continue_block,
+                           ir::BasicBlock* initial_condition);
+
   void AddBlocksToFunction(const ir::BasicBlock* insert_point);
   void CloseUnrolledLoop(ir::Loop& loop);
+
+  bool PartiallyUnrollUnevenFactor(ir::Loop& loop, int factor);
 };
 
 class LoopUnroller : public Pass {
