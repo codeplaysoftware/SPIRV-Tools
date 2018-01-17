@@ -18,45 +18,6 @@
 namespace spvtools {
 namespace opt {
 
-void LoopUtils::InsertLoopClosedSSA() {
-  opt::analysis::DefUseManager* def_use_manager =
-      ir_context_->get_def_use_mgr();
-
-  for (ir::BasicBlock& bb : function_) {
-    for (ir::Instruction& inst : bb) {
-      if (inst.opcode() == SpvOpLoopMerge) {
-        std::unique_ptr<ir::Instruction> new_label{new ir::Instruction(
-            ir_context_, SpvOp::SpvOpLabel, 0, ir_context_->TakeNextId(), {})};
-
-        std::unique_ptr<ir::BasicBlock> new_exit_bb{
-            new ir::BasicBlock(std::move(new_label))};
-
-        uint32_t merge_block_id = inst.GetSingleWordOperand(0);
-        ir::BasicBlock* current_loop_exit = ir_context_->get_instr_block(
-            def_use_manager->GetDef(merge_block_id));
-
-        ir::BasicBlock* new_exit_bb_soft_copy = new_exit_bb.get();
-        uint32_t new_id = new_exit_bb->id();
-        function_.AddBasicBlock(current_loop_exit, std::move(new_exit_bb));
-
-        ir_context_->InvalidateAnalysesExceptFor(
-            ir::IRContext::Analysis::kAnalysisNone);
-
-        ir_context_->ReplaceAllUsesWith(merge_block_id, new_id);
-
-        std::unique_ptr<ir::Instruction> new_branch{
-            new ir::Instruction(ir_context_, SpvOp::SpvOpBranch, 0, 0,
-                                {{SPV_OPERAND_TYPE_ID, {merge_block_id}}})};
-
-        new_exit_bb_soft_copy->AddInstruction(std::move(new_branch));
-      }
-    }
-  }
-
-  ir_context_->InvalidateAnalysesExceptFor(
-      ir::IRContext::Analysis::kAnalysisNone);
-}
-
 ir::Instruction* LoopUtils::RemapResultIDs(
     ir::Loop& loop, ir::BasicBlock* BB,
     std::map<uint32_t, uint32_t>& new_inst) const {
@@ -187,8 +148,6 @@ void LoopUtils::CopyBody(ir::Loop& loop, int, bool eliminate_conditions) {
       loop.GetOrderedBlocks();
 
   uint32_t new_header_id = 0;
-  uint32_t latch_block_id = 0;
-
   ir::Instruction* new_phi = nullptr;
   ir::BasicBlock* new_continue_block = nullptr;
   ir::BasicBlock* new_condition_block = nullptr;
@@ -202,8 +161,6 @@ void LoopUtils::CopyBody(ir::Loop& loop, int, bool eliminate_conditions) {
     if (itr == loop.GetLatchBlock()) {
       ir::Instruction* merge_inst = loop.GetHeaderBlock()->GetLoopMergeInst();
       merge_inst->SetInOperand(1, {BB->id()});
-
-      latch_block_id = BB->id();
       new_continue_block = BB;
     }
 
@@ -320,10 +277,14 @@ bool LoopUtils::PartiallyUnrollUnevenFactor(ir::Loop& loop, int factor) {
   std::unique_ptr<ir::BasicBlock> new_exit_bb{
       new ir::BasicBlock(std::move(new_label))};
 
+  // Save the id of the block before we move it.
   uint32_t new_merge_id = new_exit_bb->id();
 
+  // Add the block the the list of blocks to add, we want this merge block to be
+  // right at the start of the new blocks.
   blocks_to_add_.push_back(std::move(new_exit_bb));
 
+  // Duplicate the loop, providing access to the blocks of both loops.
   ir::Loop new_loop = DuplicateLoop(loop);
 
   // Make the first loop branch to the second.
@@ -334,10 +295,41 @@ bool LoopUtils::PartiallyUnrollUnevenFactor(ir::Loop& loop, int factor) {
 
   PartiallyUnrollImpl(new_loop, factor);
 
+  analysis::Integer uint(32, false);
+  uint32_t uint32_type_id =
+      ir_context_->get_type_mgr()->GetTypeInstruction(&uint);
+  uint32_t remainder = loop.NumIterations() % factor;
+  // Construct the constant.
+  uint32_t resultId = ir_context_->TakeNextId();
+  ir::Operand constant(spv_operand_type_t::SPV_OPERAND_TYPE_LITERAL_INTEGER,
+                       {remainder});
+  std::unique_ptr<ir::Instruction> newConstant(new ir::Instruction(
+      ir_context_, SpvOp::SpvOpConstant, uint32_type_id, resultId, {constant}));
+
+  uint32_t constant_id = newConstant->result_id();
+  ir_context_->module()->AddGlobalValue(std::move(newConstant));
+
   // Add the merge block to the back of the binary.
   blocks_to_add_.push_back(
       std::unique_ptr<ir::BasicBlock>(new_loop.GetMergeBlock()));
   AddBlocksToFunction(loop.GetMergeBlock());
+
+  // Reset the usedef analysis.
+  ir_context_->InvalidateAnalysesExceptFor(
+      ir::IRContext::Analysis::kAnalysisNone);
+  opt::analysis::DefUseManager* def_use_manager =
+      ir_context_->get_def_use_mgr();
+
+  // Update the condition check.
+  ir::Instruction& conditional_branch = *loop.GetConditionBlock()->tail();
+  ir::Instruction* condition_check =
+      def_use_manager->GetDef(conditional_branch.GetSingleWordOperand(0));
+  condition_check->SetInOperand(1, {constant_id});
+
+  // Update the next phi node.
+  ir::Instruction* new_induction = new_loop.GetInductionVariable();
+  new_induction->SetInOperand(0, {constant_id});
+  new_induction->SetInOperand(1, {new_merge_id});
 
   ir_context_->InvalidateAnalysesExceptFor(
       ir::IRContext::Analysis::kAnalysisNone);
@@ -410,10 +402,12 @@ Pass::Status LoopUnroller::Process(ir::IRContext* c) {
     LoopUtils loop_utils{f, c};
 
     for (auto& loop : loop_utils.GetLoopDescriptor()) {
-      if (!loop_utils.CanPerformPartialUnroll(loop)) continue;
+      if (!loop.HasUnrollLoopControl() ||
+          !loop_utils.CanPerformPartialUnroll(loop)) {
+        continue;
+      }
 
-      loop_utils.PartiallyUnroll(loop, 3);
-      // loop_utils.FullyUnroll(loop);
+      loop_utils.FullyUnroll(loop);
       changed = true;
     }
   }

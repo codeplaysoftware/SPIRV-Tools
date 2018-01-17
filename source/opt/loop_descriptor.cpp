@@ -36,7 +36,10 @@ Loop::Loop(IRContext* context, opt::DominatorAnalysis* dom_analysis,
       parent_(nullptr),
       ir_context_(context),
       dom_analysis_(dom_analysis),
-      induction_variable_(nullptr) {
+      induction_variable_(nullptr),
+      iterations_(0),
+      could_find_num_iterations_(true),
+      loop_control_unroll_hint_(true) {
   assert(context);
   assert(dom_analysis);
   loop_preheader_ = FindLoopPreheader(context, dom_analysis);
@@ -322,6 +325,8 @@ void Loop::FindInductionVariable() {
       iterations_ = (condition_value / step_value) - init_value;
       could_find_num_iterations_ = true;
       induction_variable_ = variable_inst;
+      loop_control_unroll_hint_ =
+          loop_header_->GetLoopMergeInst()->GetSingleWordOperand(2) == 1;
     }
   }
 }

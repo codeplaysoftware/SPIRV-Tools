@@ -137,7 +137,7 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
          OpBranch %24
          %24 = OpLabel
          %34 = OpPhi %8 %10 %23 %33 %26
-         OpLoopMerge %25 %26 None
+         OpLoopMerge %25 %26 Unroll
          OpBranch %27
          %27 = OpLabel
          %29 = OpSLessThan %12 %34 %11
@@ -161,9 +161,6 @@ TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
 
-  std::cout << "Pre-opt binary\n";
-
-  std::cout << text << "\n\n\n";
   opt::LoopUnroller loop_unroller;
   SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
   std::cout << std::get<0>(
