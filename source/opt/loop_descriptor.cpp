@@ -206,7 +206,7 @@ void Loop::FindLoopBasicBlocks() {
   // Starting the loop header BasicBlock, traverse the dominator tree until we
   // reach the merge blockand add every node we traverse to the set of blocks
   // which we consider to be the loop.
-  auto begin_itr = tree.get_iterator(loop_header_);
+  auto begin_itr = tree.GetTreeNode(loop_header_)->df_begin();
   for (; begin_itr != tree.end(); ++begin_itr) {
     if (!dom_analysis_->Dominates(loop_merge_, begin_itr->bb_)) {
       loop_basic_blocks_in_order_.push_back(begin_itr->bb_);

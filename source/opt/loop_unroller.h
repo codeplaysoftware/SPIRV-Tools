@@ -23,16 +23,14 @@ namespace opt {
 
 class LoopUtils {
  public:
+  using BasicBlockListTy = std::vector<std::unique_ptr<ir::BasicBlock>>;
+
   LoopUtils(ir::Function& function, ir::IRContext* context)
       : function_(function),
         ir_context_(context),
         loop_descriptor_(&function_) {}
 
-  void InsertLoopClosedSSA();
-
   ir::BasicBlock* CopyLoop(ir::Loop& loop, ir::BasicBlock* preheader);
-
-  void CopyBody(ir::Loop& loop, int, bool eliminate_conditions);
 
   ir::Loop DuplicateLoop(ir::Loop& loop);
   bool PartiallyUnroll(ir::Loop& loop, int factor);
@@ -41,11 +39,7 @@ class LoopUtils {
 
   ir::LoopDescriptor& GetLoopDescriptor() { return loop_descriptor_; }
 
-  void RemoveLoopFromFunction(ir::Loop& loop, ir::BasicBlock* preheader);
-
   bool CanEliminateConditionBlocks(ir::Loop& loop) const;
-
-  void FoldConditionBlock(ir::BasicBlock* condtion_block, uint32_t new_target);
 
   bool CanPerformPartialUnroll(ir::Loop& loop);
 
@@ -58,24 +52,11 @@ class LoopUtils {
   ir::BasicBlock* previous_continue_block_;
   ir::BasicBlock* previous_condition_block_;
 
-  std::vector<std::unique_ptr<ir::BasicBlock>> blocks_to_add_;
-
-  ir::Instruction* RemapResultIDs(ir::Loop&, ir::BasicBlock* BB,
-                                  std::map<uint32_t, uint32_t>& new_inst) const;
-
-  void RemapOperands(ir::BasicBlock* BB,
-                     std::map<uint32_t, uint32_t>& new_inst) const;
-
-  uint32_t GetPhiVariableID(const ir::Instruction* phi, uint32_t label) const;
-
   void PartiallyUnrollImpl(ir::Loop& loop, int factor);
   void PartiallyUnrollImpl(ir::Loop& loop, int factor,
                            ir::Instruction* induction,
                            ir::BasicBlock* initial_continue_block,
                            ir::BasicBlock* initial_condition);
-
-  void AddBlocksToFunction(const ir::BasicBlock* insert_point);
-  void CloseUnrolledLoop(ir::Loop& loop);
 
   bool PartiallyUnrollUnevenFactor(ir::Loop& loop, int factor);
 };

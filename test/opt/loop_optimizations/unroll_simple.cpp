@@ -42,7 +42,7 @@ void main() {
   }
 }
 */
-TEST_F(PassClassTest, BasicVisitFromEntryPoint) {
+TEST_F(PassClassTest, SimpleFullyUnrollTest) {
   // clang-format off
   // With opt::LocalMultiStoreElimPass
   const std::string text = R"(
@@ -275,6 +275,336 @@ OpFunctionEnd
   opt::LoopUnroller loop_unroller;
   SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
   SinglePassRunAndCheck<opt::LoopUnroller>(text, output, false);
+}
+
+template <int factor>
+class PartialUnrollerTestPass : public opt::Pass {
+ public:
+  PartialUnrollerTestPass() : Pass() {}
+
+  const char* name() const override { return "Loop unroller"; }
+
+  Status Process(ir::IRContext* context) override {
+    for (ir::Function& f : *context->module()) {
+      opt::LoopUtils loop_utils{f, context};
+
+      for (auto& loop : loop_utils.GetLoopDescriptor()) {
+        loop_utils.PartiallyUnroll(loop, factor);
+      }
+    }
+
+    return Pass::Status::SuccessWithChange;
+  }
+};
+
+/*
+Generated from the following GLSL
+#version 330 core
+layout(location = 0) out vec4 c;
+void main() {
+  float x[10];
+  for (int i = 0; i < 10; ++i) {
+    x[i] = 1.0f;
+  }
+}
+*/
+TEST_F(PassClassTest, SimplePartialUnroll) {
+  // clang-format off
+  // With opt::LocalMultiStoreElimPass
+  const std::string text = R"(
+            OpCapability Shader
+            %1 = OpExtInstImport "GLSL.std.450"
+            OpMemoryModel Logical GLSL450
+            OpEntryPoint Fragment %2 "main" %3
+            OpExecutionMode %2 OriginUpperLeft
+            OpSource GLSL 330
+            OpName %2 "main"
+            OpName %5 "x"
+            OpName %3 "c"
+            OpDecorate %3 Location 0
+            %6 = OpTypeVoid
+            %7 = OpTypeFunction %6
+            %8 = OpTypeInt 32 1
+            %9 = OpTypePointer Function %8
+            %10 = OpConstant %8 0
+            %11 = OpConstant %8 10
+            %12 = OpTypeBool
+            %13 = OpTypeFloat 32
+            %14 = OpTypeInt 32 0
+            %15 = OpConstant %14 10
+            %16 = OpTypeArray %13 %15
+            %17 = OpTypePointer Function %16
+            %18 = OpConstant %13 1
+            %19 = OpTypePointer Function %13
+            %20 = OpConstant %8 1
+            %21 = OpTypeVector %13 4
+            %22 = OpTypePointer Output %21
+            %3 = OpVariable %22 Output
+            %2 = OpFunction %6 None %7
+            %23 = OpLabel
+            %5 = OpVariable %17 Function
+            OpBranch %24
+            %24 = OpLabel
+            %35 = OpPhi %8 %10 %23 %34 %26
+            OpLoopMerge %25 %26 Unroll
+            OpBranch %27
+            %27 = OpLabel
+            %29 = OpSLessThan %12 %35 %11
+            OpBranchConditional %29 %30 %25
+            %30 = OpLabel
+            %32 = OpAccessChain %19 %5 %35
+            OpStore %32 %18
+            OpBranch %26
+            %26 = OpLabel
+            %34 = OpIAdd %8 %35 %20
+            OpBranch %24
+            %25 = OpLabel
+            OpReturn
+            OpFunctionEnd
+  )";
+
+  const std::string output = R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %2 "main" %3
+OpExecutionMode %2 OriginUpperLeft
+OpSource GLSL 330
+OpName %2 "main"
+OpName %4 "x"
+OpName %3 "c"
+OpDecorate %3 Location 0
+%5 = OpTypeVoid
+%6 = OpTypeFunction %5
+%7 = OpTypeInt 32 1
+%8 = OpTypePointer Function %7
+%9 = OpConstant %7 0
+%10 = OpConstant %7 10
+%11 = OpTypeBool
+%12 = OpTypeFloat 32
+%13 = OpTypeInt 32 0
+%14 = OpConstant %13 10
+%15 = OpTypeArray %12 %14
+%16 = OpTypePointer Function %15
+%17 = OpConstant %12 1
+%18 = OpTypePointer Function %12
+%19 = OpConstant %7 1
+%20 = OpTypeVector %12 4
+%21 = OpTypePointer Output %20
+%3 = OpVariable %21 Output
+%2 = OpFunction %5 None %6
+%22 = OpLabel
+%4 = OpVariable %16 Function
+OpBranch %23
+%23 = OpLabel
+%24 = OpPhi %7 %9 %22 %39 %38
+OpLoopMerge %27 %38 Unroll
+OpBranch %28
+%28 = OpLabel
+%29 = OpSLessThan %11 %24 %10
+OpBranch %30
+%30 = OpLabel
+%31 = OpAccessChain %18 %4 %24
+OpStore %31 %17
+OpBranch %26
+%26 = OpLabel
+%25 = OpIAdd %7 %24 %19
+OpBranch %32
+%32 = OpLabel
+%33 = OpPhi %7 %9 %22 %39 %38
+OpBranch %34
+%34 = OpLabel
+%35 = OpSLessThan %11 %25 %10
+OpBranchConditional %35 %36 %27
+%36 = OpLabel
+%37 = OpAccessChain %18 %4 %25
+OpStore %37 %17
+OpBranch %38
+%38 = OpLabel
+%39 = OpIAdd %7 %25 %19
+OpBranch %23
+%27 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+  // clang-format on
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+
+  opt::LoopUnroller loop_unroller;
+  SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
+  SinglePassRunAndCheck<PartialUnrollerTestPass<1>>(text, output, false);
+  // std::cout <<
+  // std::get<0>(SinglePassRunAndDisassemble<PartialUnrollerTestPass<1>>(text,
+  // false, true));
+}
+
+/*
+Generated from the following GLSL
+#version 330 core
+layout(location = 0) out vec4 c;
+void main() {
+  float x[10];
+  for (int i = 0; i < 10; ++i) {
+    x[i] = 1.0f;
+  }
+}
+*/
+TEST_F(PassClassTest, SimpleUnevenPartialUnroll) {
+  // clang-format off
+  // With opt::LocalMultiStoreElimPass
+  const std::string text = R"(
+            OpCapability Shader
+            %1 = OpExtInstImport "GLSL.std.450"
+            OpMemoryModel Logical GLSL450
+            OpEntryPoint Fragment %2 "main" %3
+            OpExecutionMode %2 OriginUpperLeft
+            OpSource GLSL 330
+            OpName %2 "main"
+            OpName %5 "x"
+            OpName %3 "c"
+            OpDecorate %3 Location 0
+            %6 = OpTypeVoid
+            %7 = OpTypeFunction %6
+            %8 = OpTypeInt 32 1
+            %9 = OpTypePointer Function %8
+            %10 = OpConstant %8 0
+            %11 = OpConstant %8 10
+            %12 = OpTypeBool
+            %13 = OpTypeFloat 32
+            %14 = OpTypeInt 32 0
+            %15 = OpConstant %14 10
+            %16 = OpTypeArray %13 %15
+            %17 = OpTypePointer Function %16
+            %18 = OpConstant %13 1
+            %19 = OpTypePointer Function %13
+            %20 = OpConstant %8 1
+            %21 = OpTypeVector %13 4
+            %22 = OpTypePointer Output %21
+            %3 = OpVariable %22 Output
+            %2 = OpFunction %6 None %7
+            %23 = OpLabel
+            %5 = OpVariable %17 Function
+            OpBranch %24
+            %24 = OpLabel
+            %35 = OpPhi %8 %10 %23 %34 %26
+            OpLoopMerge %25 %26 Unroll
+            OpBranch %27
+            %27 = OpLabel
+            %29 = OpSLessThan %12 %35 %11
+            OpBranchConditional %29 %30 %25
+            %30 = OpLabel
+            %32 = OpAccessChain %19 %5 %35
+            OpStore %32 %18
+            OpBranch %26
+            %26 = OpLabel
+            %34 = OpIAdd %8 %35 %20
+            OpBranch %24
+            %25 = OpLabel
+            OpReturn
+            OpFunctionEnd
+  )";
+
+  const std::string output = 
+R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %2 "main" %3
+OpExecutionMode %2 OriginUpperLeft
+OpSource GLSL 330
+OpName %2 "main"
+OpName %4 "x"
+OpName %3 "c"
+OpDecorate %3 Location 0
+%5 = OpTypeVoid
+%6 = OpTypeFunction %5
+%7 = OpTypeInt 32 1
+%8 = OpTypePointer Function %7
+%9 = OpConstant %7 0
+%10 = OpConstant %7 10
+%11 = OpTypeBool
+%12 = OpTypeFloat 32
+%13 = OpTypeInt 32 0
+%14 = OpConstant %13 10
+%15 = OpTypeArray %12 %14
+%16 = OpTypePointer Function %15
+%17 = OpConstant %12 1
+%18 = OpTypePointer Function %12
+%19 = OpConstant %7 1
+%20 = OpTypeVector %12 4
+%21 = OpTypePointer Output %20
+%3 = OpVariable %21 Output
+%50 = OpConstant %13 1
+%2 = OpFunction %5 None %6
+%22 = OpLabel
+%4 = OpVariable %16 Function
+OpBranch %23
+%23 = OpLabel
+%24 = OpPhi %7 %9 %22 %25 %26
+OpLoopMerge %32 %26 Unroll
+OpBranch %28
+%28 = OpLabel
+%29 = OpSLessThan %11 %24 %50
+OpBranchConditional %29 %30 %32
+%30 = OpLabel
+%31 = OpAccessChain %18 %4 %24
+OpStore %31 %17
+OpBranch %26
+%26 = OpLabel
+%25 = OpIAdd %7 %24 %19
+OpBranch %23
+%32 = OpLabel
+OpBranch %33
+%33 = OpLabel
+%34 = OpPhi %7 %50 %32 %49 %48
+OpLoopMerge %41 %48 Unroll
+OpBranch %35
+%35 = OpLabel
+%36 = OpSLessThan %11 %34 %10
+OpBranch %37
+%37 = OpLabel
+%38 = OpAccessChain %18 %4 %34
+OpStore %38 %17
+OpBranch %39
+%39 = OpLabel
+%40 = OpIAdd %7 %34 %19
+OpBranch %42
+%42 = OpLabel
+%43 = OpPhi %7 %9 %22 %49 %48
+OpBranch %44
+%44 = OpLabel
+%45 = OpSLessThan %11 %40 %10
+OpBranchConditional %45 %46 %41
+%46 = OpLabel
+%47 = OpAccessChain %18 %4 %40
+OpStore %47 %17
+OpBranch %48
+%48 = OpLabel
+%49 = OpIAdd %7 %40 %19
+OpBranch %33
+%41 = OpLabel
+OpReturn
+%27 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+  // clang-format on
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+
+  opt::LoopUnroller loop_unroller;
+  SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
+  // By unrolling by a factor that doesn't divide evenly into the number of loop
+  // iterations we perfom an additional transform when partially unrolling to
+  // account for the remainder.
+  SinglePassRunAndCheck<PartialUnrollerTestPass<2>>(text, output, false);
 }
 
 }  // namespace
