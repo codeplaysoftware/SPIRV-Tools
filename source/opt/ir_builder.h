@@ -43,12 +43,22 @@ class InstructionBuilder {
   InstructionBuilder(ir::IRContext* context, InsertionPointTy insert_before)
       : context_(context), insert_before_(insert_before) {}
 
+  // Creates a new selection merge instruction.
+  // The id |merge_id| is the merge basic block id.
+  ir::Instruction* AddSelectionMerge(uint32_t merge_id) {
+    std::unique_ptr<ir::Instruction> new_branch_merge(new ir::Instruction(
+        GetContext(), SpvOpSelectionMerge, 0, 0,
+        {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {merge_id}},
+         {spv_operand_type_t::SPV_OPERAND_TYPE_LITERAL_INTEGER, {0}}}));
+    return AddInstruction(std::move(new_branch_merge));
+  }
+
   // Creates a new branch instruction to |label_id|.
   // Note that the user is responsible of making sure the final basic block is
   // well formed.
   ir::Instruction* AddBranch(uint32_t label_id) {
     std::unique_ptr<ir::Instruction> new_branch(new ir::Instruction(
-        context(), SpvOpBranch, 0, 0,
+        GetContext(), SpvOpBranch, 0, 0,
         {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {label_id}}}));
     return AddInstruction(std::move(new_branch));
   }
@@ -67,14 +77,10 @@ class InstructionBuilder {
                                  uint32_t false_id,
                                  uint32_t merge_id = kInvalidId) {
     if (merge_id != kInvalidId) {
-      std::unique_ptr<ir::Instruction> new_branch_merge(new ir::Instruction(
-          context(), SpvOpSelectionMerge, 0, 0,
-          {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {merge_id}},
-           {spv_operand_type_t::SPV_OPERAND_TYPE_LITERAL_INTEGER, {0}}}));
-      AddInstruction(std::move(new_branch_merge));
+      AddSelectionMerge(merge_id);
     }
     std::unique_ptr<ir::Instruction> new_branch(new ir::Instruction(
-        context(), SpvOpBranchConditional, 0, 0,
+        GetContext(), SpvOpBranchConditional, 0, 0,
         {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {cond_id}},
          {spv_operand_type_t::SPV_OPERAND_TYPE_ID, {true_id}},
          {spv_operand_type_t::SPV_OPERAND_TYPE_ID, {false_id}}}));
@@ -94,7 +100,7 @@ class InstructionBuilder {
       phi_ops.push_back({SPV_OPERAND_TYPE_ID, {incomings[i + 1]}});
     }
     std::unique_ptr<ir::Instruction> phi_inst(new ir::Instruction(
-        context(), SpvOpPhi, type, context_->TakeNextId(), phi_ops));
+        GetContext(), SpvOpPhi, type, GetContext()->TakeNextId(), phi_ops));
     return AddInstruction(std::move(phi_inst));
   }
 
@@ -109,7 +115,7 @@ class InstructionBuilder {
   InsertionPointTy GetInsertPoint() { return insert_before_; }
 
   // Returns the context which instructions are constructed for.
-  ir::IRContext* context() const { return context_; }
+  ir::IRContext* GetContext() const { return context_; }
 
  private:
   // Returns true if the users requested to update an analysis.
@@ -122,7 +128,7 @@ class InstructionBuilder {
   // an update, this function does nothing.
   inline void UpdateDefUseMgr(ir::Instruction* insn) {
     if (IsAnalysisUpdateRequested(ir::IRContext::kAnalysisDefUse))
-      context_->get_def_use_mgr()->AnalyzeInstDefUse(insn);
+      GetContext()->get_def_use_mgr()->AnalyzeInstDefUse(insn);
   }
 
   ir::IRContext* context_;
