@@ -188,6 +188,49 @@ class Loop {
   // This is only to allow LoopDescriptor::dummy_top_loop_ to add top level
   // loops as child.
   friend class LoopDescriptor;
+  friend class LoopUtils;
+};
+
+class LoopUtils {
+ public:
+  LoopUtils(IRContext* context, Loop* loop) : context_(context), loop_(loop) {}
+
+  // The make the current loop in the loop closed SSA form.
+  // In the loop closed SSA, all loop exiting values goes through a dedicate SSA
+  // instruction. For instance:
+  //
+  // for (...) {
+  //   A1 = ...
+  //   if (...)
+  //     A2 = ...
+  //   A = phi A1, A2
+  // }
+  // ... = op A ...
+  //
+  // Becomes
+  //
+  // for (...) {
+  //   A1 = ...
+  //   if (...)
+  //     A2 = ...
+  //   A = phi A1, A2
+  // }
+  // C = phi A
+  // ... = op C ...
+  //
+  // This makes some loop transformations (such as loop unswitch) simpler
+  // (removes the needs to take care of exiting variables).
+  void MakeLoopClosedSSA();
+
+  // Create dedicate exit basic block. This ensure all exit basic blocks as the
+  // loop as sole predecessors.
+  // By construction, structured control flow already has a dedicated exit
+  // block.
+  void CreateLoopDedicateExits();
+
+ private:
+  IRContext* context_;
+  Loop* loop_;
 };
 
 // Loop descriptions class for a given function.
