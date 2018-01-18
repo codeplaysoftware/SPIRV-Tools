@@ -172,7 +172,6 @@ class LCSSARewriter {
   LCSSARewriter(ir::IRContext* context, const ir::Instruction& def_insn)
       : context_(context),
         cfg_(context_->cfg()),
-        def_insn_(def_insn),
         insn_type_(def_insn.type_id()) {}
 
   // Rewrites the use of |def_insn_| by the instruction |user| at the index
@@ -271,7 +270,6 @@ class LCSSARewriter {
 
   ir::IRContext* context_;
   ir::CFG* cfg_;
-  const ir::Instruction& def_insn_;
   uint32_t insn_type_;
   std::unordered_map<uint32_t, ir::Instruction*> bb_to_phi;
   std::unordered_set<ir::Instruction*> rewrited;
