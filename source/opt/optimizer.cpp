@@ -107,27 +107,22 @@ Optimizer& Optimizer::RegisterLegalizationPasses() {
           // May need loop unrolling here see
           // https://github.com/Microsoft/DirectXShaderCompiler/pull/930
           .RegisterPass(CreateDeadBranchElimPass())
-          .RegisterPass(CreateCFGCleanupPass())
           // Get rid of unused code that leave traces of the illegal code.
-          .RegisterPass(CreateAggressiveDCEPass())
-          // TODO: Remove this once ADCE can do it.
-          .RegisterPass(CreateDeadVariableEliminationPass());
+          .RegisterPass(CreateAggressiveDCEPass());
 }
 
 Optimizer& Optimizer::RegisterPerformancePasses() {
   return RegisterPass(CreateRemoveDuplicatesPass())
       .RegisterPass(CreateMergeReturnPass())
       .RegisterPass(CreateInlineExhaustivePass())
-      .RegisterPass(CreateEliminateDeadFunctionsPass())
+      .RegisterPass(CreateAggressiveDCEPass())
       .RegisterPass(CreateScalarReplacementPass())
       .RegisterPass(CreateLocalAccessChainConvertPass())
       .RegisterPass(CreateLocalSingleBlockLoadStoreElimPass())
       .RegisterPass(CreateLocalSingleStoreElimPass())
       .RegisterPass(CreateInsertExtractElimPass())
       .RegisterPass(CreateLocalMultiStoreElimPass())
-      // TODO(dneto): Disable CCP until it optimizes loops correctly
-      // https://github.com/KhronosGroup/SPIRV-Tools/issues/1143
-      //.RegisterPass(CreateCCPPass())
+      .RegisterPass(CreateCCPPass())
       .RegisterPass(CreateAggressiveDCEPass())
       .RegisterPass(CreateDeadBranchElimPass())
       .RegisterPass(CreateBlockMergePass())
@@ -136,22 +131,20 @@ Optimizer& Optimizer::RegisterPerformancePasses() {
       .RegisterPass(CreateCFGCleanupPass())
       // Currently exposing driver bugs resulting in crashes (#946)
       // .RegisterPass(CreateCommonUniformElimPass())
-      .RegisterPass(CreateDeadVariableEliminationPass());
+      .RegisterPass(CreateAggressiveDCEPass());
 }
 
 Optimizer& Optimizer::RegisterSizePasses() {
   return RegisterPass(CreateRemoveDuplicatesPass())
       .RegisterPass(CreateMergeReturnPass())
       .RegisterPass(CreateInlineExhaustivePass())
-      .RegisterPass(CreateEliminateDeadFunctionsPass())
+      .RegisterPass(CreateAggressiveDCEPass())
       .RegisterPass(CreateLocalAccessChainConvertPass())
       .RegisterPass(CreateLocalSingleBlockLoadStoreElimPass())
       .RegisterPass(CreateLocalSingleStoreElimPass())
       .RegisterPass(CreateInsertExtractElimPass())
       .RegisterPass(CreateLocalMultiStoreElimPass())
-      // TODO(dneto): Disable CCP until it optimizes loops correctly
-      // https://github.com/KhronosGroup/SPIRV-Tools/issues/1143
-      //.RegisterPass(CreateCCPPass())
+      .RegisterPass(CreateCCPPass())
       .RegisterPass(CreateAggressiveDCEPass())
       .RegisterPass(CreateDeadBranchElimPass())
       .RegisterPass(CreateBlockMergePass())
@@ -160,7 +153,7 @@ Optimizer& Optimizer::RegisterSizePasses() {
       .RegisterPass(CreateCFGCleanupPass())
       // Currently exposing driver bugs resulting in crashes (#946)
       // .RegisterPass(CreateCommonUniformElimPass())
-      .RegisterPass(CreateDeadVariableEliminationPass());
+      .RegisterPass(CreateAggressiveDCEPass());
 }
 
 bool Optimizer::Run(const uint32_t* original_binary,

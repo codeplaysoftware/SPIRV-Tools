@@ -37,18 +37,24 @@ void SSAPropagator::AddControlEdge(const Edge& edge) {
 }
 
 void SSAPropagator::AddSSAEdges(ir::Instruction* instr) {
-  if (instr->result_id() == 0 || instr->opcode() == SpvOpPhi) {
-    // Ignore instructions that produce no result and Phi instructions. The SSA
-    // edges out of Phi instructions are never added.  Phi instructions can
-    // produce cycles in the def-use web and they are always simulated when a
-    // block is visited.
+  // Ignore instructions that produce no result.
+  if (instr->result_id() == 0) {
     return;
   }
 
   get_def_use_mgr()->ForEachUser(
       instr->result_id(), [this](ir::Instruction* use_instr) {
+        // If |use_instr| is a Phi, ignore this edge.  Phi instructions can form
+        // cycles in the def-use web, which would get the propagator into an
+        // infinite loop.  Phi instructions are always simulated when a block is
+        // visited, so there is no need to traverse the SSA edges into them.
+        if (use_instr->opcode() == SpvOpPhi) {
+          return;
+        }
+
         // If the basic block for |use_instr| has not been simulated yet, do
-        // nothing.
+        // nothing.  The instruction |use_instr| will be simulated next time the
+        // block is scheduled.
         if (!BlockHasBeenSimulated(ctx_->get_instr_block(use_instr))) {
           return;
         }
@@ -134,13 +140,14 @@ bool SSAPropagator::Simulate(ir::Instruction* instr) {
     // For regular instructions, check if the defining instruction of each
     // operand needs to be simulated again.  If so, then this instruction should
     // also be simulated again.
-    instr->ForEachInId([&has_operands_to_simulate, this](const uint32_t* use) {
-      ir::Instruction* def_instr = get_def_use_mgr()->GetDef(*use);
-      if (ShouldSimulateAgain(def_instr)) {
-        has_operands_to_simulate = true;
-        return;
-      }
-    });
+    has_operands_to_simulate =
+        !instr->WhileEachInId([this](const uint32_t* use) {
+          ir::Instruction* def_instr = get_def_use_mgr()->GetDef(*use);
+          if (ShouldSimulateAgain(def_instr)) {
+            return false;
+          }
+          return true;
+        });
   }
 
   if (!has_operands_to_simulate) {
