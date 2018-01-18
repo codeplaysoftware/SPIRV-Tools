@@ -37,6 +37,8 @@ using Analysis = IRContext::Analysis;
 
 #ifdef SPIRV_EFFCEE
 
+using IRBuilderTest = ::testing::Test;
+
 bool Validate(const std::vector<uint32_t>& bin) {
   spv_target_env target_env = SPV_ENV_UNIVERSAL_1_2;
   spv_context spvContext = spvContextCreate(target_env);
@@ -68,7 +70,7 @@ void Match(const std::string& original, ir::IRContext* context,
       << assembly;
 }
 
-TEST(IRBuilderTest, TestInsnAddition) {
+TEST_F(IRBuilderTest, TestInsnAddition) {
   const std::string text = R"(
 ; CHECK: %18 = OpLabel
 ; CHECK: OpPhi %int %int_0 %14
@@ -142,6 +144,73 @@ TEST(IRBuilderTest, TestInsnAddition) {
     // Make sure InstructionBuilder updated the def/use manager
     EXPECT_NE(context->get_def_use_mgr()->GetDef(phi1->result_id()), nullptr);
     EXPECT_NE(context->get_def_use_mgr()->GetDef(phi2->result_id()), nullptr);
+
+    Match(text, context.get());
+  }
+}
+
+TEST_F(IRBuilderTest, TestCondBranchAddition) {
+  const std::string text = R"(
+; CHECK: %main = OpFunction %void None %6
+; CHECK-NEXT: %15 = OpLabel
+; CHECK-NEXT: OpSelectionMerge %13 None
+; CHECK-NEXT: OpBranchConditional %true %14 %13
+; CHECK-NEXT: %14 = OpLabel
+; CHECK-NEXT: OpBranch %13
+; CHECK-NEXT: %13 = OpLabel
+; CHECK-NEXT: OpReturn
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %2 "main" %3
+               OpExecutionMode %2 OriginUpperLeft
+               OpSource GLSL 330
+               OpName %2 "main"
+               OpName %4 "i"
+               OpName %3 "c"
+               OpDecorate %3 Location 0
+          %5 = OpTypeVoid
+          %6 = OpTypeFunction %5
+          %7 = OpTypeBool
+          %8 = OpTypePointer Function %7
+          %9 = OpConstantTrue %7
+         %10 = OpTypeFloat 32
+         %11 = OpTypeVector %10 4
+         %12 = OpTypePointer Output %11
+          %3 = OpVariable %12 Output
+          %4 = OpVariable %8 Private
+          %2 = OpFunction %5 None %6
+         %13 = OpLabel
+               OpReturn
+               OpFunctionEnd
+)";
+
+  {
+    std::unique_ptr<ir::IRContext> context =
+        BuildModule(SPV_ENV_UNIVERSAL_1_2, nullptr, text);
+
+    ir::Function& fn = *context->module()->begin();
+
+    ir::BasicBlock& bb_merge = *fn.begin();
+
+    fn.begin().InsertBefore(std::unique_ptr<ir::BasicBlock>(
+        new ir::BasicBlock(std::unique_ptr<ir::Instruction>(new ir::Instruction(
+            context.get(), SpvOpLabel, 0, context->TakeNextId(), {})))));
+    ir::BasicBlock& bb_true = *fn.begin();
+    {
+      opt::InstructionBuilder<> builder(context.get(), bb_true.begin());
+      builder.AddBranch(bb_merge.id());
+    }
+
+    fn.begin().InsertBefore(std::unique_ptr<ir::BasicBlock>(
+        new ir::BasicBlock(std::unique_ptr<ir::Instruction>(new ir::Instruction(
+            context.get(), SpvOpLabel, 0, context->TakeNextId(), {})))));
+    ir::BasicBlock& bb_cond = *fn.begin();
+
+    opt::InstructionBuilder<> builder(context.get(), bb_cond.begin());
+    // This also test consecutive instruction insertion: merge selection +
+    // branch.
+    builder.AddBranchCond(9, bb_true.id(), bb_merge.id(), bb_merge.id());
 
     Match(text, context.get());
   }
