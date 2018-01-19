@@ -1484,9 +1484,7 @@ OpFunctionEnd
       predefs_before + func_before, predefs_after + func_after, true, true);
 }
 
-// This test fails. OpSwitch is not handled by ADCE.
-// (https://github.com/KhronosGroup/SPIRV-Tools/issues/1021).
-TEST_F(AggressiveDCETest, DISABLED_EliminateDeadSwitch) {
+TEST_F(AggressiveDCETest, EliminateDeadSwitch) {
   // #version 450
   //
   // layout(location = 0) in vec4 BaseColor;
@@ -1567,24 +1565,20 @@ OpDecorate %x Location 1
 OpDecorate %BaseColor Location 0
 OpDecorate %OutColor Location 0
 %void = OpTypeVoid
-%8 = OpTypeFunction %void
+%3 = OpTypeFunction %void
 %int = OpTypeInt 32 1
 %_ptr_Input_int = OpTypePointer Input %int
 %x = OpVariable %_ptr_Input_int Input
 %float = OpTypeFloat 32
-%_ptr_Function_float = OpTypePointer Function %float
 %v4float = OpTypeVector %float 4
 %_ptr_Input_v4float = OpTypePointer Input %v4float
 %BaseColor = OpVariable %_ptr_Input_v4float Input
-%uint = OpTypeInt 32 0
-%uint_1 = OpConstant %uint 1
-%_ptr_Input_float = OpTypePointer Input %float
 %_ptr_Output_v4float = OpTypePointer Output %v4float
 %OutColor = OpVariable %_ptr_Output_v4float Output
 %float_1 = OpConstant %float 1
-%20 = OpConstantComposite %v4float %float_1 %float_1 %float_1 %float_1
-%main = OpFunction %void None %8
-%21 = OpLabel
+%27 = OpConstantComposite %v4float %float_1 %float_1 %float_1 %float_1
+%main = OpFunction %void None %3
+%5 = OpLabel
 OpBranch %11
 %11 = OpLabel
 OpStore %OutColor %27
@@ -1592,6 +1586,7 @@ OpReturn
 OpFunctionEnd
 )";
 
+  SetAssembleOptions(SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(before, after, true, true);
 }
 
@@ -3769,6 +3764,93 @@ OpFunctionEnd
   SinglePassRunAndCheck<opt::AggressiveDCEPass>(before, after, true, true);
 }
 
+#ifdef SPIRV_EFFCEE
+TEST_F(AggressiveDCETest, DeadNestedSwitch) {
+  const std::string text = R"(
+; CHECK: OpLabel
+; CHECK: OpBranch [[block:%\w+]]
+; CHECK-NOT: OpSwitch
+; CHECK-NEXT: [[block]] = OpLabel
+; CHECK: OpBranch [[block:%\w+]]
+; CHECK-NOT: OpSwitch
+; CHECK-NEXT: [[block]] = OpLabel
+; CHECK-NEXT: OpStore
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %func "func" %x
+OpExecutionMode %func OriginUpperLeft
+OpName %func "func"
+%void = OpTypeVoid
+%1 = OpTypeFunction %void
+%uint = OpTypeInt 32 0
+%uint_0 = OpConstant %uint 0
+%uint_ptr_Output = OpTypePointer Output %uint
+%uint_ptr_Input = OpTypePointer Input %uint
+%x = OpVariable %uint_ptr_Output Output
+%a = OpVariable %uint_ptr_Input Input
+%func = OpFunction %void None %1
+%entry = OpLabel
+OpBranch %header
+%header = OpLabel
+%ld = OpLoad %uint %a
+OpLoopMerge %merge %continue None
+OpBranch %postheader
+%postheader = OpLabel
+; This switch doesn't require an OpSelectionMerge and is nested in the dead loop.
+OpSwitch %ld %merge 0 %extra 1 %continue
+%extra = OpLabel
+OpBranch %continue
+%continue = OpLabel
+OpBranch %header
+%merge = OpLabel
+OpStore %x %uint_0
+OpReturn
+OpFunctionEnd
+)";
+
+  SinglePassRunAndMatch<opt::AggressiveDCEPass>(text, true);
+}
+#endif  //  SPIRV_EFFCEE
+
+TEST_F(AggressiveDCETest, LiveNestedSwitch) {
+  const std::string text = R"(OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %func "func" %3
+OpExecutionMode %func OriginUpperLeft
+OpName %func "func"
+%void = OpTypeVoid
+%1 = OpTypeFunction %void
+%uint = OpTypeInt 32 0
+%uint_0 = OpConstant %uint 0
+%uint_1 = OpConstant %uint 1
+%_ptr_Output_uint = OpTypePointer Output %uint
+%_ptr_Input_uint = OpTypePointer Input %uint
+%3 = OpVariable %_ptr_Output_uint Output
+%10 = OpVariable %_ptr_Input_uint Input
+%func = OpFunction %void None %1
+%11 = OpLabel
+OpBranch %12
+%12 = OpLabel
+%13 = OpLoad %uint %10
+OpLoopMerge %14 %15 None
+OpBranch %16
+%16 = OpLabel
+OpSwitch %13 %14 0 %17 1 %15
+%17 = OpLabel
+OpStore %3 %uint_1
+OpBranch %15
+%15 = OpLabel
+OpBranch %12
+%14 = OpLabel
+OpStore %3 %uint_0
+OpReturn
+OpFunctionEnd
+)";
+
+  SetAssembleOptions(SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(text, text, false, true);
+}
+
 TEST_F(AggressiveDCETest, BasicDeleteDeadFunction) {
   // The function Dead should be removed because it is never called.
   const std::vector<const char*> common_code = {
@@ -5095,6 +5177,127 @@ OpFunctionEnd
   SinglePassRunAndMatch<opt::AggressiveDCEPass>(text, true);
 }
 #endif  // SPIRV_EFFCEE
+
+TEST_F(AggressiveDCETest, BreaksDontVisitPhis) {
+  const std::string text = R"(
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %func "func" %var
+OpExecutionMode %func OriginUpperLeft
+%void = OpTypeVoid
+%bool = OpTypeBool
+%true = OpConstantTrue %bool
+%int = OpTypeInt 32 0
+%int_ptr_Output = OpTypePointer Output %int
+%var = OpVariable %int_ptr_Output Output
+%int0 = OpConstant %int 0
+%functy = OpTypeFunction %void
+%func = OpFunction %void None %functy
+%entry = OpLabel
+OpBranch %outer_header
+%outer_header = OpLabel
+OpLoopMerge %outer_merge %outer_continue None
+OpBranchConditional %true %inner_header %outer_continue
+%inner_header = OpLabel
+%phi = OpPhi %int %int0 %outer_header %int0 %inner_continue
+OpStore %var %phi
+OpLoopMerge %inner_merge %inner_continue None
+OpBranchConditional %true %inner_merge %inner_continue
+%inner_continue = OpLabel
+OpBranch %inner_header
+%inner_merge = OpLabel
+OpBranch %outer_continue
+%outer_continue = OpLabel
+%p = OpPhi %int %int0 %outer_header %int0 %inner_merge
+OpStore %var %p
+OpBranch %outer_header
+%outer_merge = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+
+  EXPECT_EQ(opt::Pass::Status::SuccessWithoutChange,
+            std::get<1>(SinglePassRunAndDisassemble<opt::AggressiveDCEPass>(
+                text, false, true)));
+}
+
+// Test for #1212
+TEST_F(AggressiveDCETest, ConstStoreInnerLoop) {
+  const std::string text = R"(OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint Vertex %1 "main" %2
+%void = OpTypeVoid
+%4 = OpTypeFunction %void
+%float = OpTypeFloat 32
+%bool = OpTypeBool
+%true = OpConstantTrue %bool
+%_ptr_Output_float = OpTypePointer Output %float
+%2 = OpVariable %_ptr_Output_float Output
+%float_3 = OpConstant %float 3
+%1 = OpFunction %void None %4
+%13 = OpLabel
+OpBranch %14
+%14 = OpLabel
+OpLoopMerge %15 %16 None
+OpBranchConditional %true %17 %15
+%17 = OpLabel
+OpStore %2 %float_3
+OpLoopMerge %18 %17 None
+OpBranchConditional %true %18 %17
+%18 = OpLabel
+OpBranch %15
+%16 = OpLabel
+OpBranch %14
+%15 = OpLabel
+OpBranch %20
+%20 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+
+  SetAssembleOptions(SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(text, text, true, true);
+}
+
+// Test for #1212
+TEST_F(AggressiveDCETest, InnerLoopCopy) {
+  const std::string text = R"(OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint Vertex %1 "main" %2 %3
+%void = OpTypeVoid
+%5 = OpTypeFunction %void
+%float = OpTypeFloat 32
+%bool = OpTypeBool
+%true = OpConstantTrue %bool
+%_ptr_Output_float = OpTypePointer Output %float
+%_ptr_Input_float = OpTypePointer Input %float
+%2 = OpVariable %_ptr_Output_float Output
+%3 = OpVariable %_ptr_Input_float Input
+%1 = OpFunction %void None %5
+%14 = OpLabel
+OpBranch %15
+%15 = OpLabel
+OpLoopMerge %16 %17 None
+OpBranchConditional %true %18 %16
+%18 = OpLabel
+%19 = OpLoad %float %3
+OpStore %2 %19
+OpLoopMerge %20 %18 None
+OpBranchConditional %true %20 %18
+%20 = OpLabel
+OpBranch %16
+%17 = OpLabel
+OpBranch %15
+%16 = OpLabel
+OpBranch %22
+%22 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+
+  SetAssembleOptions(SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(text, text, true, true);
+}
 
 // TODO(greg-lunarg): Add tests to verify handling of these cases:
 //
