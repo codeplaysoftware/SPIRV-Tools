@@ -98,35 +98,73 @@ struct LoopStateUtil {
   std::map<uint32_t, uint32_t> new_inst;
 };
 
+// This class implements the actual unrolling. It uses a LoopStateUtil to
+// maintain the state of the unrolling inbetween steps.
 class LoopUnrollerUtilsImpl {
  public:
   LoopUnrollerUtilsImpl(ir::IRContext* c, ir::Function& function)
       : ir_context_(c), function_(function) {}
 
-  void RemapResultIDs(ir::Loop* loop, ir::BasicBlock* BB);
+  // Unroll the |loop| by given |factor| by copying the whole body |factor|
+  // times. The resulting basicblock structure will remain a loop.
+  void PartiallyUnroll(ir::Loop*, int factor);
 
-  void RemapOperands(ir::BasicBlock* BB,
-                     std::map<uint32_t, uint32_t>& new_inst);
-
-  void CopyBody(ir::Loop* loop, bool eliminate_conditions);
-
-  void PartiallyUnroll(ir::Loop*, int);
-
+  // If partially unrolling the |loop| would leave the loop with too many bodies
+  // for its number of iterations then this method should be used. This method
+  // will duplicate the |loop| compltetely, makingthe duplicated loop the
+  // successor of the originals merge block. The original loop will have its
+  // condition changed to loop over the uneven part and the duplicate will be
+  // partially unrolled. The resulting structure will be two loops.
   void PartiallyUnrollUnevenFactor(ir::Loop* loop, int factor);
 
+  // Fully unroll the |loop| by copying the full body by the total number of
+  // loop iterations, folding all conditions, and removing the backedge from the
+  // continue block to the header.
   void FullyUnroll(ir::Loop* loop);
 
+  // Get the ID of the variable in the |phi| paired with |label|.
   uint32_t GetPhiVariableID(const ir::Instruction* phi, uint32_t label) const;
+
+  // Close the loop by removing the OpLoopMerge from the |loop| header block and
+  // making the backedge point to the merge block.
   void CloseUnrolledLoop(ir::Loop* loop);
+
+  // Remove the OpConditionalBranch instruction inside |conditional_block| used
+  // to branch to either exit or continue the loop and replace it with an
+  // unconditional OpBranch to block |new_target|.
   void FoldConditionBlock(ir::BasicBlock* condtion_block, uint32_t new_target);
 
+  // Add all blocks_to_add_ to function_ at the |insert_point|.
   void AddBlocksToFunction(const ir::BasicBlock* insert_point);
 
   ir::Loop DuplicateLoop(ir::Loop* old_loop);
 
-  void CopyBasicBlock(ir::Loop* loop, const ir::BasicBlock* itr);
-
  private:
+  // Remap all the in |BB| to new IDs and keep the mapping of new ids to old
+  // ids. |loop| is used to identify special loop blocks (header, continue,
+  // ect).
+  void AssignNewResultIds(ir::BasicBlock* BB, const ir::Loop* loop);
+
+  // Using the map built by AssignNewResultIds, for each instruction in |BB| use
+  // that map to substitute the IDs used by instructions (in the operands) with
+  // the new ids.
+  void RemapOperands(ir::BasicBlock* BB);
+
+  // Copy the whole body of the loop, all blocks dominated by the |loop| header
+  // and not dominated by the |loop| merge. The copied body will be linked to by
+  // the old |loop| continue block and the new body will link to the |loop|
+  // header via the new continue block. |eliminate_conditions| is used to decid
+  // whether or not to fold all the condition blocks other than the last one.
+  void CopyBody(ir::Loop* loop, bool eliminate_conditions);
+
+  // Copy a given |block_to_copy| in the |loop| and record the mapping of the
+  // old/new ids. |preserve_instructions| determines whether or not the method
+  // will modify (other than result_id) instructions which are copied.
+  void CopyBasicBlock(ir::Loop* loop, const ir::BasicBlock* block_to_copy,
+                      bool preserve_instructions);
+
+  // A pointer to the IRContext. Used to add/remove instructions and for usedef
+  // chains.
   ir::IRContext* ir_context_;
 
   ir::Function& function_;
@@ -226,6 +264,7 @@ void LoopUnrollerUtilsImpl::Unroll(ir::Loop* loop, int factor) {
   // The first condition block is perserved until now so it can be copied.
   FoldConditionBlock(loop->GetConditionBlock(), 1);
 
+  // TODO: Remove this constant.
   uint32_t phi_index = 5;
   uint32_t phi_variable =
       state_.previous_phi_->GetSingleWordOperand(phi_index - 1);
@@ -256,18 +295,25 @@ void LoopUnrollerUtilsImpl::FullyUnroll(ir::Loop* loop) {
       ir::IRContext::Analysis::kAnalysisNone);
 }
 
+// Copy a given basic block, give it a new result_id, and store the new block
+// and the id mapping in the state.
 void LoopUnrollerUtilsImpl::CopyBasicBlock(ir::Loop* loop,
-                                           const ir::BasicBlock* itr) {
+                                           const ir::BasicBlock* itr,
+                                           bool preserve_instructions) {
+  // Clone the block exactly, including the IDs.
   ir::BasicBlock* BB = itr->Clone(ir_context_);
+
   // Assign each result a new unique ID and keep a mapping of the old ids to
   // the new ones.
-  RemapResultIDs(loop, BB);
+  AssignNewResultIds(BB, loop);
 
   // If this is the continue block we are copying.
   if (itr == loop->GetLatchBlock()) {
     // Make the OpLoopMerge point to this block for the continue.
-    ir::Instruction* merge_inst = loop->GetHeaderBlock()->GetLoopMergeInst();
-    merge_inst->SetInOperand(1, {BB->id()});
+    if (!preserve_instructions) {
+      ir::Instruction* merge_inst = loop->GetHeaderBlock()->GetLoopMergeInst();
+      merge_inst->SetInOperand(1, {BB->id()});
+    }
 
     state_.new_continue_block = BB;
   }
@@ -276,9 +322,11 @@ void LoopUnrollerUtilsImpl::CopyBasicBlock(ir::Loop* loop,
   if (itr == loop->GetHeaderBlock()) {
     state_.new_header_block = BB;
 
-    // Remove the loop merge instruction if it exists.
-    ir::Instruction* merge_inst = BB->GetLoopMergeInst();
-    if (merge_inst) ir_context_->KillInst(merge_inst);
+    if (!preserve_instructions) {
+      // Remove the loop merge instruction if it exists.
+      ir::Instruction* merge_inst = BB->GetLoopMergeInst();
+      if (merge_inst) ir_context_->KillInst(merge_inst);
+    }
   }
 
   // If this is the condition block we are copying.
@@ -302,7 +350,7 @@ void LoopUnrollerUtilsImpl::CopyBody(ir::Loop* loop,
   // Copy each basic block in the loop, give them new ids, and save state
   // information.
   for (const ir::BasicBlock* itr : basic_blocks) {
-    CopyBasicBlock(loop, itr);
+    CopyBasicBlock(loop, itr, false);
   }
 
   // Set the previous continue block to point to the new header.
@@ -331,7 +379,7 @@ void LoopUnrollerUtilsImpl::CopyBody(ir::Loop* loop,
   state_.new_inst[loop->GetHeaderBlock()->id()] = loop->GetHeaderBlock()->id();
 
   for (auto& pair : state_.new_blocks) {
-    RemapOperands(pair.second, state_.new_inst);
+    RemapOperands(pair.second);
   }
 
   // Swap the state so the new is now the previous.
@@ -372,6 +420,7 @@ void LoopUnrollerUtilsImpl::CloseUnrolledLoop(ir::Loop* loop) {
       0, {loop->GetMergeBlock()->id()});
 }
 
+// Uses the first loop to create a copy of the loop with new IDs.
 ir::Loop LoopUnrollerUtilsImpl::DuplicateLoop(ir::Loop* old_loop) {
   const ir::Loop::BasicBlockOrderedListTy& basic_blocks =
       old_loop->GetOrderedBlocks();
@@ -382,38 +431,25 @@ ir::Loop LoopUnrollerUtilsImpl::DuplicateLoop(ir::Loop* old_loop) {
       new_loop.GetOrderedBlocksRef();
 
   new_block_order.clear();
+
+  // Copy every block in the old loop.
   for (const ir::BasicBlock* itr : basic_blocks) {
-    // Copy the loop basicblock.
-    ir::BasicBlock* BB = itr->Clone(ir_context_);
-    // Assign each result a new unique ID and keep a mapping of the old ids to
-    // the new ones.
-    RemapResultIDs(old_loop, BB);
-
-    if (itr == old_loop->GetLatchBlock()) {
-      new_loop.SetLatchBlock(BB);
-    }
-
-    if (itr == old_loop->GetHeaderBlock()) {
-      new_loop.SetHeaderBlock(BB);
-      new_loop.SetInductionVariable(state_.new_phi);
-    }
-
-    if (itr == old_loop->GetConditionBlock()) {
-      new_loop.SetConditionBlock(BB);
-    }
-
-    blocks_to_add_.push_back(std::unique_ptr<ir::BasicBlock>(BB));
-    state_.new_blocks[itr->id()] = BB;
-    new_block_order.push_back(BB);
+    CopyBasicBlock(old_loop, itr, true);
+    new_block_order.push_back(blocks_to_add_.back().get());
   }
 
+  new_loop.SetLatchBlock(state_.new_continue_block);
+  new_loop.SetHeaderBlock(state_.new_header_block);
+  new_loop.SetInductionVariable(state_.new_phi);
+  new_loop.SetConditionBlock(state_.new_condition_block);
+
   ir::BasicBlock* new_merge = old_loop->GetMergeBlock()->Clone(ir_context_);
-  RemapResultIDs(old_loop, new_merge);
+  AssignNewResultIds(new_merge, old_loop);
   state_.new_blocks[old_loop->GetMergeBlock()->id()] = new_merge;
   new_loop.SetMergeBlock(new_merge);
 
   for (auto& pair : state_.new_blocks) {
-    RemapOperands(pair.second, state_.new_inst);
+    RemapOperands(pair.second);
   }
 
   return new_loop;
@@ -430,7 +466,10 @@ void LoopUnrollerUtilsImpl::AddBlocksToFunction(
   }
 }
 
-void LoopUnrollerUtilsImpl::RemapResultIDs(ir::Loop* loop, ir::BasicBlock* BB) {
+// Assign all result_ids in |BB| instructions to new IDs and preserve the
+// mapping of new ids to old ones.
+void LoopUnrollerUtilsImpl::AssignNewResultIds(ir::BasicBlock* BB,
+                                               const ir::Loop* loop) {
   // Label instructions aren't covered by normal traversal of the
   // instructions.
   uint32_t new_label_id = ir_context_->TakeNextId();
@@ -461,12 +500,13 @@ void LoopUnrollerUtilsImpl::RemapResultIDs(ir::Loop* loop, ir::BasicBlock* BB) {
   }
 }
 
-void LoopUnrollerUtilsImpl::RemapOperands(
-    ir::BasicBlock* BB, std::map<uint32_t, uint32_t>& new_inst) {
+// For all instructions in |BB| check if the operands used are from a copied
+// instruction and if so swap out the operand for the copy of it.
+void LoopUnrollerUtilsImpl::RemapOperands(ir::BasicBlock* BB) {
   for (ir::Instruction& inst : *BB) {
-    auto remap_operands_to_new_ids = [&new_inst](uint32_t* id) {
-      auto itr = new_inst.find(*id);
-      if (itr != new_inst.end()) {
+    auto remap_operands_to_new_ids = [this](uint32_t* id) {
+      auto itr = state_.new_inst.find(*id);
+      if (itr != state_.new_inst.end()) {
         *id = itr->second;
       }
     };

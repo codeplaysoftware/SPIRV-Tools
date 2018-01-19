@@ -189,6 +189,10 @@ class Loop {
   }
 
   ir::Instruction* GetInductionVariable() { return induction_variable_; }
+  const ir::Instruction* GetInductionVariable() const {
+    return induction_variable_;
+  }
+
   void SetInductionVariable(ir::Instruction* induction) {
     induction_variable_ = induction;
   }
@@ -254,10 +258,6 @@ class Loop {
 
   // Populates the set of basic blocks in the loop.
   void FindLoopBasicBlocks();
-
-  bool IsLoopInvariant(const ir::Instruction* variable_inst);
-
-  bool IsConstantOnEntryToLoop(const ir::Instruction* variable_inst) const;
 };
 
 // Loop descriptions class for a given function.
