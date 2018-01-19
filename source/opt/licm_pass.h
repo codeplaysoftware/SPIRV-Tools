@@ -68,7 +68,8 @@ class LICMPass : public Pass {
   // Tests if an individual instruction is invariant
   bool IsInvariant(ir::Loop& loop,
                    std::unordered_map<ir::Instruction*, bool>* invariants_map,
-                   ir::Instruction* inst, const uint32_t ignore_id);
+                   ir::Instruction* inst, std::vector<ir::Instruction*>*,
+                   const uint32_t ignore_id);
 
   ir::IRContext* ir_context;
   opt::DominatorAnalysis* dom_analysis;

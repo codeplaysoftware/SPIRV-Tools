@@ -192,14 +192,20 @@ bool LICMPass::FindLoopInvariants(ir::Loop& loop,
   }
 
   std::vector<ir::BasicBlock*> valid_blocks = FindValidBasicBlocks(loop);
+  std::vector<ir::Instruction*> visited_insts{};
   for (ir::BasicBlock* block : valid_blocks) {
     for (ir::Instruction& inst : *block) {
       if (invariants_map.find(&inst) == invariants_map.end()) {
-        if (IsInvariant(loop, &invariants_map, &inst, 0)) {
+        visited_insts.clear();
+        if (IsInvariant(loop, &invariants_map, &inst, &visited_insts, 0)) {
           invariants_map.emplace(std::make_pair(&inst, true));
           invars.push_back(&inst);
         } else {
           invariants_map.emplace(std::make_pair(&inst, false));
+        }
+      } else {
+        if (invariants_map.find(&inst)->second == true) {
+          invars.push_back(&inst);
         }
       }
     }
@@ -215,7 +221,15 @@ bool LICMPass::FindLoopInvariants(ir::Loop& loop,
 
 bool LICMPass::IsInvariant(
     ir::Loop& loop, std::unordered_map<ir::Instruction*, bool>* invariants_map,
-    ir::Instruction* inst, const uint32_t ignore_id) {
+    ir::Instruction* inst, std::vector<ir::Instruction*>* visited_insts,
+    const uint32_t ignore_id) {
+  // We must create a collection of all instructions visited so far, as to avoid
+  // infinite looping when a chain of instructions leads back to it's start.
+  // When we find an instruction already in this collection during examination
+  // of another instructions uses or users we must not examine it again, as we
+  // are already in the process of examining it
+  visited_insts->push_back(inst);
+
   // The following always are or are not invariant
   // TODO(Alexander) OpStore is invariant iff
   // the stored value is invariant wrt the loop
@@ -225,19 +239,179 @@ bool LICMPass::IsInvariant(
   // that store is variant, i.e. a += 1 == a = a + 1
   // TODO(Alexander) Branches to the loop header, continue, merge
   switch (inst->opcode()) {
-    // Barriers are variant
+    // We do not check side effects from function calls, so they must be marked
+    // as variant
+    case SpvOpFunctionCall:
+    // We do not check side effects from barriers, so they must be marked as
+    // variant
     case SpvOpControlBarrier:
     case SpvOpMemoryBarrier:
     case SpvOpMemoryNamedBarrier:
-    // Phi instructions are variant
+    case SpvOpTypeNamedBarrier:
+    case SpvOpNamedBarrierInitialize:
+    // We do not check side effects from atomics, so they must be marked as
+    // variant
+    case SpvOpAtomicLoad:
+    case SpvOpAtomicStore:
+    case SpvOpAtomicExchange:
+    case SpvOpAtomicCompareExchange:
+    case SpvOpAtomicCompareExchangeWeak:
+    case SpvOpAtomicIIncrement:
+    case SpvOpAtomicIDecrement:
+    case SpvOpAtomicIAdd:
+    case SpvOpAtomicISub:
+    case SpvOpAtomicSMin:
+    case SpvOpAtomicUMin:
+    case SpvOpAtomicSMax:
+    case SpvOpAtomicUMax:
+    case SpvOpAtomicAnd:
+    case SpvOpAtomicOr:
+    case SpvOpAtomicXor:
+    case SpvOpAtomicFlagTestAndSet:
+    case SpvOpAtomicFlagClear:
+    // We do not check side effects from Phi, so they must be marked as variant
     case SpvOpPhi:
-    // Function calls are variant
-    case SpvOpFunctionCall:
+    // Unreachables can not be moved, so must be marked variant
+    case SpvOpUnreachable:
     // Nops can't be moved
     case SpvOpNop:
+    // We don't deal with extension specific Ops
+    case SpvOpSubgroupBallotKHR:
+    case SpvOpSubgroupFirstInvocationKHR:
+    case SpvOpSubgroupAllKHR:
+    case SpvOpSubgroupAnyKHR:
+    case SpvOpSubgroupAllEqualKHR:
+    case SpvOpSubgroupReadInvocationKHR:
+    case SpvOpGroupIAddNonUniformAMD:
+    case SpvOpGroupFAddNonUniformAMD:
+    case SpvOpGroupFMinNonUniformAMD:
+    case SpvOpGroupUMinNonUniformAMD:
+    case SpvOpGroupSMinNonUniformAMD:
+    case SpvOpGroupFMaxNonUniformAMD:
+    case SpvOpGroupUMaxNonUniformAMD:
+    case SpvOpGroupSMaxNonUniformAMD:
+    case SpvOpFragmentMaskFetchAMD:
+    case SpvOpFragmentFetchAMD:
+    case SpvOpSubgroupShuffleINTEL:
+    case SpvOpSubgroupShuffleDownINTEL:
+    case SpvOpSubgroupShuffleUpINTEL:
+    case SpvOpSubgroupShuffleXorINTEL:
+    case SpvOpSubgroupBlockReadINTEL:
+    case SpvOpSubgroupBlockWriteINTEL:
+    case SpvOpSubgroupImageBlockReadINTEL:
+    case SpvOpSubgroupImageBlockWriteINTEL:
+    // We don't currently deal with instructions which require capabilities
+    // Requires capability pipes
+    case SpvOpReadPipe:
+    case SpvOpWritePipe:
+    case SpvOpReservedReadPipe:
+    case SpvOpReservedWritePipe:
+    case SpvOpReserveReadPipePackets:
+    case SpvOpReserveWritePipePackets:
+    case SpvOpCommitReadPipe:
+    case SpvOpCommitWritePipe:
+    case SpvOpIsValidReserveId:
+    case SpvOpGetNumPipePackets:
+    case SpvOpGetMaxPipePackets:
+    case SpvOpGroupReserveReadPipePackets:
+    case SpvOpGroupReserveWritePipePackets:
+    case SpvOpGroupCommitReadPipe:
+    case SpvOpGroupCommitWritePipe:
+    // Requires capability PipeStorage
+    case SpvOpTypePipeStorage:
+    case SpvOpConstantPipeStorage:
+    case SpvOpCreatePipeFromPipeStorage:
+    // Requires capability DeviceEnqueue
+    case SpvOpEnqueueMarker:
+    case SpvOpEnqueueKernel:
+    case SpvOpGetKernelNDrangeSubGroupCount:
+    case SpvOpGetKernelNDrangeMaxSubGroupSize:
+    case SpvOpGetKernelWorkGroupSize:
+    case SpvOpGetKernelPreferredWorkGroupSizeMultiple:
+    case SpvOpRetainEvent:
+    case SpvOpReleaseEvent:
+    case SpvOpCreateUserEvent:
+    case SpvOpIsValidEvent:
+    case SpvOpSetUserEventStatus:
+    case SpvOpCaptureEventProfilingInfo:
+    case SpvOpGetDefaultQueue:
+    case SpvOpBuildNDRange:
+    // Requires capability SparseResidency
+    case SpvOpImageSparseSampleImplicitLod:
+    case SpvOpImageSparseSampleExplicitLod:
+    case SpvOpImageSparseSampleDrefImplicitLod:
+    case SpvOpImageSparseSampleDrefExplicitLod:
+    case SpvOpImageSparseSampleProjImplicitLod:
+    case SpvOpImageSparseSampleProjExplicitLod:
+    case SpvOpImageSparseSampleProjDrefImplicitLod:
+    case SpvOpImageSparseSampleProjDrefExplicitLod:
+    case SpvOpImageSparseFetch:
+    case SpvOpImageSparseGather:
+    case SpvOpImageSparseDrefGather:
+    case SpvOpImageSparseTexelsResident:
+    case SpvOpImageSparseRead:
+    // Requires capability Shader
+    case SpvOpBitFieldInsert:
+    case SpvOpBitFieldSExtract:
+    case SpvOpBitFieldUExtract:
+    case SpvOpBitReverse:
+    case SpvOpDPdx:
+    case SpvOpDPdy:
+    case SpvOpFwidth:
+    case SpvOpKill:
+    case SpvOpImageSampleImplicitLod:
+    case SpvOpImageSampleDrefImplicitLod:
+    case SpvOpImageSampleDrefExplicitLod:
+    case SpvOpImageSampleProjImplicitLod:
+    case SpvOpImageSampleProjExplicitLod:
+    case SpvOpImageSampleProjDrefImplicitLod:
+    case SpvOpImageSampleProjDrefExplicitLod:
+    case SpvOpImageGather:
+    case SpvOpImageDrefGather:
+    // Requires capability DerivativeControl
+    case SpvOpDPdxFine:
+    case SpvOpDPdyFine:
+    case SpvOpFwidthFine:
+    case SpvOpDPdxCoarse:
+    case SpvOpDPdyCoarse:
+    case SpvOpFwidthCoarse:
+    // Requires capability Geometry
+    case SpvOpEmitVertex:
+    case SpvOpEndPrimitive:
+    case SpvOpEmitStreamVertex:
+    case SpvOpEndStreamPrimitive:
+    // Requires capability SubgroupDispatch
+    case SpvOpGetKernelLocalSizeForSubgroupCount:
+    case SpvOpGetKernelMaxNumSubgroups:
+    // Requires capability Kernel
+    case SpvOpGenericPtrMemSemantics:
+    case SpvOpImageQueryFormat:
+    case SpvOpImageQueryOrder:
+    // Requires capability ImageQuery
+    case SpvOpImageQueryLod:
+    // Requires capabilities Kernel, ImageQuery
+    case SpvOpImageQuerySizeLod:
+    case SpvOpImageQuerySize:
+    case SpvOpImageQueryLevels:
+    case SpvOpImageQuerySamples:
+    // Requires capability Matrix
+    case SpvOpTranspose:
+    // While SpvOpMax is not a valid instruction, it must be included in this
+    // switch
+    case SpvOpMax:
       invariants_map->emplace(std::make_pair(inst, false));
       return false;
-    // Type definitions and OpName are invariant
+    // The following are always invariant
+    case SpvOpExtension:
+    case SpvOpExtInstImport:
+    case SpvOpExtInst:
+    case SpvOpMemoryModel:
+    case SpvOpEntryPoint:
+    case SpvOpExecutionMode:
+    case SpvOpExecutionModeId:
+    case SpvOpCapability:
+    case SpvOpModuleProcessed:
+    // Type definitions are invariant
     case SpvOpTypeVoid:
     case SpvOpTypeBool:
     case SpvOpTypeInt:
@@ -259,13 +433,188 @@ bool LICMPass::IsInvariant(
     case SpvOpTypeQueue:
     case SpvOpTypePipe:
     case SpvOpTypeForwardPointer:
+    // Constants are invariant
     case SpvOpConstantTrue:
     case SpvOpConstantFalse:
     case SpvOpConstant:
+    case SpvOpConstantComposite:
+    case SpvOpConstantSampler:
+    case SpvOpConstantNull:
+    case SpvOpSpecConstantTrue:
+    case SpvOpSpecConstantFalse:
+    case SpvOpSpecConstant:
+    case SpvOpSpecConstantComposite:
+    case SpvOpSpecConstantOp:
+    // The start and end of a function are invariant, as they can not occur
+    // inside a loop but may be seen from a chain of instructions
+    case SpvOpFunction:
+    case SpvOpFunctionEnd:
+    // Decorates are invariant
+    case SpvOpDecorate:
+    case SpvOpMemberDecorate:
+    case SpvOpDecorationGroup:
+    case SpvOpGroupDecorate:
+    case SpvOpGroupMemberDecorate:
+    case SpvOpDecorateId:
+    // Names are invariant
     case SpvOpName:
+    case SpvOpMemberName:
       invariants_map->emplace(std::make_pair(inst, true));
       return true;
-    default:
+    // The following Ops can be proved variant or invariant
+    case SpvOpVariable:
+    case SpvOpImageTexelPointer:
+    case SpvOpLoad:
+    case SpvOpStore:
+    case SpvOpCopyMemory:
+    case SpvOpCopyMemorySized:
+    case SpvOpAccessChain:
+    case SpvOpInBoundsAccessChain:
+    case SpvOpPtrAccessChain:
+    case SpvOpArrayLength:
+    case SpvOpInBoundsPtrAccessChain:
+    // Vectors
+    case SpvOpVectorExtractDynamic:
+    case SpvOpVectorInsertDynamic:
+    case SpvOpVectorShuffle:
+    // Composites
+    case SpvOpCompositeConstruct:
+    case SpvOpCompositeExtract:
+    case SpvOpCompositeInsert:
+    // Copy
+    case SpvOpCopyObject:
+    // Images
+    case SpvOpSampledImage:
+    case SpvOpImageSampleExplicitLod:
+    case SpvOpImageFetch:
+    case SpvOpImageRead:
+    case SpvOpImageWrite:
+    case SpvOpImage:
+    // Conversions
+    case SpvOpConvertFToU:
+    case SpvOpConvertFToS:
+    case SpvOpConvertSToF:
+    case SpvOpConvertUToF:
+    case SpvOpUConvert:
+    case SpvOpSConvert:
+    case SpvOpFConvert:
+    case SpvOpQuantizeToF16:
+    case SpvOpConvertPtrToU:
+    case SpvOpSatConvertSToU:
+    case SpvOpSatConvertUToS:
+    case SpvOpConvertUToPtr:
+    case SpvOpPtrCastToGeneric:
+    case SpvOpGenericCastToPtr:
+    case SpvOpGenericCastToPtrExplicit:
+    case SpvOpBitcast:
+    // Arithmetic
+    case SpvOpSNegate:
+    case SpvOpFNegate:
+    case SpvOpIAdd:
+    case SpvOpFAdd:
+    case SpvOpISub:
+    case SpvOpFSub:
+    case SpvOpIMul:
+    case SpvOpFMul:
+    case SpvOpUDiv:
+    case SpvOpSDiv:
+    case SpvOpFDiv:
+    case SpvOpUMod:
+    case SpvOpSRem:
+    case SpvOpSMod:
+    case SpvOpFRem:
+    case SpvOpFMod:
+    case SpvOpVectorTimesScalar:
+    case SpvOpMatrixTimesScalar:
+    case SpvOpVectorTimesMatrix:
+    case SpvOpMatrixTimesVector:
+    case SpvOpMatrixTimesMatrix:
+    case SpvOpOuterProduct:
+    case SpvOpDot:
+    case SpvOpIAddCarry:
+    case SpvOpISubBorrow:
+    case SpvOpUMulExtended:
+    case SpvOpSMulExtended:
+    case SpvOpAny:
+    case SpvOpAll:
+    case SpvOpIsNan:
+    case SpvOpIsInf:
+    case SpvOpIsFinite:
+    case SpvOpIsNormal:
+    case SpvOpSignBitSet:
+    case SpvOpLessOrGreater:
+    case SpvOpOrdered:
+    case SpvOpUnordered:
+    case SpvOpLogicalEqual:
+    case SpvOpLogicalNotEqual:
+    case SpvOpLogicalOr:
+    case SpvOpLogicalAnd:
+    case SpvOpLogicalNot:
+    case SpvOpSelect:
+    case SpvOpIEqual:
+    case SpvOpINotEqual:
+    case SpvOpUGreaterThan:
+    case SpvOpSGreaterThan:
+    case SpvOpUGreaterThanEqual:
+    case SpvOpSGreaterThanEqual:
+    case SpvOpULessThan:
+    case SpvOpSLessThan:
+    case SpvOpULessThanEqual:
+    case SpvOpSLessThanEqual:
+    case SpvOpFOrdEqual:
+    case SpvOpFUnordEqual:
+    case SpvOpFOrdNotEqual:
+    case SpvOpFUnordNotEqual:
+    case SpvOpFOrdLessThan:
+    case SpvOpFUnordLessThan:
+    case SpvOpFOrdGreaterThan:
+    case SpvOpFUnordGreaterThan:
+    case SpvOpFOrdLessThanEqual:
+    case SpvOpFUnordLessThanEqual:
+    case SpvOpFOrdGreaterThanEqual:
+    case SpvOpFUnordGreaterThanEqual:
+    case SpvOpShiftRightLogical:
+    case SpvOpShiftRightArithmetic:
+    case SpvOpShiftLeftLogical:
+    case SpvOpBitwiseOr:
+    case SpvOpBitwiseXor:
+    case SpvOpBitwiseAnd:
+    case SpvOpNot:
+    case SpvOpBitCount:
+    case SpvOpSizeOf:
+    // Some control Ops can be invariant
+    case SpvOpLoopMerge:
+    case SpvOpSelectionMerge:
+    case SpvOpLabel:
+    case SpvOpBranch:
+    case SpvOpBranchConditional:
+    case SpvOpSwitch:
+    case SpvOpReturn:
+    case SpvOpReturnValue:
+    case SpvOpLifetimeStart:
+    case SpvOpLifetimeStop:
+    case SpvOpGroupAsyncCopy:
+    case SpvOpGroupWaitEvents:
+    case SpvOpGroupAll:
+    case SpvOpGroupAny:
+    case SpvOpGroupBroadcast:
+    case SpvOpGroupIAdd:
+    case SpvOpGroupFAdd:
+    case SpvOpGroupFMin:
+    case SpvOpGroupUMin:
+    case SpvOpGroupSMin:
+    case SpvOpGroupFMax:
+    case SpvOpGroupUMax:
+    case SpvOpGroupSMax:
+
+    case SpvOpUndef:
+    case SpvOpSourceContinued:
+    case SpvOpSource:
+    case SpvOpSourceExtension:
+    case SpvOpString:
+    case SpvOpLine:
+    case SpvOpFunctionParameter:
+    case SpvOpNoLine:
       break;
   }
 
@@ -296,16 +645,23 @@ bool LICMPass::IsInvariant(
         // later
         switch (inst->opcode()) {
           case SpvOpStore:
-            invariant &=
-                IsInvariant(loop, invariants_map, next_inst, inst->unique_id());
-            break;
+            if (std::find(visited_insts->begin(), visited_insts->end(),
+                          next_inst) == visited_insts->end()) {
+              invariant &= IsInvariant(loop, invariants_map, next_inst,
+                                       visited_insts, inst->unique_id());
+              break;
+            }
           // Stops infinite looping when a variable is redeclared
           case SpvOpVariable:
             if (*--operand.words.end() == inst->result_id()) {
               break;
             }
           default:
-            invariant &= IsInvariant(loop, invariants_map, next_inst, 0);
+            if (std::find(visited_insts->begin(), visited_insts->end(),
+                          next_inst) == visited_insts->end()) {
+              invariant &= IsInvariant(loop, invariants_map, next_inst,
+                                       visited_insts, 0);
+            }
         }
     }
   }
@@ -337,11 +693,14 @@ bool LICMPass::IsInvariant(
       invariant = false;
     }
     // Check if the current instruction is used by a variant.
-    auto user_map_val = invariants_map->find(user);
-    if (loop.IsInsideLoop(user) && user_map_val != invariants_map->end() &&
-        user_map_val->second == false) {
-      invariant = false;
-      break;
+    if (std::find(visited_insts->begin(), visited_insts->end(), user) ==
+        visited_insts->end()) {
+      bool is_user_variant =
+          !IsInvariant(loop, invariants_map, user, visited_insts, ignore_id);
+      if (loop.IsInsideLoop(user) && is_user_variant) {
+        invariant = false;
+        break;
+      }
     }
   }
 
