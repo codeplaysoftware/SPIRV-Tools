@@ -83,8 +83,24 @@ class Loop {
   // Returns the loop pre-header.
   inline const BasicBlock* GetPreHeaderBlock() const { return loop_preheader_; }
 
+  // Returns the loop pre-header, if there is no suitable preheader it will be
+  // created.
+  BasicBlock* GetOrCreatePreHeaderBlock(ir::IRContext* context);
+
   // Returns true if this loop contains any nested loops.
   inline bool HasNestedLoops() const { return nested_loops_.size() != 0; }
+
+  // Fills |exit_blocks| with all basic blocks that are not in the loop and has
+  // at least one predecessor in the loop.
+  void GetExitBlocks(IRContext* context,
+                     std::unordered_set<uint32_t>* exit_blocks) const;
+
+  // Fills |exit_blocks| with all basic blocks that are not in the loop and has
+  // at least one predecessor in the loop.
+  void GetExitBlocks(IRContext* context,
+                     std::unordered_set<BasicBlock*>* exit_blocks) const;
+
+  bool IsLCSSA(IRContext* context) const;
 
   // Returns the depth of this loop in the loop nest.
   // The outer-most loop has a depth of 1.

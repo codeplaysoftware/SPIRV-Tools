@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "opt/loop_descriptor.h"
+#include <algorithm>
 #include <iostream>
 #include <type_traits>
 #include <utility>
@@ -24,6 +25,41 @@
 #include "opt/loop_descriptor.h"
 #include "opt/make_unique.h"
 #include "opt/tree_iterator.h"
+
+namespace {
+
+// Helper traits to handle to generically do the transition from id to
+// BasicBlock or keep the id.
+template <typename BBTy>
+struct IdToBasicBlockTrait {
+  static inline uint32_t Get(spvtools::ir::CFG*, uint32_t bb_id) {
+    return bb_id;
+  }
+};
+
+template <>
+struct IdToBasicBlockTrait<spvtools::ir::BasicBlock*> {
+  static inline spvtools::ir::BasicBlock* Get(spvtools::ir::CFG* cfg,
+                                              uint32_t bb_id) {
+    return cfg->block(bb_id);
+  }
+};
+
+template <typename BBTy>
+static void GetExitBlocksImpl(spvtools::ir::IRContext* context,
+                              const spvtools::ir::Loop* loop,
+                              std::unordered_set<BBTy>* exit_blocks) {
+  spvtools::ir::CFG* cfg = context->cfg();
+
+  for (uint32_t bb_id : loop->GetBlocks()) {
+    const spvtools::ir::BasicBlock* bb = cfg->block(bb_id);
+    bb->ForEachSuccessorLabel([exit_blocks, cfg, loop](uint32_t succ) {
+      if (loop->IsInsideLoop(succ))
+        exit_blocks->insert(IdToBasicBlockTrait<BBTy>::Get(cfg, succ));
+    });
+  }
+}
+}
 
 namespace spvtools {
 namespace ir {
@@ -82,6 +118,103 @@ BasicBlock* Loop::FindLoopPreheader(IRContext* ir_context,
   return nullptr;
 }
 
+BasicBlock* Loop::GetOrCreatePreHeaderBlock(ir::IRContext* context) {
+  if (!loop_preheader_) {
+    Function* fn = loop_header_->GetParent();
+    Function::iterator header_it =
+        std::find_if(fn->begin(), fn->end(),
+                     [this](BasicBlock& bb) { return &bb == loop_header_; });
+    assert(header_it != fn->end());
+
+    loop_preheader_ = &*header_it.InsertBefore(std::unique_ptr<ir::BasicBlock>(
+        new ir::BasicBlock(std::unique_ptr<ir::Instruction>(new ir::Instruction(
+            context, SpvOpLabel, 0, context->TakeNextUniqueId(), {})))));
+    uint32_t loop_preheader_id = loop_preheader_->id();
+
+    opt::InstructionBuilder<ir::IRContext::kAnalysisDefUse> builder(
+        context, loop_preheader_);
+    loop_header_->ForEachPhiInst([&builder, this](Instruction* phi) {
+      std::vector<uint32_t> new_phi_ops;
+      std::vector<uint32_t> header_phi_ops;
+      for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
+        uint32_t def_id = phi->GetSingleWordInOperand(i);
+        uint32_t branch_id = phi->GetSingleWordInOperand(i + 1);
+        if (IsInsideLoop(branch_id)) {
+          header_phi_ops.push_back(def_id);
+          header_phi_ops.push_back(branch_id);
+        } else {
+          new_phi_ops.push_back(def_id);
+          new_phi_ops.push_back(branch_id);
+        }
+
+        Instruction* exit_phi = builder.AddPhi(phi->type_id(), new_phi_ops);
+        // Build the new incoming branch.
+        header_phi_ops.push_back(exit_phi->result_id());
+        header_phi_ops.push_back(loop_header_->id());
+        // Rewrite operands.
+        uint32_t idx = 0;
+        for (; idx < header_phi_ops.size(); idx++)
+          phi->SetInOperand(idx, {header_phi_ops[idx]});
+        // Remove extra operands, from last to first (more efficient).
+        for (uint32_t j = phi->NumInOperands() - 1; j >= idx; j--)
+          phi->RemoveInOperand(j);
+      }
+    });
+    builder.AddBranch(loop_header_->id());
+
+    CFG* cfg = context->cfg();
+    for (uint32_t pred_id : cfg->preds(loop_header_->id())) {
+      if (IsInsideLoop(pred_id)) continue;
+      BasicBlock* pred = cfg->block(pred_id);
+      pred->ForEachSuccessorLabel([this, loop_preheader_id](uint32_t* id) {
+        if (*id == loop_header_->id()) *id = loop_preheader_id;
+      });
+    }
+
+    context->InvalidateAnalysesExceptFor(
+        ir::IRContext::Analysis::kAnalysisDefUse);
+  }
+
+  return loop_preheader_;
+}
+
+void Loop::GetExitBlocks(
+    IRContext* context,
+    std::unordered_set<ir::BasicBlock*>* exit_blocks) const {
+  GetExitBlocksImpl(context, this, exit_blocks);
+}
+
+void Loop::GetExitBlocks(IRContext* context,
+                         std::unordered_set<uint32_t>* exit_blocks) const {
+  GetExitBlocksImpl(context, this, exit_blocks);
+}
+
+bool Loop::IsLCSSA(IRContext* context) const {
+  ir::CFG* cfg = context->cfg();
+  opt::analysis::DefUseManager* def_use_mgr = context->get_def_use_mgr();
+
+  std::unordered_set<uint32_t> exit_blocks;
+  GetExitBlocks(context, &exit_blocks);
+
+  for (uint32_t bb_id : GetBlocks()) {
+    for (Instruction& insn : *cfg->block(bb_id)) {
+      // All uses must be either:
+      //  - In the loop;
+      //  - In an exit block and a phi instruction.
+      if (!def_use_mgr->WhileEachUser(
+              &insn, [&exit_blocks, context, this](ir::Instruction* use) {
+                BasicBlock* parent = context->get_instr_block(use);
+                assert(parent && "Invalid analysis");
+                if (IsInsideLoop(parent)) return true;
+                if (use->opcode() != SpvOpPhi) return false;
+                return !!exit_blocks.count(parent->id());
+              }))
+        return false;
+    }
+  }
+  return true;
+}
+
 static inline bool DominatesAnExit(
     ir::BasicBlock* bb, const std::unordered_set<ir::BasicBlock*>& exits,
     const opt::DominatorTree& dom_tree) {
@@ -97,23 +230,20 @@ void LoopUtils::CreateLoopDedicateExits() {
   // Gather the set of basic block that are not in this loop and have at least
   // one predecessor in the loop and one not in the loop.
   std::unordered_set<ir::BasicBlock*> exit_bb_set;
-  for (uint32_t bb_id : loop_->GetBlocks()) {
-    ir::BasicBlock* bb = cfg.block(bb_id);
-    bb->ForEachSuccessorLabel([&exit_bb_set, &cfg, this](uint32_t succ) {
-      if (!loop_->IsInsideLoop(succ)) {
-        ir::BasicBlock* exit = cfg.block(succ);
-        for (uint32_t pred : cfg.preds(exit->id()))
-          if (!loop_->IsInsideLoop(pred)) {
-            exit_bb_set.insert(exit);
-            return;
-          }
-      }
-    });
-  }
+  loop_->GetExitBlocks(context_, &exit_bb_set);
 
+  bool made_change = false;
   // For each block, we create a new one that gather all branches from
   // the loop and fall into the block.
   for (ir::BasicBlock* non_dedicate : exit_bb_set) {
+    const std::vector<uint32_t>& bb_pred = cfg.preds(non_dedicate->id());
+    // If all the predecessors are in the loop then ignore it.
+    if (std::all_of(
+            bb_pred.begin(), bb_pred.end(),
+            [&bb_pred, this](uint32_t id) { return loop_->IsInsideLoop(id); }))
+      continue;
+
+    made_change = true;
     // Create the dedicate exit basic block.
     function->AddBasicBlock(std::unique_ptr<ir::BasicBlock>(
         new ir::BasicBlock(std::unique_ptr<ir::Instruction>(new ir::Instruction(
@@ -121,7 +251,7 @@ void LoopUtils::CreateLoopDedicateExits() {
     ir::BasicBlock& exit = *(--function->end());
 
     // Patch the phi nodes.
-    opt::InstructionBuilder<> builder(context_, exit.begin());
+    opt::InstructionBuilder<> builder(context_, &*exit.begin());
     non_dedicate->ForEachPhiInst([&builder, &exit, this](Instruction* phi) {
       // New phi operands for this instruction.
       std::vector<uint32_t> new_phi_op;
@@ -158,7 +288,7 @@ void LoopUtils::CreateLoopDedicateExits() {
 
   // If we modified something, we need to rebuild the analysis.
   // FIXME: This could be done on the fly.
-  if (!exit_bb_set.empty()) {
+  if (made_change) {
     context_->InvalidateAnalysesExceptFor(
         ir::IRContext::Analysis::kAnalysisNone);
   }
@@ -260,7 +390,7 @@ class LCSSARewriter {
     // We have at least 2 definitions to merge, so we need a phi instruction.
     ir::BasicBlock* block = cfg_->block(bb_id);
 
-    opt::InstructionBuilder<> builder(context_, block->begin());
+    opt::InstructionBuilder<> builder(context_, &*block->begin());
     incoming_phi = builder.AddPhi(insn_type_, incomings);
 
     rewrited.insert(incoming_phi);
@@ -320,7 +450,7 @@ void LoopUtils::MakeLoopClosedSSA() {
               // |inst| does not escape through |e_bb|.
               if (!dom_tree.Dominates(e_bb, use_parent)) continue;
 
-              opt::InstructionBuilder<> builder(context_, e_bb->begin());
+              opt::InstructionBuilder<> builder(context_, &*e_bb->begin());
               const std::vector<uint32_t>& preds = cfg.preds(e_bb->id());
               std::vector<uint32_t> incoming;
               incoming.reserve(preds.size() * 2);
