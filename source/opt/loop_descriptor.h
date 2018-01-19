@@ -193,7 +193,7 @@ class Loop {
     induction_variable_ = induction;
   }
 
-  bool HasUnrollLoopControl() const { return loop_control_unroll_hint_; }
+  bool HasUnrollLoopControl() const { return loop_control_unroll_hint_ == 1; }
 
  private:
   // The block which marks the start of the loop.
@@ -227,9 +227,8 @@ class Loop {
   opt::DominatorAnalysis* dom_analysis_;
   ir::Instruction* induction_variable_;
   int32_t iterations_;
+  int32_t loop_control_unroll_hint_;
   bool could_find_num_iterations_;
-
-  bool loop_control_unroll_hint_;
 
   // Sets the parent loop of this loop, that is, a loop which contains this loop
   // as a nested child loop.

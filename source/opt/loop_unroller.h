@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef LIBSPIRV_OPT_LOOP_UNROLLER_H_
-#define LIBSPIRV_OPT_LOOP_UNROLLER_H_
+#ifndef SOURCE_OPT_LOOP_UNROLLER_H_
+#define SOURCE_OPT_LOOP_UNROLLER_H_
 #include <list>
+#include <memory>
+#include <vector>
 #include "opt/loop_descriptor.h"
-#include "pass.h"
+#include "opt/pass.h"
 
 namespace spvtools {
 namespace opt {
@@ -30,35 +32,21 @@ class LoopUtils {
         ir_context_(context),
         loop_descriptor_(&function_) {}
 
-  ir::BasicBlock* CopyLoop(ir::Loop& loop, ir::BasicBlock* preheader);
+  ir::BasicBlock* CopyLoop(ir::Loop* loop, ir::BasicBlock* preheader);
 
-  ir::Loop DuplicateLoop(ir::Loop& loop);
-  bool PartiallyUnroll(ir::Loop& loop, int factor);
+  ir::Loop DuplicateLoop(ir::Loop* loop);
+  bool PartiallyUnroll(ir::Loop* loop, int factor);
 
-  bool FullyUnroll(ir::Loop& loop);
+  bool FullyUnroll(ir::Loop* loop);
 
   ir::LoopDescriptor& GetLoopDescriptor() { return loop_descriptor_; }
 
-  bool CanEliminateConditionBlocks(ir::Loop& loop) const;
-
-  bool CanPerformPartialUnroll(ir::Loop& loop);
+  bool CanPerformPartialUnroll(ir::Loop* loop);
 
  private:
   ir::Function& function_;
   ir::IRContext* ir_context_;
   ir::LoopDescriptor loop_descriptor_;
-
-  ir::Instruction* previous_phi_;
-  ir::BasicBlock* previous_continue_block_;
-  ir::BasicBlock* previous_condition_block_;
-
-  void PartiallyUnrollImpl(ir::Loop& loop, int factor);
-  void PartiallyUnrollImpl(ir::Loop& loop, int factor,
-                           ir::Instruction* induction,
-                           ir::BasicBlock* initial_continue_block,
-                           ir::BasicBlock* initial_condition);
-
-  bool PartiallyUnrollUnevenFactor(ir::Loop& loop, int factor);
 };
 
 class LoopUnroller : public Pass {
@@ -75,4 +63,5 @@ class LoopUnroller : public Pass {
 
 }  // namespace opt
 }  // namespace spvtools
-#endif
+
+#endif  // SOURCE_OPT_LOOP_UNROLLER_H_

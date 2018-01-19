@@ -14,6 +14,8 @@
 
 #include "opt/loop_unroller.h"
 #include <map>
+#include <memory>
+#include <utility>
 
 namespace spvtools {
 namespace opt {
@@ -37,10 +39,10 @@ struct LoopStateUtil {
   }
 
   // Initialize from the loop descriptor class.
-  LoopStateUtil(ir::Loop& loop) {
-    previous_phi_ = loop.GetInductionVariable();
-    previous_continue_block_ = loop.GetLatchBlock();
-    previous_condition_block_ = loop.GetConditionBlock();
+  explicit LoopStateUtil(ir::Loop* loop) {
+    previous_phi_ = loop->GetInductionVariable();
+    previous_continue_block_ = loop->GetLatchBlock();
+    previous_condition_block_ = loop->GetConditionBlock();
 
     new_phi = nullptr;
     new_continue_block = nullptr;
@@ -101,28 +103,28 @@ class LoopUnrollerUtilsImpl {
   LoopUnrollerUtilsImpl(ir::IRContext* c, ir::Function& function)
       : ir_context_(c), function_(function) {}
 
-  void RemapResultIDs(ir::Loop& loop, ir::BasicBlock* BB);
+  void RemapResultIDs(ir::Loop* loop, ir::BasicBlock* BB);
 
   void RemapOperands(ir::BasicBlock* BB,
                      std::map<uint32_t, uint32_t>& new_inst);
 
-  void CopyBody(ir::Loop& loop, bool eliminate_conditions);
+  void CopyBody(ir::Loop* loop, bool eliminate_conditions);
 
-  void PartiallyUnroll(ir::Loop&, int);
+  void PartiallyUnroll(ir::Loop*, int);
 
-  void PartiallyUnrollUnevenFactor(ir::Loop& loop, int factor);
+  void PartiallyUnrollUnevenFactor(ir::Loop* loop, int factor);
 
-  void FullyUnroll(ir::Loop& loop);
+  void FullyUnroll(ir::Loop* loop);
 
   uint32_t GetPhiVariableID(const ir::Instruction* phi, uint32_t label) const;
-  void CloseUnrolledLoop(ir::Loop& loop);
+  void CloseUnrolledLoop(ir::Loop* loop);
   void FoldConditionBlock(ir::BasicBlock* condtion_block, uint32_t new_target);
 
   void AddBlocksToFunction(const ir::BasicBlock* insert_point);
 
-  ir::Loop DuplicateLoop(ir::Loop& old_loop);
+  ir::Loop DuplicateLoop(ir::Loop* old_loop);
 
-  void CopyBasicBlock(ir::Loop& loop, const ir::BasicBlock* itr);
+  void CopyBasicBlock(ir::Loop* loop, const ir::BasicBlock* itr);
 
  private:
   ir::IRContext* ir_context_;
@@ -130,10 +132,10 @@ class LoopUnrollerUtilsImpl {
   ir::Function& function_;
   LoopUtils::BasicBlockListTy blocks_to_add_;
   LoopStateUtil state_;
-  void Unroll(ir::Loop&, int);
+  void Unroll(ir::Loop*, int);
 };
 
-void LoopUnrollerUtilsImpl::PartiallyUnrollUnevenFactor(ir::Loop& loop,
+void LoopUnrollerUtilsImpl::PartiallyUnrollUnevenFactor(ir::Loop* loop,
                                                         int factor) {
   // Create a new merge block for the first loop.
   std::unique_ptr<ir::Instruction> new_label{new ir::Instruction(
@@ -157,14 +159,14 @@ void LoopUnrollerUtilsImpl::PartiallyUnrollUnevenFactor(ir::Loop& loop,
       {{SPV_OPERAND_TYPE_ID, {new_loop.GetHeaderBlock()->id()}}})};
   blocks_to_add_[0]->AddInstruction(std::move(new_branch));
 
-  Unroll(new_loop, factor - 1);
+  Unroll(&new_loop, factor - 1);
 
   analysis::Integer uint(32, false);
   uint32_t uint32_type_id =
       ir_context_->get_type_mgr()->GetTypeInstruction(&uint);
 
   // We need to account for the initial body when calculating the remainder.
-  uint32_t remainder = loop.NumIterations() % (factor + 1);
+  uint32_t remainder = loop->NumIterations() % (factor + 1);
 
   // Construct the constant.
   uint32_t resultId = ir_context_->TakeNextId();
@@ -187,10 +189,10 @@ void LoopUnrollerUtilsImpl::PartiallyUnrollUnevenFactor(ir::Loop& loop,
       ir_context_->get_def_use_mgr();
 
   // Add the blocks to the function.
-  AddBlocksToFunction(loop.GetMergeBlock());
+  AddBlocksToFunction(loop->GetMergeBlock());
 
   // Update the condition check.
-  ir::Instruction& conditional_branch = *loop.GetConditionBlock()->tail();
+  ir::Instruction& conditional_branch = *loop->GetConditionBlock()->tail();
   ir::Instruction* condition_check =
       def_use_manager->GetDef(conditional_branch.GetSingleWordOperand(0));
   condition_check->SetInOperand(1, {constant_id});
@@ -203,33 +205,33 @@ void LoopUnrollerUtilsImpl::PartiallyUnrollUnevenFactor(ir::Loop& loop,
   ir_context_->InvalidateAnalysesExceptFor(
       ir::IRContext::Analysis::kAnalysisNone);
 
-  ir_context_->ReplaceAllUsesWith(loop.GetMergeBlock()->id(), new_merge_id);
+  ir_context_->ReplaceAllUsesWith(loop->GetMergeBlock()->id(), new_merge_id);
 }
 
 // Duplicate the |loop| body |factor| number of times while keeping the loop
 // backedge intact.
-void LoopUnrollerUtilsImpl::PartiallyUnroll(ir::Loop& loop, int factor) {
+void LoopUnrollerUtilsImpl::PartiallyUnroll(ir::Loop* loop, int factor) {
   Unroll(loop, factor);
-  AddBlocksToFunction(loop.GetMergeBlock());
+  AddBlocksToFunction(loop->GetMergeBlock());
 }
 
 // Duplicate the |loop| body |factor| number of times while keeping the loop
 // backedge intact.
-void LoopUnrollerUtilsImpl::Unroll(ir::Loop& loop, int factor) {
+void LoopUnrollerUtilsImpl::Unroll(ir::Loop* loop, int factor) {
   state_ = LoopStateUtil{loop};
   for (int i = 0; i < factor; ++i) {
     CopyBody(loop, true);
   }
 
   // The first condition block is perserved until now so it can be copied.
-  FoldConditionBlock(loop.GetConditionBlock(), 1);
+  FoldConditionBlock(loop->GetConditionBlock(), 1);
 
   uint32_t phi_index = 5;
   uint32_t phi_variable =
       state_.previous_phi_->GetSingleWordOperand(phi_index - 1);
   uint32_t phi_label = state_.previous_phi_->GetSingleWordOperand(phi_index);
 
-  ir::Instruction* original_phi = loop.GetInductionVariable();
+  ir::Instruction* original_phi = loop->GetInductionVariable();
 
   // SetInOperands are offset by two.
   // TODO: Work out why.
@@ -237,8 +239,8 @@ void LoopUnrollerUtilsImpl::Unroll(ir::Loop& loop, int factor) {
   original_phi->SetInOperand(phi_index - 2, {phi_label});
 }
 
-void LoopUnrollerUtilsImpl::FullyUnroll(ir::Loop& loop) {
-  Unroll(loop, loop.NumIterations() - 1);
+void LoopUnrollerUtilsImpl::FullyUnroll(ir::Loop* loop) {
+  Unroll(loop, loop->NumIterations() - 1);
 
   // When fully unrolling we can eliminate the last condition block.
   FoldConditionBlock(state_.previous_condition_block_, 1);
@@ -247,14 +249,14 @@ void LoopUnrollerUtilsImpl::FullyUnroll(ir::Loop& loop) {
   CloseUnrolledLoop(loop);
 
   // Add the blocks to the function.
-  AddBlocksToFunction(loop.GetMergeBlock());
+  AddBlocksToFunction(loop->GetMergeBlock());
 
   // Invalidate all analyses.
   ir_context_->InvalidateAnalysesExceptFor(
       ir::IRContext::Analysis::kAnalysisNone);
 }
 
-void LoopUnrollerUtilsImpl::CopyBasicBlock(ir::Loop& loop,
+void LoopUnrollerUtilsImpl::CopyBasicBlock(ir::Loop* loop,
                                            const ir::BasicBlock* itr) {
   ir::BasicBlock* BB = itr->Clone(ir_context_);
   // Assign each result a new unique ID and keep a mapping of the old ids to
@@ -262,16 +264,16 @@ void LoopUnrollerUtilsImpl::CopyBasicBlock(ir::Loop& loop,
   RemapResultIDs(loop, BB);
 
   // If this is the continue block we are copying.
-  if (itr == loop.GetLatchBlock()) {
+  if (itr == loop->GetLatchBlock()) {
     // Make the OpLoopMerge point to this block for the continue.
-    ir::Instruction* merge_inst = loop.GetHeaderBlock()->GetLoopMergeInst();
+    ir::Instruction* merge_inst = loop->GetHeaderBlock()->GetLoopMergeInst();
     merge_inst->SetInOperand(1, {BB->id()});
 
     state_.new_continue_block = BB;
   }
 
   // If this is the header block we are copying.
-  if (itr == loop.GetHeaderBlock()) {
+  if (itr == loop->GetHeaderBlock()) {
     state_.new_header_block = BB;
 
     // Remove the loop merge instruction if it exists.
@@ -280,7 +282,7 @@ void LoopUnrollerUtilsImpl::CopyBasicBlock(ir::Loop& loop,
   }
 
   // If this is the condition block we are copying.
-  if (itr == loop.GetConditionBlock()) {
+  if (itr == loop->GetConditionBlock()) {
     state_.new_condition_block = BB;
   }
 
@@ -292,10 +294,10 @@ void LoopUnrollerUtilsImpl::CopyBasicBlock(ir::Loop& loop,
   state_.new_blocks[itr->id()] = BB;
 }
 
-void LoopUnrollerUtilsImpl::CopyBody(ir::Loop& loop,
+void LoopUnrollerUtilsImpl::CopyBody(ir::Loop* loop,
                                      bool eliminate_conditions) {
   const ir::Loop::BasicBlockOrderedListTy& basic_blocks =
-      loop.GetOrderedBlocks();
+      loop->GetOrderedBlocks();
 
   // Copy each basic block in the loop, give them new ids, and save state
   // information.
@@ -312,21 +314,21 @@ void LoopUnrollerUtilsImpl::CopyBody(ir::Loop& loop,
   // header and not the actual loop header. The last continue block in the loop
   // should always be a backedge to the global header.
   ir::Instruction& new_continue_branch = *state_.new_continue_block->tail();
-  new_continue_branch.SetInOperand(0, {loop.GetHeaderBlock()->id()});
+  new_continue_branch.SetInOperand(0, {loop->GetHeaderBlock()->id()});
 
   // Update references to the old phi node with the actual variable.
-  const ir::Instruction* induction = loop.GetInductionVariable();
+  const ir::Instruction* induction = loop->GetInductionVariable();
   state_.new_inst[induction->result_id()] = GetPhiVariableID(
       state_.previous_phi_, state_.previous_continue_block_->id());
 
   if (eliminate_conditions &&
-      state_.previous_condition_block_ != loop.GetConditionBlock()) {
+      state_.previous_condition_block_ != loop->GetConditionBlock()) {
     FoldConditionBlock(state_.previous_condition_block_, 1);
   }
 
   // Only reference to the header block is the backedge in the latch block,
   // don't change this.
-  state_.new_inst[loop.GetHeaderBlock()->id()] = loop.GetHeaderBlock()->id();
+  state_.new_inst[loop->GetHeaderBlock()->id()] = loop->GetHeaderBlock()->id();
 
   for (auto& pair : state_.new_blocks) {
     RemapOperands(pair.second, state_.new_inst);
@@ -359,22 +361,22 @@ void LoopUnrollerUtilsImpl::FoldConditionBlock(ir::BasicBlock* condition_block,
   condition_block->AddInstruction(std::move(new_branch));
 }
 
-void LoopUnrollerUtilsImpl::CloseUnrolledLoop(ir::Loop& loop) {
+void LoopUnrollerUtilsImpl::CloseUnrolledLoop(ir::Loop* loop) {
   // Remove the OpLoopMerge instruction from the function.
-  ir::Instruction* merge_inst = loop.GetHeaderBlock()->GetLoopMergeInst();
+  ir::Instruction* merge_inst = loop->GetHeaderBlock()->GetLoopMergeInst();
   ir_context_->KillInst(merge_inst);
 
   // Remove the final backedge to the header and make it point instead to the
   // merge block.
   state_.previous_continue_block_->tail()->SetInOperand(
-      0, {loop.GetMergeBlock()->id()});
+      0, {loop->GetMergeBlock()->id()});
 }
 
-ir::Loop LoopUnrollerUtilsImpl::DuplicateLoop(ir::Loop& old_loop) {
+ir::Loop LoopUnrollerUtilsImpl::DuplicateLoop(ir::Loop* old_loop) {
   const ir::Loop::BasicBlockOrderedListTy& basic_blocks =
-      old_loop.GetOrderedBlocks();
+      old_loop->GetOrderedBlocks();
 
-  ir::Loop new_loop = old_loop;
+  ir::Loop new_loop = *old_loop;
 
   ir::Loop::BasicBlockOrderedListTy& new_block_order =
       new_loop.GetOrderedBlocksRef();
@@ -387,16 +389,16 @@ ir::Loop LoopUnrollerUtilsImpl::DuplicateLoop(ir::Loop& old_loop) {
     // the new ones.
     RemapResultIDs(old_loop, BB);
 
-    if (itr == old_loop.GetLatchBlock()) {
+    if (itr == old_loop->GetLatchBlock()) {
       new_loop.SetLatchBlock(BB);
     }
 
-    if (itr == old_loop.GetHeaderBlock()) {
+    if (itr == old_loop->GetHeaderBlock()) {
       new_loop.SetHeaderBlock(BB);
       new_loop.SetInductionVariable(state_.new_phi);
     }
 
-    if (itr == old_loop.GetConditionBlock()) {
+    if (itr == old_loop->GetConditionBlock()) {
       new_loop.SetConditionBlock(BB);
     }
 
@@ -405,9 +407,9 @@ ir::Loop LoopUnrollerUtilsImpl::DuplicateLoop(ir::Loop& old_loop) {
     new_block_order.push_back(BB);
   }
 
-  ir::BasicBlock* new_merge = old_loop.GetMergeBlock()->Clone(ir_context_);
+  ir::BasicBlock* new_merge = old_loop->GetMergeBlock()->Clone(ir_context_);
   RemapResultIDs(old_loop, new_merge);
-  state_.new_blocks[old_loop.GetMergeBlock()->id()] = new_merge;
+  state_.new_blocks[old_loop->GetMergeBlock()->id()] = new_merge;
   new_loop.SetMergeBlock(new_merge);
 
   for (auto& pair : state_.new_blocks) {
@@ -428,7 +430,7 @@ void LoopUnrollerUtilsImpl::AddBlocksToFunction(
   }
 }
 
-void LoopUnrollerUtilsImpl::RemapResultIDs(ir::Loop& loop, ir::BasicBlock* BB) {
+void LoopUnrollerUtilsImpl::RemapResultIDs(ir::Loop* loop, ir::BasicBlock* BB) {
   // Label instructions aren't covered by normal traversal of the
   // instructions.
   uint32_t new_label_id = ir_context_->TakeNextId();
@@ -452,7 +454,7 @@ void LoopUnrollerUtilsImpl::RemapResultIDs(ir::Loop& loop, ir::BasicBlock* BB) {
     state_.new_inst[old_id] = inst.result_id();
 
     // Check if this instruction is the induction variable.
-    if (loop.GetInductionVariable()->result_id() == old_id) {
+    if (loop->GetInductionVariable()->result_id() == old_id) {
       // Save a pointer to the new copy of it.
       state_.new_phi = &inst;
     }
@@ -481,22 +483,22 @@ void LoopUnrollerUtilsImpl::RemapOperands(
  *
  * */
 
-bool LoopUtils::CanPerformPartialUnroll(ir::Loop& loop) {
+bool LoopUtils::CanPerformPartialUnroll(ir::Loop* loop) {
   // Loop descriptor must be able to extract the induction variable.
-  const ir::Instruction* induction = loop.GetInductionVariable();
+  const ir::Instruction* induction = loop->GetInductionVariable();
   if (!induction || induction->opcode() != SpvOpPhi) return false;
 
   return true;
 }
 
-bool LoopUtils::PartiallyUnroll(ir::Loop& loop, int factor) {
+bool LoopUtils::PartiallyUnroll(ir::Loop* loop, int factor) {
   if (factor == 0 || !CanPerformPartialUnroll(loop)) return false;
 
   LoopUnrollerUtilsImpl unroller{ir_context_, function_};
 
   // If the unrolling factor is larger than or the same size as the loop just
   // fully unroll the loop.
-  if (factor >= loop.NumIterations() - 1) {
+  if (factor >= loop->NumIterations() - 1) {
     unroller.FullyUnroll(loop);
     return true;
   }
@@ -504,7 +506,7 @@ bool LoopUtils::PartiallyUnroll(ir::Loop& loop, int factor) {
   // If the loop unrolling factor is an uneven number of iterations we need to
   // let run the loop for the uneven part then let it branch into the unrolled
   // remaining part.
-  if (loop.NumIterations() % (factor + 1) != 0) {
+  if (loop->NumIterations() % (factor + 1) != 0) {
     unroller.PartiallyUnrollUnevenFactor(loop, factor);
   } else {
     unroller.PartiallyUnroll(loop, factor);
@@ -512,7 +514,7 @@ bool LoopUtils::PartiallyUnroll(ir::Loop& loop, int factor) {
   return true;
 }
 
-bool LoopUtils::FullyUnroll(ir::Loop& loop) {
+bool LoopUtils::FullyUnroll(ir::Loop* loop) {
   LoopUnrollerUtilsImpl unroller{ir_context_, function_};
 
   unroller.FullyUnroll(loop);
@@ -534,11 +536,11 @@ Pass::Status LoopUnroller::Process(ir::IRContext* c) {
 
     for (auto& loop : loop_utils.GetLoopDescriptor()) {
       if (!loop.HasUnrollLoopControl() ||
-          !loop_utils.CanPerformPartialUnroll(loop)) {
+          !loop_utils.CanPerformPartialUnroll(&loop)) {
         continue;
       }
 
-      loop_utils.FullyUnroll(loop);
+      loop_utils.FullyUnroll(&loop);
       changed = true;
     }
   }

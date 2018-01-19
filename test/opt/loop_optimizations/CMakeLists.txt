@@ -30,3 +30,4 @@ add_spvtools_unittest(TARGET loop_unroll_simple
         unroll_simple.cpp
     LIBS SPIRV-Tools-opt
 )
+
