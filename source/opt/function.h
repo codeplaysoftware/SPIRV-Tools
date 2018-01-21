@@ -61,10 +61,6 @@ class Function {
   // Appends a basic block to this function.
   inline void AddBasicBlock(std::unique_ptr<BasicBlock> b);
 
-  // Adds a basic block to a function after |insert_point|.
-  inline void AddBasicBlock(const ir::BasicBlock* insert_point,
-                            std::unique_ptr<BasicBlock> b);
-
   // Saves the given function end instruction.
   inline void SetFunctionEnd(std::unique_ptr<Instruction> end_inst);
 
@@ -129,18 +125,6 @@ inline void Function::AddParameter(std::unique_ptr<Instruction> p) {
 
 inline void Function::AddBasicBlock(std::unique_ptr<BasicBlock> b) {
   blocks_.emplace_back(std::move(b));
-}
-
-inline void Function::AddBasicBlock(const ir::BasicBlock* insert_point,
-                                    std::unique_ptr<BasicBlock> b) {
-  auto itr =
-      std::find_if(blocks_.begin(), blocks_.end(),
-                   [insert_point](const std::unique_ptr<BasicBlock>& val) {
-                     return val->id() == insert_point->id();
-                   });
-  if (itr != blocks_.end()) {
-    blocks_.insert(itr, std::move(b));
-  }
 }
 
 inline void Function::SetFunctionEnd(std::unique_ptr<Instruction> end_inst) {

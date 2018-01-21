@@ -265,10 +265,24 @@ bool Loop::GetInductionInitValue(const ir::Instruction* variable_inst,
   return GetConstant(constant, value);
 }
 
+ir::BasicBlock* Loop::FindConditionBlock(const ir::Function& function) {
+  ir::BasicBlock* condition_block = nullptr;
+
+  opt::DominatorAnalysis* dom_analysis =
+      ir_context_->GetDominatorAnalysis(&function, *ir_context_->cfg());
+  ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_merge_);
+
+  if (!bb) return nullptr;
+
+  if (bb->ctail()->opcode() == SpvOpBranchConditional) {
+    condition_block = bb;
+  }
+
+  return condition_block;
+}
+
 void Loop::FindInductionVariable() {
-  // Get the basic block which branches to the merge block.
   ir::BasicBlock* bb = dom_analysis_->ImmediateDominator(loop_merge_);
-  loop_condition_block_ = bb;
 
   // Find the branch instruction.
   const ir::Instruction& branch_inst = *bb->ctail();

@@ -35,7 +35,7 @@ class LoopUtils {
   ir::BasicBlock* CopyLoop(ir::Loop* loop, ir::BasicBlock* preheader);
 
   ir::Loop DuplicateLoop(ir::Loop* loop);
-  bool PartiallyUnroll(ir::Loop* loop, int factor);
+  bool PartiallyUnroll(ir::Loop* loop, size_t factor);
 
   bool FullyUnroll(ir::Loop* loop);
 

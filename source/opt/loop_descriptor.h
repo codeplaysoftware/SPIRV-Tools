@@ -80,14 +80,6 @@ class Loop {
   inline const BasicBlock* GetMergeBlock() const { return loop_merge_; }
   void SetMergeBlock(ir::BasicBlock* new_merge) { loop_merge_ = new_merge; }
 
-  inline BasicBlock* GetConditionBlock() { return loop_condition_block_; }
-  inline const BasicBlock* GetConditionBlock() const {
-    return loop_condition_block_;
-  }
-  void SetConditionBlock(ir::BasicBlock* new_condition) {
-    loop_condition_block_ = new_condition;
-  }
-
   // Returns the loop pre-header, nullptr means that the loop predecessor does
   // not qualify as a preheader.
   // The preheader is the unique predecessor that:
@@ -183,7 +175,7 @@ class Loop {
     return could_find_num_iterations_;
   }
 
-  int32_t NumIterations() const {
+  size_t NumIterations() const {
     assert(could_find_num_iterations_);
     return iterations_;
   }
@@ -199,6 +191,8 @@ class Loop {
 
   bool HasUnrollLoopControl() const { return loop_control_unroll_hint_ == 1; }
 
+  ir::BasicBlock* FindConditionBlock(const ir::Function& function);
+
  private:
   // The block which marks the start of the loop.
   BasicBlock* loop_header_;
@@ -211,9 +205,6 @@ class Loop {
 
   // The block immediately before the loop header.
   BasicBlock* loop_preheader_;
-
-  // The block containing the conditional branch to either loop start or end.
-  BasicBlock* loop_condition_block_;
 
   // A parent of a loop is the loop which contains it as a nested child loop.
   Loop* parent_;
@@ -230,7 +221,7 @@ class Loop {
   ir::IRContext* ir_context_;
   opt::DominatorAnalysis* dom_analysis_;
   ir::Instruction* induction_variable_;
-  int32_t iterations_;
+  size_t iterations_;
   int32_t loop_control_unroll_hint_;
   bool could_find_num_iterations_;
 
