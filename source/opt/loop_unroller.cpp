@@ -17,6 +17,44 @@
 #include <memory>
 #include <utility>
 
+// Implements loop util unrolling functionality for fully and partially
+// unrolling loops. Given a factor it will duplicate the loop that many times,
+// appending each one to the end of the old loop and removing backedges, to
+// create a new unrolled loop.
+//
+// 1 - User calls LoopUtils::FullyUnroll or LoopUtils::PartiallyUnroll with a
+// loop they wish to unroll. LoopUtils::CanPerformPartialUnroll is used to
+// validate that a given loop can be unrolled. That method (alongwith the the
+// constructor of loop) checks that the IR is in the expected canonicalised
+// format.
+//
+// 2 - The LoopUtils methods create a LoopUnrollerUtilsImpl object to actually
+// perform the unrolling. This implements helper methods to copy the loop basic
+// blocks and remap the ids of instructions used inside them.
+//
+// 3 - The core of LoopUnrollerUtilsImpl is the Unroll method, this method
+// actually performs the loop duplication. It does this by creating a
+// LoopUnrollState object and then copying the loop as given by the factor
+// parameter. The LoopUnrollState object retains the state of the unroller
+// between the loop body copies as each iteration needs information on the last
+// to adjust the phi induction variable, adjust the OpLoopMerge instruction in
+// the main loop header, and change the previous continue block to point to the
+// new header and the new continue block to the main loop header.
+//
+// 4 - If the loop is to be fully unrolled then it is simply closed after step
+// 3, with the OpLoopMerge being deleted, the backedge removed, and the
+// condition blocks folded.
+//
+// 5 - If it is being partially unrolled: if the unrolling factor leaves the
+// loop with an even number of bodies with respect to the number of loop
+// iterations then step 3 is all that is needed. If it is uneven then we need to
+// duplicate the loop completely and unroll the duplicated loop to cover the
+// "uneven"  part and adjust the first loop to cover only the "even" part. For
+// instance if you request an unroll factor of 2 on a loop with 10 iterations
+// then copying the body twice would leave you with three bodies in the loop
+// while  the loop still iterates over each 4 times. So we make two loops one
+// iterating once then a second loop of three iterating 3 times.
+//
 namespace spvtools {
 namespace opt {
 namespace {
@@ -295,6 +333,8 @@ void LoopUnrollerUtilsImpl::Unroll(ir::Loop* loop, size_t factor) {
 }
 
 void LoopUnrollerUtilsImpl::FullyUnroll(ir::Loop* loop) {
+  // We unroll the loop by number of iterations - 1, this is due to the fact
+  // that a loop already has one iteration.
   Unroll(loop, loop->NumIterations() - 1);
 
   // When fully unrolling we can eliminate the last condition block.
@@ -476,9 +516,13 @@ void LoopUnrollerUtilsImpl::AddBlocksToFunction(
        basic_block_iterator != function_.end(); ++basic_block_iterator) {
     if (basic_block_iterator->id() == insert_point->id()) {
       basic_block_iterator.InsertBefore(&blocks_to_add_);
-      break;
+      return;
     }
   }
+
+  assert(
+      false &&
+      "Could not add basic blocks to function as insert point was not found.");
 }
 
 // Assign all result_ids in |BB| instructions to new IDs and preserve the
@@ -557,6 +601,7 @@ bool LoopUtils::CanPerformPartialUnroll(ir::Loop* loop) {
 bool LoopUtils::PartiallyUnroll(ir::Loop* loop, size_t factor) {
   if (factor == 0 || !CanPerformPartialUnroll(loop)) return false;
 
+  // Create the unroller utility.
   LoopUnrollerUtilsImpl unroller{ir_context_, function_};
 
   // If the unrolling factor is larger than or the same size as the loop just
@@ -568,8 +613,9 @@ bool LoopUtils::PartiallyUnroll(ir::Loop* loop, size_t factor) {
 
   // If the loop unrolling factor is an uneven number of iterations we need to
   // let run the loop for the uneven part then let it branch into the unrolled
-  // remaining part.
-  if (loop->NumIterations() % (factor + 1) != 0) {
+  // remaining part. We add add one when calucating the remainder to take into
+  // account the one iteration already in the loop.
+  if (loop->NumIterations() % (factor + 1u) != 0) {
     unroller.PartiallyUnrollUnevenFactor(loop, factor);
   } else {
     unroller.PartiallyUnroll(loop, factor);
