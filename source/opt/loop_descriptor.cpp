@@ -75,9 +75,6 @@ BasicBlock* Loop::FindLoopPreheader(IRContext* ir_context,
   // So we have a unique basic block that can enter this loop.
   // If this loop is the unique successor of this block, then it is a loop
   // preheader.
-  //
-  // FIXME: if instead of having "ForEach*" functions, we had iterators, the
-  // standard library would be usable...
   bool is_preheader = true;
   uint32_t loop_header_id = loop_header_->id();
   loop_pred->ForEachSuccessorLabel(
@@ -98,14 +95,10 @@ void LoopDescriptor::PopulateList(const Function* f) {
 
   loops_.clear();
 
-  // Traverse the tree and apply the above functor to find all the OpLoopMerge
-  // instructions. Instructions will be in domination order of BasicBlocks.
-  // However, this does not mean that dominance is implied by the order of
-  // loop_merge_inst you still need to check dominance between each block
-  // manually.
+
+  // Post-order traversal of the dominator tree to find all the OpLoopMerge
+  // instructions.
   opt::DominatorTree& dom_tree = dom_analysis->GetDomTree();
-  // Post-order traversal of the dominator tree: inner loop will be inserted
-  // first.
   for (opt::DominatorTreeNode& node :
        ir::make_range(dom_tree.post_begin(), dom_tree.post_end())) {
     Instruction* merge_inst = node.bb_->GetLoopMergeInst();

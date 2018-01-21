@@ -143,8 +143,8 @@ class Loop {
     return loop_basic_blocks_.count(bb_id);
   }
 
-  // Returns true if the parent basic block of |inst| belong to this loop.
-  inline bool IsLoopInvariant(Instruction* inst) const {
+  // Returns true if the instruction |inst| is inside this loop.
+  inline bool IsInsideLoop(Instruction* inst) const {
     const BasicBlock* parent_block = inst->context()->get_instr_block(inst);
     if (!parent_block) return true;
     return IsInsideLoop(parent_block);
