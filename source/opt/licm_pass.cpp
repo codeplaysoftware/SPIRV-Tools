@@ -197,7 +197,7 @@ bool LICMPass::FindLoopInvariants(ir::Loop& loop,
     for (ir::Instruction& inst : *block) {
       if (invariants_map.find(&inst) == invariants_map.end()) {
         visited_insts.clear();
-        if (IsInvariant(loop, &invariants_map, &inst, &visited_insts, 0)) {
+        if (IsInvariant(loop, &inst, &invariants_map, &visited_insts)) {
           invariants_map.emplace(std::make_pair(&inst, true));
           invars.push_back(&inst);
         } else {
@@ -220,15 +220,21 @@ bool LICMPass::FindLoopInvariants(ir::Loop& loop,
 }
 
 bool LICMPass::IsInvariant(
-    ir::Loop& loop, std::unordered_map<ir::Instruction*, bool>* invariants_map,
-    ir::Instruction* inst, std::vector<ir::Instruction*>* visited_insts,
-    const uint32_t ignore_id) {
+    ir::Loop& loop, ir::Instruction* inst,
+    std::unordered_map<ir::Instruction*, bool>* invariants_map,
+    std::vector<ir::Instruction*>* visited_insts) {
   // We must create a collection of all instructions visited so far, as to avoid
-  // infinite looping when a chain of instructions leads back to it's start.
+  // infinite looping when a chain of instructions leads back to its start.
   // When we find an instruction already in this collection during examination
   // of another instructions uses or users we must not examine it again, as we
   // are already in the process of examining it
   visited_insts->push_back(inst);
+
+  // Check if this instruction has already been calculated
+  auto map_val = invariants_map->find(inst);
+  if (map_val != invariants_map->end()) {
+    return map_val->second;
+  }
 
   // The following always are or are not invariant
   // TODO(Alexander) OpStore is invariant iff
@@ -448,6 +454,7 @@ bool LICMPass::IsInvariant(
     // The start and end of a function are invariant, as they can not occur
     // inside a loop but may be seen from a chain of instructions
     case SpvOpFunction:
+    case SpvOpFunctionParameter:
     case SpvOpFunctionEnd:
     // Decorates are invariant
     case SpvOpDecorate:
@@ -456,16 +463,22 @@ bool LICMPass::IsInvariant(
     case SpvOpGroupDecorate:
     case SpvOpGroupMemberDecorate:
     case SpvOpDecorateId:
-    // Names are invariant
+    // The following Ops have no semantic impact on a module
     case SpvOpName:
     case SpvOpMemberName:
+    case SpvOpSource:
+    case SpvOpSourceContinued:
+    case SpvOpSourceExtension:
+    case SpvOpString:
+    case SpvOpLine:
+    case SpvOpNoLine:
       invariants_map->emplace(std::make_pair(inst, true));
       return true;
     // The following Ops can be proved variant or invariant
     case SpvOpVariable:
+    case SpvOpUndef:
     case SpvOpImageTexelPointer:
     case SpvOpLoad:
-    case SpvOpStore:
     case SpvOpCopyMemory:
     case SpvOpCopyMemorySized:
     case SpvOpAccessChain:
@@ -606,22 +619,27 @@ bool LICMPass::IsInvariant(
     case SpvOpGroupFMax:
     case SpvOpGroupUMax:
     case SpvOpGroupSMax:
-
-    case SpvOpUndef:
-    case SpvOpSourceContinued:
-    case SpvOpSource:
-    case SpvOpSourceExtension:
-    case SpvOpString:
-    case SpvOpLine:
-    case SpvOpFunctionParameter:
-    case SpvOpNoLine:
       break;
-  }
-
-  // Check if this instruction has already been calculated
-  auto map_val = invariants_map->find(inst);
-  if (map_val != invariants_map->end()) {
-    return map_val->second;
+    // OpStore is a special case
+    case SpvOpStore:
+      std::vector<ir::Instruction*> loaded_vars{};
+      std::vector<ir::Instruction*> visited_vars_store_traversal{};
+      ir::Instruction* stored_var = ir_context->get_def_use_mgr()->GetDef(
+          inst->GetOperand(0).words.front());
+      FindLoadedVars(loop, inst, &loaded_vars, &visited_vars_store_traversal);
+      if (std::find(loaded_vars.begin(), loaded_vars.end(), stored_var) !=
+          loaded_vars.end()) {
+        // We are storing to a loaded variable, so this store is variant
+        invariants_map->emplace(std::make_pair(inst, false));
+        return false;
+      }
+      if (!IsStoredOnceInLoop(loop, stored_var)) {
+        // The variable is stored to more than once in the loop, so this store
+        // is variant
+        invariants_map->emplace(std::make_pair(inst, false));
+        return false;
+      }
+      break;
   }
 
   // Recurse though all instructions leading this instruction. If any of them is
@@ -639,31 +657,20 @@ bool LICMPass::IsInvariant(
         uint32_t operand_id = operand.words.front();
         ir::Instruction* next_inst =
             ir_context->get_def_use_mgr()->GetDef(operand_id);
-        // If we are at an OpStore, we should ignore this store when searching
-        // later uses, so we provide the instructions unique_id to avoid
-        // finding ourselves in a loop when searching uses of the instruction
-        // later
-        switch (inst->opcode()) {
-          case SpvOpStore:
-            if (std::find(visited_insts->begin(), visited_insts->end(),
-                          next_inst) == visited_insts->end()) {
-              invariant &= IsInvariant(loop, invariants_map, next_inst,
-                                       visited_insts, inst->unique_id());
-              break;
-            }
-          // Stops infinite looping when a variable is redeclared
-          case SpvOpVariable:
-            if (*--operand.words.end() == inst->result_id()) {
-              break;
-            }
-          default:
-            if (std::find(visited_insts->begin(), visited_insts->end(),
-                          next_inst) == visited_insts->end()) {
-              invariant &= IsInvariant(loop, invariants_map, next_inst,
-                                       visited_insts, 0);
-            }
+
+        if (std::find(visited_insts->begin(), visited_insts->end(),
+                      next_inst) == visited_insts->end()) {
+          invariant &=
+              IsInvariant(loop, next_inst, invariants_map, visited_insts);
         }
     }
+  }
+
+  // The instruction has been proven invariant wrt the loop by one or more of
+  // the instructions leading to it being invariant
+  if (!invariant) {
+    invariants_map->emplace(std::make_pair(inst, invariant));
+    return invariant;
   }
 
   // If this instruction has no invariants leading to it wrt to the loop, we
@@ -685,19 +692,11 @@ bool LICMPass::IsInvariant(
   }
 
   for (ir::Instruction* user : users) {
-    // Check if we restore the value we are using in the loop.
-    if (user->opcode() == SpvOpStore &&
-        user->begin()->words.front() == inst->result_id() &&
-        user->unique_id() != ignore_id) {
-      invariants_map->emplace(std::make_pair(user, false));
-      invariant = false;
-    }
-    // Check if the current instruction is used by a variant.
     if (std::find(visited_insts->begin(), visited_insts->end(), user) ==
         visited_insts->end()) {
-      bool is_user_variant =
-          !IsInvariant(loop, invariants_map, user, visited_insts, ignore_id);
-      if (loop.IsInsideLoop(user) && is_user_variant) {
+      bool is_user_invariant =
+          IsInvariant(loop, user, invariants_map, visited_insts);
+      if (loop.IsInsideLoop(user) && !is_user_invariant) {
         invariant = false;
         break;
       }
@@ -708,6 +707,57 @@ bool LICMPass::IsInvariant(
   invariants_map->emplace(std::make_pair(inst, invariant));
 
   return invariant;
+}
+
+void LICMPass::FindLoadedVars(ir::Loop& loop, ir::Instruction* inst,
+                              std::vector<ir::Instruction*>* loaded_vars,
+                              std::vector<ir::Instruction*>* visited_insts) {
+  if (std::find(visited_insts->begin(), visited_insts->end(), inst) !=
+      visited_insts->end()) {
+    return;
+  }
+  visited_insts->push_back(inst);
+  if (inst->opcode() == SpvOpLoad) {
+    loaded_vars->push_back(ir_context->get_def_use_mgr()->GetDef(
+        inst->GetOperand(2).words.front()));
+    return;
+  }
+  for (ir::Operand& operand : *inst) {
+    switch (operand.type) {
+      default:
+        break;
+      case SPV_OPERAND_TYPE_ID:
+        FindLoadedVars(
+            loop, ir_context->get_def_use_mgr()->GetDef(operand.words.front()),
+            loaded_vars, visited_insts);
+        // These operand types do not lead to further instructions which may be
+        // variant
+        break;
+    }
+  }
+}
+
+bool LICMPass::IsStoredOnceInLoop(ir::Loop& loop, ir::Instruction* inst) {
+  std::vector<ir::Instruction*> users{};
+
+  std::function<void(ir::Instruction*)> collect_users =
+      [&loop, &users](ir::Instruction* user) {
+        if (loop.IsInsideLoop(user)) {
+          users.push_back(user);
+        }
+      };
+
+  ir_context->get_def_use_mgr()->ForEachUser(inst, collect_users);
+
+  int stores = 0;
+  for (ir::Instruction* user : users) {
+    if (user->opcode() == SpvOpStore &&
+        user->begin()->words.front() == inst->result_id()) {
+      ++stores;
+    }
+  }
+
+  return stores == 1;
 }
 
 }  // namespace opt

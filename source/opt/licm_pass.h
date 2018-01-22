@@ -66,10 +66,39 @@ class LICMPass : public Pass {
   bool FindLoopInvariants(ir::Loop& loop, ir::InstructionList* invariants_list);
 
   // Tests if an individual instruction is invariant
-  bool IsInvariant(ir::Loop& loop,
+  // The algorithm used for this is the following.
+  // At all times have a cache of all known instructions and their variance
+  // Keep a list of visited instructions in this traversal
+  // As we enter the method
+  // Add the instruction to the visited list
+  // Check the instruction type, some are known to always be variant or
+  // invariant
+  // If possible, cache the result and return
+  // If at a store, check if we are storing to a variable used in the stored
+  // value
+  //    If we are, this store is variant. Cache the result and return
+  //    Otherwise, we must also check the variable stored to is not stored to
+  //    another time inside the loop. If it is stored to multiple times inside
+  //    the loop, all stores to it are variant
+  // Now we have to iterate through all the operands of the instruction
+  //    Ignore any instructions we have already visited, and check invariance on
+  //    all others using IsInvariant
+  // If no operands are proven to be variant we must evaluate all users
+  // For each user, if it is not already visited call IsInvariant on them
+  // If no user is proved variant, this must be invariant, cache and return.
+  bool IsInvariant(ir::Loop& loop, ir::Instruction* inst,
                    std::unordered_map<ir::Instruction*, bool>* invariants_map,
-                   ir::Instruction* inst, std::vector<ir::Instruction*>*,
-                   const uint32_t ignore_id);
+                   std::vector<ir::Instruction*>* visited_insts);
+
+  // Recurses through all operands of the given instruction, finding each loaded
+  // variable and pushing them to loaded_vars
+  void FindLoadedVars(ir::Loop& loop, ir::Instruction* inst,
+                      std::vector<ir::Instruction*>* loaded_vars,
+                      std::vector<ir::Instruction*>* visited_insts);
+
+  // Checks all uses of the given instruction to see if it is stored to once or
+  // multiple times in the given loop
+  bool IsStoredOnceInLoop(ir::Loop& loop, ir::Instruction* inst);
 
   ir::IRContext* ir_context;
   opt::DominatorAnalysis* dom_analysis;
