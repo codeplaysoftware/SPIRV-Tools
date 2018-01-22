@@ -22,6 +22,7 @@
 #include "../pass_fixture.h"
 #include "../pass_utils.h"
 #include "opt/loop_unroller.h"
+#include "opt/loop_utils.h"
 #include "opt/pass.h"
 
 namespace {

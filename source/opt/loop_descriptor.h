@@ -171,25 +171,16 @@ class Loop {
     }
   }
 
-  bool CouldFindNumberOfIterations() const {
-    return could_find_num_iterations_;
-  }
+  ir::Instruction* FindInductionVariable(const ir::BasicBlock* condition) const;
+  bool FindNumberOfIterations(const ir::Instruction* induction,
+                              const ir::Instruction* condition,
+                              size_t* iterations) const;
 
-  size_t NumIterations() const {
-    assert(could_find_num_iterations_);
-    return iterations_;
+  bool HasUnrollLoopControl() const {
+    assert(loop_header_);
+    assert(loop_header_->GetLoopMergeInst());
+    return loop_header_->GetLoopMergeInst()->GetSingleWordOperand(2) == 1;
   }
-
-  ir::Instruction* GetInductionVariable() { return induction_variable_; }
-  const ir::Instruction* GetInductionVariable() const {
-    return induction_variable_;
-  }
-
-  void SetInductionVariable(ir::Instruction* induction) {
-    induction_variable_ = induction;
-  }
-
-  bool HasUnrollLoopControl() const { return loop_control_unroll_hint_ == 1; }
 
   ir::BasicBlock* FindConditionBlock(const ir::Function& function);
 
@@ -220,10 +211,6 @@ class Loop {
 
   ir::IRContext* ir_context_;
   opt::DominatorAnalysis* dom_analysis_;
-  ir::Instruction* induction_variable_;
-  size_t iterations_;
-  int32_t loop_control_unroll_hint_;
-  bool could_find_num_iterations_;
 
   // Sets the parent loop of this loop, that is, a loop which contains this loop
   // as a nested child loop.
@@ -236,16 +223,6 @@ class Loop {
   // This is only to allow LoopDescriptor::dummy_top_loop_ to add top level
   // loops as child.
   friend class LoopDescriptor;
-
-  void FindInductionVariable();
-  bool GetConstant(const ir::Instruction* inst, uint32_t* value) const;
-  bool GetInductionInitValue(const ir::Instruction* variable_inst,
-                             uint32_t* value) const;
-  ir::Instruction* GetInductionStepOperation(
-      const ir::Instruction* variable_inst) const;
-
-  // Returns an OpVariable instruction or null from a load_inst.
-  ir::Instruction* GetVariable(const ir::Instruction* load_inst);
 
   // Populates the set of basic blocks in the loop.
   void FindLoopBasicBlocks();

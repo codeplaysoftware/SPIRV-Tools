@@ -14,40 +14,10 @@
 
 #ifndef SOURCE_OPT_LOOP_UNROLLER_H_
 #define SOURCE_OPT_LOOP_UNROLLER_H_
-#include <list>
-#include <memory>
-#include <vector>
-#include "opt/loop_descriptor.h"
 #include "opt/pass.h"
 
 namespace spvtools {
 namespace opt {
-
-class LoopUtils {
- public:
-  using BasicBlockListTy = std::vector<std::unique_ptr<ir::BasicBlock>>;
-
-  LoopUtils(ir::Function& function, ir::IRContext* context)
-      : function_(function),
-        ir_context_(context),
-        loop_descriptor_(&function_) {}
-
-  ir::BasicBlock* CopyLoop(ir::Loop* loop, ir::BasicBlock* preheader);
-
-  ir::Loop DuplicateLoop(ir::Loop* loop);
-  bool PartiallyUnroll(ir::Loop* loop, size_t factor);
-
-  bool FullyUnroll(ir::Loop* loop);
-
-  ir::LoopDescriptor& GetLoopDescriptor() { return loop_descriptor_; }
-
-  bool CanPerformPartialUnroll(ir::Loop* loop);
-
- private:
-  ir::Function& function_;
-  ir::IRContext* ir_context_;
-  ir::LoopDescriptor loop_descriptor_;
-};
 
 class LoopUnroller : public Pass {
  public:
