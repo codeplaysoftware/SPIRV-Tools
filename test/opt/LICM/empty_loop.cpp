@@ -38,15 +38,11 @@ using PassClassTest = PassTest<::testing::Test>;
   Generated from the following GLSL
 #version 440 core
 void main(){
-  int a = 1;
   for (int i = 0; i < 10; i++) {
-    if (a == 1) {
-      a = 1;
-    }
   }
 }
 */
-TEST_F(PassClassTest, IfHoist) {
+TEST_F(PassClassTest, EmptyLoopHoist) {
   const std::string before_hoist = R"(OpCapability Shader
 %1 = OpExtInstImport "GLSL.std.450"
 OpMemoryModel Logical GLSL450
@@ -54,46 +50,35 @@ OpEntryPoint Fragment %main "main"
 OpExecutionMode %main OriginUpperLeft
 OpSource GLSL 440
 OpName %main "main"
-OpName %a "a"
 OpName %i "i"
 %void = OpTypeVoid
-%6 = OpTypeFunction %void
+%5 = OpTypeFunction %void
 %int = OpTypeInt 32 1
 %_ptr_Function_int = OpTypePointer Function %int
-%int_1 = OpConstant %int 1
 %int_0 = OpConstant %int 0
 %int_10 = OpConstant %int 10
 %bool = OpTypeBool
-%main = OpFunction %void None %6
-%13 = OpLabel
-%a = OpVariable %_ptr_Function_int Function
+%int_1 = OpConstant %int 1
+%main = OpFunction %void None %5
+%12 = OpLabel
 %i = OpVariable %_ptr_Function_int Function
-OpStore %a %int_1
 OpStore %i %int_0
-OpBranch %14
-%14 = OpLabel
-OpLoopMerge %15 %16 None
-OpBranch %17
-%17 = OpLabel
-%18 = OpLoad %int %i
-%19 = OpSLessThan %bool %18 %int_10
-OpBranchConditional %19 %20 %15
-%20 = OpLabel
-%21 = OpLoad %int %a
-%22 = OpIEqual %bool %21 %int_1
-OpSelectionMerge %23 None
-OpBranchConditional %22 %24 %23
-%24 = OpLabel
-OpStore %a %int_1
-OpBranch %23
-%23 = OpLabel
+OpBranch %13
+%13 = OpLabel
+OpLoopMerge %14 %15 None
 OpBranch %16
 %16 = OpLabel
-%25 = OpLoad %int %i
-%26 = OpIAdd %int %25 %int_1
-OpStore %i %26
-OpBranch %14
+%17 = OpLoad %int %i
+%18 = OpSLessThan %bool %17 %int_10
+OpBranchConditional %18 %19 %14
+%19 = OpLabel
+OpBranch %15
 %15 = OpLabel
+%20 = OpLoad %int %i
+%21 = OpIAdd %int %20 %int_1
+OpStore %i %21
+OpBranch %13
+%14 = OpLabel
 OpReturn
 OpFunctionEnd
 )";
@@ -105,46 +90,35 @@ OpEntryPoint Fragment %main "main"
 OpExecutionMode %main OriginUpperLeft
 OpSource GLSL 440
 OpName %main "main"
-OpName %a "a"
 OpName %i "i"
 %void = OpTypeVoid
-%6 = OpTypeFunction %void
+%5 = OpTypeFunction %void
 %int = OpTypeInt 32 1
 %_ptr_Function_int = OpTypePointer Function %int
-%int_1 = OpConstant %int 1
 %int_0 = OpConstant %int 0
 %int_10 = OpConstant %int 10
 %bool = OpTypeBool
-%main = OpFunction %void None %6
-%13 = OpLabel
-%a = OpVariable %_ptr_Function_int Function
+%int_1 = OpConstant %int 1
+%main = OpFunction %void None %5
+%12 = OpLabel
 %i = OpVariable %_ptr_Function_int Function
-OpStore %a %int_1
 OpStore %i %int_0
-%21 = OpLoad %int %a
-%22 = OpIEqual %bool %21 %int_1
-OpSelectionMerge %23 None
-OpBranchConditional %22 %24 %23
-%24 = OpLabel
-OpStore %a %int_1
-OpBranch %23
-%23 = OpLabel
-OpBranch %14
-%14 = OpLabel
-OpLoopMerge %15 %16 None
-OpBranch %17
-%17 = OpLabel
-%18 = OpLoad %int %i
-%19 = OpSLessThan %bool %18 %int_10
-OpBranchConditional %19 %20 %15
-%20 = OpLabel
+OpBranch %13
+%13 = OpLabel
+OpLoopMerge %14 %15 None
 OpBranch %16
 %16 = OpLabel
-%25 = OpLoad %int %i
-%26 = OpIAdd %int %25 %int_1
-OpStore %i %26
-OpBranch %14
+%17 = OpLoad %int %i
+%18 = OpSLessThan %bool %17 %int_10
+OpBranchConditional %18 %19 %14
+%19 = OpLabel
+OpBranch %15
 %15 = OpLabel
+%20 = OpLoad %int %i
+%21 = OpIAdd %int %20 %int_1
+OpStore %i %21
+OpBranch %13
+%14 = OpLabel
 OpReturn
 OpFunctionEnd
 )";

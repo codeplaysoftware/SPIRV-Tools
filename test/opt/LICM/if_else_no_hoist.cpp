@@ -40,13 +40,16 @@ using PassClassTest = PassTest<::testing::Test>;
 void main(){
   int a = 1;
   for (int i = 0; i < 10; i++) {
+    // won't hoist the if/else because a is assigned to twice
     if (a == 1) {
-      a = 1;
+      a = 2;
+    } else {
+      a = 3;
     }
   }
 }
 */
-TEST_F(PassClassTest, IfHoist) {
+TEST_F(PassClassTest, IfElseNoHoist) {
   const std::string before_hoist = R"(OpCapability Shader
 %1 = OpExtInstImport "GLSL.std.450"
 OpMemoryModel Logical GLSL450
@@ -64,89 +67,46 @@ OpName %i "i"
 %int_0 = OpConstant %int 0
 %int_10 = OpConstant %int 10
 %bool = OpTypeBool
+%int_2 = OpConstant %int 2
+%int_3 = OpConstant %int 3
 %main = OpFunction %void None %6
-%13 = OpLabel
+%15 = OpLabel
 %a = OpVariable %_ptr_Function_int Function
 %i = OpVariable %_ptr_Function_int Function
 OpStore %a %int_1
 OpStore %i %int_0
-OpBranch %14
-%14 = OpLabel
-OpLoopMerge %15 %16 None
-OpBranch %17
-%17 = OpLabel
-%18 = OpLoad %int %i
-%19 = OpSLessThan %bool %18 %int_10
-OpBranchConditional %19 %20 %15
-%20 = OpLabel
-%21 = OpLoad %int %a
-%22 = OpIEqual %bool %21 %int_1
-OpSelectionMerge %23 None
-OpBranchConditional %22 %24 %23
-%24 = OpLabel
-OpStore %a %int_1
-OpBranch %23
-%23 = OpLabel
 OpBranch %16
 %16 = OpLabel
-%25 = OpLoad %int %i
-%26 = OpIAdd %int %25 %int_1
-OpStore %i %26
-OpBranch %14
-%15 = OpLabel
+OpLoopMerge %17 %18 None
+OpBranch %19
+%19 = OpLabel
+%20 = OpLoad %int %i
+%21 = OpSLessThan %bool %20 %int_10
+OpBranchConditional %21 %22 %17
+%22 = OpLabel
+%23 = OpLoad %int %a
+%24 = OpIEqual %bool %23 %int_1
+OpSelectionMerge %25 None
+OpBranchConditional %24 %26 %27
+%26 = OpLabel
+OpStore %a %int_2
+OpBranch %25
+%27 = OpLabel
+OpStore %a %int_3
+OpBranch %25
+%25 = OpLabel
+OpBranch %18
+%18 = OpLabel
+%28 = OpLoad %int %i
+%29 = OpIAdd %int %28 %int_1
+OpStore %i %29
+OpBranch %16
+%17 = OpLabel
 OpReturn
 OpFunctionEnd
 )";
 
-  const std::string after_hoist = R"(OpCapability Shader
-%1 = OpExtInstImport "GLSL.std.450"
-OpMemoryModel Logical GLSL450
-OpEntryPoint Fragment %main "main"
-OpExecutionMode %main OriginUpperLeft
-OpSource GLSL 440
-OpName %main "main"
-OpName %a "a"
-OpName %i "i"
-%void = OpTypeVoid
-%6 = OpTypeFunction %void
-%int = OpTypeInt 32 1
-%_ptr_Function_int = OpTypePointer Function %int
-%int_1 = OpConstant %int 1
-%int_0 = OpConstant %int 0
-%int_10 = OpConstant %int 10
-%bool = OpTypeBool
-%main = OpFunction %void None %6
-%13 = OpLabel
-%a = OpVariable %_ptr_Function_int Function
-%i = OpVariable %_ptr_Function_int Function
-OpStore %a %int_1
-OpStore %i %int_0
-%21 = OpLoad %int %a
-%22 = OpIEqual %bool %21 %int_1
-OpSelectionMerge %23 None
-OpBranchConditional %22 %24 %23
-%24 = OpLabel
-OpStore %a %int_1
-OpBranch %23
-%23 = OpLabel
-OpBranch %14
-%14 = OpLabel
-OpLoopMerge %15 %16 None
-OpBranch %17
-%17 = OpLabel
-%18 = OpLoad %int %i
-%19 = OpSLessThan %bool %18 %int_10
-OpBranchConditional %19 %20 %15
-%20 = OpLabel
-OpBranch %16
-%16 = OpLabel
-%25 = OpLoad %int %i
-%26 = OpIAdd %int %25 %int_1
-OpStore %i %26
-OpBranch %14
-%15 = OpLabel
-OpReturn
-OpFunctionEnd
+  const std::string after_hoist = R"(
 )";
 
   SinglePassRunAndCheck<opt::LICMPass>(before_hoist, after_hoist, true);

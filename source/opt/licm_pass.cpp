@@ -647,13 +647,9 @@ bool LICMPass::IsInvariant(
   bool invariant = true;
   for (ir::Operand& operand : *inst) {
     switch (operand.type) {
-      // These operand types do not lead to further instructions which may be
-      // variant
-      case SPV_OPERAND_TYPE_RESULT_ID:
-      case SPV_OPERAND_TYPE_LITERAL_INTEGER:
-      case SPV_OPERAND_TYPE_STORAGE_CLASS:
-        break;
       default:
+        break;
+      case SPV_OPERAND_TYPE_ID:
         uint32_t operand_id = operand.words.front();
         ir::Instruction* next_inst =
             ir_context->get_def_use_mgr()->GetDef(operand_id);

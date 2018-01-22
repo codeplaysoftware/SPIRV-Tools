@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+add_spvtools_unittest(TARGET LICM_empty_loop
+    SRCS ../function_utils.h
+        empty_loop.cpp
+    LIBS SPIRV-Tools-opt
+)
+
 add_spvtools_unittest(TARGET LICM_simple_hoist
     SRCS ../function_utils.h
         simple_hoist.cpp
@@ -72,8 +78,32 @@ add_spvtools_unittest(TARGET LICM_if_double_hoist
     LIBS SPIRV-Tools-opt
 )
 
+add_spvtools_unittest(TARGET LICM_if_else_hoist
+    SRCS ../function_utils.h
+        if_else_hoist.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET LICM_if_else_no_hoist
+    SRCS ../function_utils.h
+        if_else_no_hoist.cpp
+    LIBS SPIRV-Tools-opt
+)
+
 add_spvtools_unittest(TARGET LICM_hoist_nested_loop_with_if
     SRCS ../function_utils.h
         hoist_nested_loop_with_if.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET LICM_all_loop_types
+    SRCS ../function_utils.h
+        all_loop_types.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET LICM_hoist_switch
+    SRCS ../function_utils.h
+        hoist_switch.cpp
     LIBS SPIRV-Tools-opt
 )
