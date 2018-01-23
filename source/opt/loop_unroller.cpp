@@ -209,11 +209,15 @@ class LoopUnrollerUtilsImpl {
   void CopyBasicBlock(ir::Loop* loop, const ir::BasicBlock* block_to_copy,
                       bool preserve_instructions);
 
+  //
   void Unroll(ir::Loop*, size_t);
 
+  void ComputeLoopOrderedBlocks(ir::Loop* loop);
   // A pointer to the IRContext. Used to add/remove instructions and for usedef
   // chains.
   ir::IRContext* ir_context_;
+
+  std::vector<ir::BasicBlock*> loop_blocks_inorder_;
 
   ir::Function& function_;
   LoopUtils::BasicBlockListTy blocks_to_add_;
@@ -224,11 +228,14 @@ class LoopUnrollerUtilsImpl {
   size_t number_of_loop_iterations_;
 };
 
+/*
+ * Static helper functions.
+ */
 
 static uint32_t GetPhiIndexFromLabel(const ir::BasicBlock* block,
                                      const ir::Instruction* phi) {
-  for (uint32_t i = 3; i < phi->NumOperands(); i += 2) {
-    if (block->id() == phi->GetSingleWordOperand(i)) {
+  for (uint32_t i = 1; i < phi->NumInOperands(); i += 2) {
+    if (block->id() == phi->GetSingleWordInOperand(i)) {
       return i;
     }
   }
@@ -254,6 +261,8 @@ void LoopUnrollerUtilsImpl::Init(ir::Loop* loop) {
   assert(loop->FindNumberOfIterations(loop_induction_variable_,
                                       &*loop_condition_block_->ctail(),
                                       &number_of_loop_iterations_));
+
+  ComputeLoopOrderedBlocks(loop);
 }
 
 void LoopUnrollerUtilsImpl::PartiallyUnrollUnevenFactor(ir::Loop* loop,
@@ -361,18 +370,17 @@ void LoopUnrollerUtilsImpl::Unroll(ir::Loop* loop, size_t factor) {
   // The first condition block is perserved until now so it can be copied.
   FoldConditionBlock(loop_condition_block_, 1);
 
-  // TODO: Remove this constant.
-  uint32_t phi_index =
-      GetPhiIndexFromLabel(state_.previous_continue_block_ , state_.previous_phi_);
+  uint32_t phi_index = GetPhiIndexFromLabel(state_.previous_continue_block_,
+                                            state_.previous_phi_);
   uint32_t phi_variable =
-      state_.previous_phi_->GetSingleWordOperand(phi_index - 1);
-  uint32_t phi_label = state_.previous_phi_->GetSingleWordOperand(phi_index);
+      state_.previous_phi_->GetSingleWordInOperand(phi_index - 1);
+  uint32_t phi_label = state_.previous_phi_->GetSingleWordInOperand(phi_index);
 
   ir::Instruction* original_phi = loop_induction_variable_;
 
   // SetInOperands are offset by two.
-  original_phi->SetInOperand(phi_index - 3, {phi_variable});
-  original_phi->SetInOperand(phi_index - 2, {phi_label});
+  original_phi->SetInOperand(phi_index - 1, {phi_variable});
+  original_phi->SetInOperand(phi_index, {phi_label});
 }
 
 void LoopUnrollerUtilsImpl::FullyUnroll(ir::Loop* loop) {
@@ -443,12 +451,9 @@ void LoopUnrollerUtilsImpl::CopyBasicBlock(ir::Loop* loop,
 
 void LoopUnrollerUtilsImpl::CopyBody(ir::Loop* loop,
                                      bool eliminate_conditions) {
-  const ir::Loop::BasicBlockOrderedListTy& basic_blocks =
-      loop->GetOrderedBlocks();
-
   // Copy each basic block in the loop, give them new ids, and save state
   // information.
-  for (const ir::BasicBlock* itr : basic_blocks) {
+  for (const ir::BasicBlock* itr : loop_blocks_inorder_) {
     CopyBasicBlock(loop, itr, false);
   }
 
@@ -521,18 +526,12 @@ void LoopUnrollerUtilsImpl::CloseUnrolledLoop(ir::Loop* loop) {
 
 // Uses the first loop to create a copy of the loop with new IDs.
 ir::Loop LoopUnrollerUtilsImpl::DuplicateLoop(ir::Loop* old_loop) {
-  const ir::Loop::BasicBlockOrderedListTy& basic_blocks =
-      old_loop->GetOrderedBlocks();
-
   ir::Loop new_loop = *old_loop;
 
-  ir::Loop::BasicBlockOrderedListTy& new_block_order =
-      new_loop.GetOrderedBlocksRef();
-
-  new_block_order.clear();
+  std::vector<ir::BasicBlock*> new_block_order;
 
   // Copy every block in the old loop.
-  for (const ir::BasicBlock* itr : basic_blocks) {
+  for (const ir::BasicBlock* itr : loop_blocks_inorder_) {
     CopyBasicBlock(old_loop, itr, true);
     new_block_order.push_back(blocks_to_add_.back().get());
   }
@@ -547,6 +546,8 @@ ir::Loop LoopUnrollerUtilsImpl::DuplicateLoop(ir::Loop* old_loop) {
   for (auto& pair : state_.new_blocks) {
     RemapOperands(pair.second);
   }
+
+  loop_blocks_inorder_ = std::move(new_block_order);
 
   return new_loop;
 }
@@ -614,6 +615,28 @@ void LoopUnrollerUtilsImpl::RemapOperands(ir::BasicBlock* BB) {
   }
 }
 
+void LoopUnrollerUtilsImpl::ComputeLoopOrderedBlocks(ir::Loop* loop) {
+  loop_blocks_inorder_.clear();
+
+  opt::DominatorAnalysis* analysis =
+      ir_context_->GetDominatorAnalysis(&function_, *ir_context_->cfg());
+  opt::DominatorTree& tree = analysis->GetDomTree();
+
+  // Starting the loop header BasicBlock, traverse the dominator tree until we
+  // reach the merge blockand add every node we traverse to the set of blocks
+  // which we consider to be the loop.
+  auto begin_itr = tree.GetTreeNode(loop->GetHeaderBlock())->df_begin();
+  for (; begin_itr != tree.end(); ++begin_itr) {
+    if (!analysis->Dominates(loop->GetMergeBlock(), begin_itr->bb_)) {
+      loop_blocks_inorder_.push_back(begin_itr->bb_);
+    }
+  };
+}
+
+/*
+ * End LoopUtilsImpl.
+ */
+
 }  // namespace
 
 /*
@@ -666,6 +689,8 @@ bool LoopUtils::PartiallyUnroll(ir::Loop* loop, size_t factor) {
 }
 
 bool LoopUtils::FullyUnroll(ir::Loop* loop) {
+  if (!CanPerformUnroll(loop)) return false;
+
   LoopUnrollerUtilsImpl unroller{ir_context_, function_};
 
   unroller.Init(loop);

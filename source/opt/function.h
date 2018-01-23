@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include <algorithm>
 #include "basic_block.h"
 #include "instruction.h"
 #include "iterator.h"

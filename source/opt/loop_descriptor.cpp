@@ -63,27 +63,27 @@ static bool GetConstant(const ir::Instruction* inst, ir::IRContext* context,
   return true;
 }
 
-// Takes in phi node |induction| and the loop |header| and returns the step
-// operation of the loop.
+// Takes in a phi instruction |induction| and the loop |header| and returns the
+// step operation of the loop.
 static ir::Instruction* GetInductionStepOperation(
-    const ir::Instruction* induction, const ir::BasicBlock* header,
-    ir::IRContext* context, opt::DominatorAnalysis* analysis) {
+    const ir::Loop* loop, const ir::Instruction* induction,
+    ir::IRContext* context) {
   ir::Instruction* step = nullptr;
 
   opt::analysis::DefUseManager* def_use_manager = context->get_def_use_mgr();
 
-  // Verify the phi node
-  for (uint32_t operand_id = 3; operand_id < induction->NumOperands();
+  // Verify the phi node.
+  for (uint32_t operand_id = 1; operand_id < induction->NumInOperands();
        operand_id += 2) {
     // Incoming edge.
     ir::BasicBlock* incoming_block =
-        context->cfg()->block(induction->GetSingleWordOperand(operand_id));
+        context->cfg()->block(induction->GetSingleWordInOperand(operand_id));
 
     // Check if the block is dominated by header, and thus coming from within
     // the loop.
-    if (analysis->Dominates(header, incoming_block)) {
+    if (loop->IsInsideLoop(incoming_block)) {
       step = def_use_manager->GetDef(
-          induction->GetSingleWordOperand(operand_id - 1));
+          induction->GetSingleWordInOperand(operand_id - 1));
     }
   }
 
@@ -97,11 +97,9 @@ static ir::Instruction* GetInductionStepOperation(
 // Extract the initial value from the |induction| variable and store it in
 // |value|. If the function couldn't find the initial value of |induction|
 // return false.
-static bool GetInductionInitValue(const ir::Instruction* induction,
-                                  const ir::BasicBlock* header,
-                                  ir::IRContext* context,
-                                  opt::DominatorAnalysis* analysis,
-                                  uint32_t* value) {
+static bool GetInductionInitValue(const ir::Loop* loop,
+                                  const ir::Instruction* induction,
+                                  ir::IRContext* context, uint32_t* value) {
   // We assume that the immediate dominator of the loop start block should
   // contain the initialiser for the induction variables.
 
@@ -113,7 +111,7 @@ static bool GetInductionInitValue(const ir::Instruction* induction,
     ir::BasicBlock* bb =
         context->cfg()->block(induction->GetSingleWordOperand(operand_id));
 
-    if (!analysis->Dominates(header, bb)) {
+    if (!loop->IsInsideLoop(bb)) {
       constant = def_use_manager->GetDef(
           induction->GetSingleWordOperand(operand_id - 1));
     }
@@ -280,6 +278,8 @@ bool Loop::FindNumberOfIterations(const ir::Instruction* induction,
   ir::Instruction* condition =
       def_use_manager->GetDef(branch_inst->GetSingleWordOperand(0));
 
+  assert(condition->opcode() == SpvOpSLessThan);
+
   // The right hand side operand of the operation.
   const ir::Instruction* rhs_inst =
       def_use_manager->GetDef(condition->GetSingleWordOperand(3));
@@ -289,8 +289,9 @@ bool Loop::FindNumberOfIterations(const ir::Instruction* induction,
   if (!GetConstant(rhs_inst, ir_context_, &condition_value)) return false;
 
   // Find the instruction which is stepping through the loop.
-  ir::Instruction* step_inst = GetInductionStepOperation(
-      induction, loop_header_, ir_context_, dom_analysis_);
+  ir::Instruction* step_inst =
+      GetInductionStepOperation(this, induction, ir_context_);
+
   if (!step_inst) return false;
 
   // The instruction representing the constant value being applied in the step
@@ -304,8 +305,7 @@ bool Loop::FindNumberOfIterations(const ir::Instruction* induction,
 
   // Find the inital value of the loop and make sure it is a constant integer.
   uint32_t init_value = 0;
-  if (!GetInductionInitValue(induction, loop_header_, ir_context_,
-                             dom_analysis_, &init_value))
+  if (!GetInductionInitValue(this, induction, ir_context_, &init_value))
     return false;
 
   // If iterations is non null then store the value in that.

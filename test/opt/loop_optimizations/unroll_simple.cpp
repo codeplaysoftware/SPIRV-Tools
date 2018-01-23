@@ -438,9 +438,6 @@ OpFunctionEnd
   opt::LoopUnroller loop_unroller;
   SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
   SinglePassRunAndCheck<PartialUnrollerTestPass<1>>(text, output, false);
-  // std::cout <<
-  // std::get<0>(SinglePassRunAndDisassemble<PartialUnrollerTestPass<1>>(text,
-  // false, true));
 }
 
 /*

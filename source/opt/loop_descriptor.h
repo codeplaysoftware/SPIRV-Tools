@@ -122,13 +122,6 @@ class Loop {
   // loop merge block.
   inline const BasicBlockListTy& GetBlocks() { return loop_basic_blocks_; }
 
-  BasicBlockOrderedListTy& GetOrderedBlocksRef() {
-    return loop_basic_blocks_in_order_;
-  }
-
-  inline const BasicBlockOrderedListTy& GetOrderedBlocks() {
-    return loop_basic_blocks_in_order_;
-  }
   // Returns true if the basic block |bb| is inside this loop.
   inline bool IsInsideLoop(const BasicBlock* bb) const {
     return IsInsideLoop(bb->id());
@@ -163,7 +156,6 @@ class Loop {
 
     for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
       loop_basic_blocks_.insert(bb->id());
-      loop_basic_blocks_in_order_.push_back(bb);
     }
   }
 
@@ -202,8 +194,6 @@ class Loop {
   // A set of all the basic blocks which comprise the loop structure. Will be
   // computed only when needed on demand.
   BasicBlockListTy loop_basic_blocks_;
-
-  BasicBlockOrderedListTy loop_basic_blocks_in_order_;
 
   ir::IRContext* ir_context_;
   opt::DominatorAnalysis* dom_analysis_;
