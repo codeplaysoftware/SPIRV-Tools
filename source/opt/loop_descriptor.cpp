@@ -54,7 +54,7 @@ static void GetExitBlocksImpl(spvtools::ir::IRContext* context,
   for (uint32_t bb_id : loop->GetBlocks()) {
     const spvtools::ir::BasicBlock* bb = cfg->block(bb_id);
     bb->ForEachSuccessorLabel([exit_blocks, cfg, loop](uint32_t succ) {
-      if (loop->IsInsideLoop(succ))
+      if (!loop->IsInsideLoop(succ))
         exit_blocks->insert(IdToBasicBlockTrait<BBTy>::Get(cfg, succ));
     });
   }
@@ -128,7 +128,7 @@ BasicBlock* Loop::GetOrCreatePreHeaderBlock(ir::IRContext* context) {
 
     loop_preheader_ = &*header_it.InsertBefore(std::unique_ptr<ir::BasicBlock>(
         new ir::BasicBlock(std::unique_ptr<ir::Instruction>(new ir::Instruction(
-            context, SpvOpLabel, 0, context->TakeNextUniqueId(), {})))));
+            context, SpvOpLabel, 0, context->TakeNextId(), {})))));
     uint32_t loop_preheader_id = loop_preheader_->id();
 
     opt::InstructionBuilder<ir::IRContext::kAnalysisDefUse> builder(
@@ -176,6 +176,16 @@ BasicBlock* Loop::GetOrCreatePreHeaderBlock(ir::IRContext* context) {
   }
 
   return loop_preheader_;
+}
+
+void Loop::SetMergeBlock(BasicBlock* merge) {
+  loop_merge_ = merge;
+
+  ir::BasicBlock::iterator merge_inst = GetHeaderBlock()->tail();
+  if (merge_inst != GetHeaderBlock()->begin() &&
+      (--merge_inst)->opcode() == SpvOpLoopMerge) {
+    merge_inst->SetInOperand(0, {loop_merge_->id()});
+  }
 }
 
 void Loop::GetExitBlocks(
@@ -226,71 +236,121 @@ static inline bool DominatesAnExit(
 void LoopUtils::CreateLoopDedicateExits() {
   ir::Function* function = loop_->GetHeaderBlock()->GetParent();
   ir::CFG& cfg = *context_->cfg();
+  opt::analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
+
+  constexpr ir::IRContext::Analysis PreservedAnalyses =
+      ir::IRContext::kAnalysisDefUse |
+      ir::IRContext::kAnalysisInstrToBlockMapping;
 
   // Gather the set of basic block that are not in this loop and have at least
   // one predecessor in the loop and one not in the loop.
   std::unordered_set<ir::BasicBlock*> exit_bb_set;
   loop_->GetExitBlocks(context_, &exit_bb_set);
 
+  std::unordered_set<ir::BasicBlock*> new_loop_exits;
   bool made_change = false;
   // For each block, we create a new one that gather all branches from
   // the loop and fall into the block.
   for (ir::BasicBlock* non_dedicate : exit_bb_set) {
     const std::vector<uint32_t>& bb_pred = cfg.preds(non_dedicate->id());
-    // If all the predecessors are in the loop then ignore it.
-    if (std::all_of(
-            bb_pred.begin(), bb_pred.end(),
-            [&bb_pred, this](uint32_t id) { return loop_->IsInsideLoop(id); }))
-      continue;
-
-    made_change = true;
-    // Create the dedicate exit basic block.
-    function->AddBasicBlock(std::unique_ptr<ir::BasicBlock>(
-        new ir::BasicBlock(std::unique_ptr<ir::Instruction>(new ir::Instruction(
-            context_, SpvOpLabel, 0, context_->TakeNextUniqueId(), {})))));
-    ir::BasicBlock& exit = *(--function->end());
-
-    // Patch the phi nodes.
-    opt::InstructionBuilder<> builder(context_, &*exit.begin());
-    non_dedicate->ForEachPhiInst([&builder, &exit, this](Instruction* phi) {
-      // New phi operands for this instruction.
-      std::vector<uint32_t> new_phi_op;
-      // Phi operands for the dedicated exit block.
-      std::vector<uint32_t> exit_phi_op;
-      for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
-        uint32_t def_id = phi->GetSingleWordInOperand(i);
-        uint32_t incoming_id = phi->GetSingleWordInOperand(i + 1);
-        if (loop_->IsInsideLoop(incoming_id)) {
-          exit_phi_op.push_back(def_id);
-          exit_phi_op.push_back(incoming_id);
-        } else {
-          new_phi_op.push_back(def_id);
-          new_phi_op.push_back(incoming_id);
+    // Ignore the block if:
+    //   - all the predecessors are in the loop;
+    //   - and has an unconditional branch;
+    //   - and any other instructions are phi.
+    if (non_dedicate->tail()->opcode() == SpvOpBranch) {
+      if (std::all_of(bb_pred.begin(), bb_pred.end(), [this](uint32_t id) {
+            return loop_->IsInsideLoop(id);
+          })) {
+        BasicBlock::iterator it = non_dedicate->tail();
+        if (it == non_dedicate->begin() || (--it)->opcode() == SpvOpPhi) {
+          new_loop_exits.insert(non_dedicate);
+          continue;
         }
       }
+    }
 
-      // Build the new phi instruction dedicated exit block.
-      Instruction* exit_phi = builder.AddPhi(phi->type_id(), exit_phi_op);
-      // Build the new incoming branch.
-      new_phi_op.push_back(exit_phi->result_id());
-      new_phi_op.push_back(exit.id());
-      // Rewrite operands.
-      uint32_t idx = 0;
-      for (; idx < new_phi_op.size(); idx++)
-        phi->SetInOperand(idx, {new_phi_op[idx]});
-      // Remove extra operands, from last to first (more efficient).
-      for (uint32_t j = phi->NumInOperands() - 1; j >= idx; j--)
-        phi->RemoveInOperand(j);
-    });
+    made_change = true;
+    ir::Function::iterator insert_pt = function->begin();
+    for (; insert_pt != function->end() && &*insert_pt != non_dedicate;
+         ++insert_pt)
+      ;
+    assert(insert_pt != function->end() && "Basic Block not found");
+
+    // Create the dedicate exit basic block.
+    ir::BasicBlock& exit = *insert_pt.InsertBefore(
+        std::unique_ptr<ir::BasicBlock>(new ir::BasicBlock(
+            std::unique_ptr<ir::Instruction>(new ir::Instruction(
+                context_, SpvOpLabel, 0, context_->TakeNextId(), {})))));
+
+    // Redirect in loop predecessors to |exit| block.
+    for (uint32_t exit_pred_id : bb_pred) {
+      if (loop_->IsInsideLoop(exit_pred_id)) {
+        ir::BasicBlock* pred_block = cfg.block(exit_pred_id);
+        pred_block->ForEachSuccessorLabel([non_dedicate, &exit](uint32_t* id) {
+          if (*id == non_dedicate->id()) *id = exit.id();
+        });
+        // Update the CFG.
+        // |non_dedicate|'s predecessor list will be updated at the end of the
+        // loop.
+        cfg.RegisterBlock(pred_block);
+      }
+    }
+
+    // Register the label to the def/use manager, requires for the phi patching.
+    def_use_mgr->AnalyzeInstDefUse(exit.GetLabelInst());
+    context_->set_instr_block(exit.GetLabelInst(), &exit);
+
+    // Patch the phi nodes.
+    opt::InstructionBuilder<PreservedAnalyses> builder(context_,
+                                                       &*exit.begin());
+    non_dedicate->ForEachPhiInst(
+        [&builder, &exit, def_use_mgr, this](Instruction* phi) {
+          // New phi operands for this instruction.
+          std::vector<uint32_t> new_phi_op;
+          // Phi operands for the dedicated exit block.
+          std::vector<uint32_t> exit_phi_op;
+          for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
+            uint32_t def_id = phi->GetSingleWordInOperand(i);
+            uint32_t incoming_id = phi->GetSingleWordInOperand(i + 1);
+            if (loop_->IsInsideLoop(incoming_id)) {
+              exit_phi_op.push_back(def_id);
+              exit_phi_op.push_back(incoming_id);
+            } else {
+              new_phi_op.push_back(def_id);
+              new_phi_op.push_back(incoming_id);
+            }
+          }
+
+          // Build the new phi instruction dedicated exit block.
+          Instruction* exit_phi = builder.AddPhi(phi->type_id(), exit_phi_op);
+          // Build the new incoming branch.
+          new_phi_op.push_back(exit_phi->result_id());
+          new_phi_op.push_back(exit.id());
+          // Rewrite operands.
+          uint32_t idx = 0;
+          for (; idx < new_phi_op.size(); idx++)
+            phi->SetInOperand(idx, {new_phi_op[idx]});
+          // Remove extra operands, from last to first (more efficient).
+          for (uint32_t j = phi->NumInOperands() - 1; j >= idx; j--)
+            phi->RemoveInOperand(j);
+          // Update the def/use manager for this |phi|.
+          def_use_mgr->AnalyzeInstUse(phi);
+        });
     // now jump from our dedicate basic block to the old exit.
     builder.AddBranch(non_dedicate->id());
+    // Update the CFG.
+    cfg.RegisterBlock(&exit);
+    cfg.RemoveNonExistingEdges(non_dedicate->id());
+    new_loop_exits.insert(&exit);
   }
 
-  // If we modified something, we need to rebuild the analysis.
-  // FIXME: This could be done on the fly.
+  if (new_loop_exits.size() == 1) {
+    loop_->SetMergeBlock(*new_loop_exits.begin());
+  }
+
   if (made_change) {
-    context_->InvalidateAnalysesExceptFor(
-        ir::IRContext::Analysis::kAnalysisNone);
+    context_->InvalidateAnalysesExceptFor(PreservedAnalyses |
+                                          ir::IRContext::kAnalysisCFG);
   }
 }
 
@@ -299,10 +359,14 @@ void LoopUtils::CreateLoopDedicateExits() {
 // def dependent on the exiting phi node.
 class LCSSARewriter {
  public:
-  LCSSARewriter(ir::IRContext* context, const ir::Instruction& def_insn)
+  LCSSARewriter(ir::IRContext* context, const opt::DominatorTree& dom_tree,
+                const std::unordered_set<ir::BasicBlock*>& exit_bb,
+                const ir::Instruction& def_insn)
       : context_(context),
         cfg_(context_->cfg()),
-        insn_type_(def_insn.type_id()) {}
+        dom_tree_(dom_tree),
+        insn_type_(def_insn.type_id()),
+        exit_bb_(exit_bb) {}
 
   // Rewrites the use of |def_insn_| by the instruction |user| at the index
   // |operand_index| in terms of phi instruction.
@@ -329,8 +393,7 @@ class LCSSARewriter {
   }
 
   // Notifies the addition of a phi node built to close the loop.
-  // FIXME: we should be able to register the phi for its bb.
-  inline void RegisterPhi(ir::BasicBlock* bb, ir::Instruction* phi) {
+  inline void RegisterExitPhi(ir::BasicBlock* bb, ir::Instruction* phi) {
     bb_to_phi[bb->id()] = phi;
     rewrited.insert(phi);
   }
@@ -367,7 +430,14 @@ class LCSSARewriter {
       return *incoming_phi;
     }
 
-    // FIXME: test with loop... (handles back edge).
+    // Check if one of the loop exit basic block dominates |bb_id|.
+    for (const BasicBlock* e_bb : exit_bb_) {
+      if (dom_tree_.Dominates(e_bb->id(), bb_id)) {
+        incoming_phi = bb_to_phi[e_bb->id()];
+        assert(incoming_phi && "No closing phi node ?");
+        return *incoming_phi;
+      }
+    }
 
     // Process parents, they will returns their suitable phi.
     // If they are all the same, this means this basic block is dominated by a
@@ -400,9 +470,11 @@ class LCSSARewriter {
 
   ir::IRContext* context_;
   ir::CFG* cfg_;
+  const opt::DominatorTree& dom_tree_;
   uint32_t insn_type_;
   std::unordered_map<uint32_t, ir::Instruction*> bb_to_phi;
   std::unordered_set<ir::Instruction*> rewrited;
+  const std::unordered_set<ir::BasicBlock*>& exit_bb_;
 };
 
 void LoopUtils::MakeLoopClosedSSA() {
@@ -423,12 +495,12 @@ void LoopUtils::MakeLoopClosedSSA() {
   }
 
   for (uint32_t bb_id : loop_->GetBlocks()) {
-    std::unordered_set<ir::BasicBlock*> processed_exit;
     ir::BasicBlock* bb = cfg.block(bb_id);
     // If bb does not dominate an exit block, then it cannot have escaping defs.
     if (!DominatesAnExit(bb, exit_bb, dom_tree)) continue;
     for (ir::Instruction& inst : *bb) {
-      LCSSARewriter rewriter(context_, inst);
+      std::unordered_set<ir::BasicBlock*> processed_exit;
+      LCSSARewriter rewriter(context_, dom_tree, exit_bb, inst);
       def_use_manager->ForEachUse(
           &inst, [&rewriter, &exit_bb, &processed_exit, &inst, &dom_tree, &cfg,
                   this](ir::Instruction* use, uint32_t operand_index) {
@@ -436,10 +508,20 @@ void LoopUtils::MakeLoopClosedSSA() {
 
             ir::BasicBlock* use_parent = context_->get_instr_block(use);
             assert(use_parent);
-            // If the use is a Phi instruction and the incoming block is coming
-            // from the loop, then that's consistent with LCSSA form.
-            if (use->opcode() == SpvOpPhi && exit_bb.count(use_parent)) {
-              return;
+            if (use->opcode() == SpvOpPhi) {
+              // If the use is a Phi instruction and the incoming block is
+              // coming
+              // from the loop, then that's consistent with LCSSA form.
+              if (exit_bb.count(use_parent)) {
+                rewriter.RegisterExitPhi(use_parent, use);
+                return;
+              } else {
+                // That's not an exit block, but the user is a phi instruction.
+                // Consider the incoming branch only: |use_parent| must be
+                // dominated by one of the exit block.
+                use_parent = context_->get_instr_block(
+                    use->GetSingleWordOperand(operand_index + 1));
+              }
             }
 
             for (ir::BasicBlock* e_bb : exit_bb) {
@@ -458,14 +540,10 @@ void LoopUtils::MakeLoopClosedSSA() {
                 incoming.push_back(inst.result_id());
                 incoming.push_back(pred_id);
               }
-              rewriter.RegisterPhi(e_bb,
-                                   builder.AddPhi(inst.type_id(), incoming));
+              rewriter.RegisterExitPhi(
+                  e_bb, builder.AddPhi(inst.type_id(), incoming));
             }
 
-            if (use->opcode() == SpvOpPhi) {
-              use_parent = context_->get_instr_block(
-                  use->GetSingleWordOperand(operand_index + 1));
-            }
             // Rewrite the use. Note that this call does not invalidate the
             // def/use manager. So this operation is safe.
             rewriter.RewriteUse(use_parent, use, operand_index);

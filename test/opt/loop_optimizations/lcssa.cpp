@@ -84,9 +84,12 @@ void main() {
 */
 TEST_F(LCSSATest, SimpleLCSSA) {
   const std::string text = R"(
-; CHECK: %18 = OpLabel
-; CHECK-NEXT: %32 = OpPhi %7 %30 %20
-; CHECK-NEXT: %27 = OpINotEqual %11 %32 %9
+; CHECK: OpLoopMerge %32 %19 None
+; CHECK: %32 = OpLabel
+; CHECK-NEXT: %33 = OpPhi %7 %30 %20
+; CHECK-NEXT: OpBranch %18
+; CHECK-NEXT: %18 = OpLabel
+; CHECK-NEXT: %27 = OpINotEqual %11 %33 %9
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
@@ -145,6 +148,193 @@ TEST_F(LCSSATest, SimpleLCSSA) {
   ir::LoopDescriptor ld{f};
 
   ir::LoopUtils Util(context.get(), ld[17]);
+  Util.MakeLoopClosedSSA();
+  Match(text, context.get());
+}
+
+/*
+Generated from the following GLSL + --eliminate-local-multi-store
+
+#version 330 core
+layout(location = 0) out vec4 c;
+void main() {
+  int i = 0;
+  int j = 0;
+  for (; i < 10; i++) {}
+  for (; j < 10; j++) {}
+  if (j != 0) {
+    i = 1;
+  }
+}
+*/
+TEST_F(LCSSATest, DualLoopLCSSA) {
+  const std::string text = R"(
+; CHECK: %20 = OpLabel
+; CHECK-NEXT: %36 = OpPhi %6 %17 %21
+; CHECK: %33 = OpLabel
+; CHECK-NEXT: %35 = OpPhi %6 %36 %28 %11 %34
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %2 "main" %3
+               OpExecutionMode %2 OriginUpperLeft
+               OpSource GLSL 330
+               OpName %2 "main"
+               OpName %3 "c"
+               OpDecorate %3 Location 0
+          %4 = OpTypeVoid
+          %5 = OpTypeFunction %4
+          %6 = OpTypeInt 32 1
+          %7 = OpTypePointer Function %6
+          %8 = OpConstant %6 0
+          %9 = OpConstant %6 10
+         %10 = OpTypeBool
+         %11 = OpConstant %6 1
+         %12 = OpTypeFloat 32
+         %13 = OpTypeVector %12 4
+         %14 = OpTypePointer Output %13
+          %3 = OpVariable %14 Output
+          %2 = OpFunction %4 None %5
+         %15 = OpLabel
+               OpBranch %16
+         %16 = OpLabel
+         %17 = OpPhi %6 %8 %15 %18 %19
+               OpLoopMerge %20 %19 None
+               OpBranch %21
+         %21 = OpLabel
+         %22 = OpSLessThan %10 %17 %9
+               OpBranchConditional %22 %23 %20
+         %23 = OpLabel
+               OpBranch %19
+         %19 = OpLabel
+         %18 = OpIAdd %6 %17 %11
+               OpBranch %16
+         %20 = OpLabel
+               OpBranch %24
+         %24 = OpLabel
+         %25 = OpPhi %6 %8 %20 %26 %27
+               OpLoopMerge %28 %27 None
+               OpBranch %29
+         %29 = OpLabel
+         %30 = OpSLessThan %10 %25 %9
+               OpBranchConditional %30 %31 %28
+         %31 = OpLabel
+               OpBranch %27
+         %27 = OpLabel
+         %26 = OpIAdd %6 %25 %11
+               OpBranch %24
+         %28 = OpLabel
+         %32 = OpINotEqual %10 %25 %8
+               OpSelectionMerge %33 None
+               OpBranchConditional %32 %34 %33
+         %34 = OpLabel
+               OpBranch %33
+         %33 = OpLabel
+         %35 = OpPhi %6 %17 %28 %11 %34
+               OpReturn
+               OpFunctionEnd
+  )";
+  // clang-format on
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 2);
+  ir::LoopDescriptor ld{f};
+
+  ir::LoopUtils Util(context.get(), ld[16]);
+  Util.MakeLoopClosedSSA();
+  Match(text, context.get());
+}
+
+/*
+Generated from the following GLSL + --eliminate-local-multi-store
+
+#version 330 core
+layout(location = 0) out vec4 c;
+void main() {
+  int i = 0;
+  if (i != 0) {
+    for (; i < 10; i++) {}
+  }
+  if (i != 0) {
+    i = 1;
+  }
+}
+*/
+TEST_F(LCSSATest, PhiUserLCSSA) {
+  const std::string text = R"(
+; CHECK: %23 = OpLabel
+; CHECK-NEXT: %32 = OpPhi %6 %20 %24
+; CHECK: %17 = OpLabel
+; CHECK-NEXT: %27 = OpPhi %6 %8 %15 %32 %23
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %2 "main" %3
+               OpExecutionMode %2 OriginUpperLeft
+               OpSource GLSL 330
+               OpName %2 "main"
+               OpName %3 "c"
+               OpDecorate %3 Location 0
+          %4 = OpTypeVoid
+          %5 = OpTypeFunction %4
+          %6 = OpTypeInt 32 1
+          %7 = OpTypePointer Function %6
+          %8 = OpConstant %6 0
+          %9 = OpTypeBool
+         %10 = OpConstant %6 10
+         %11 = OpConstant %6 1
+         %12 = OpTypeFloat 32
+         %13 = OpTypeVector %12 4
+         %14 = OpTypePointer Output %13
+          %3 = OpVariable %14 Output
+          %2 = OpFunction %4 None %5
+         %15 = OpLabel
+         %16 = OpINotEqual %9 %8 %8
+               OpSelectionMerge %17 None
+               OpBranchConditional %16 %18 %17
+         %18 = OpLabel
+               OpBranch %19
+         %19 = OpLabel
+         %20 = OpPhi %6 %8 %18 %21 %22
+               OpLoopMerge %23 %22 None
+               OpBranch %24
+         %24 = OpLabel
+         %25 = OpSLessThan %9 %20 %10
+               OpBranchConditional %25 %26 %23
+         %26 = OpLabel
+               OpBranch %22
+         %22 = OpLabel
+         %21 = OpIAdd %6 %20 %11
+               OpBranch %19
+         %23 = OpLabel
+               OpBranch %17
+         %17 = OpLabel
+         %27 = OpPhi %6 %8 %15 %20 %23
+         %28 = OpINotEqual %9 %27 %8
+               OpSelectionMerge %29 None
+               OpBranchConditional %28 %30 %29
+         %30 = OpLabel
+               OpBranch %29
+         %29 = OpLabel
+         %31 = OpPhi %6 %27 %17 %11 %30
+               OpReturn
+               OpFunctionEnd
+  )";
+  // clang-format on
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 2);
+  ir::LoopDescriptor ld{f};
+
+  ir::LoopUtils Util(context.get(), ld[19]);
   Util.MakeLoopClosedSSA();
   Match(text, context.get());
 }

@@ -72,6 +72,7 @@ class Loop {
   // Returns the BasicBlock which marks the end of the loop.
   inline BasicBlock* GetMergeBlock() { return loop_merge_; }
   inline const BasicBlock* GetMergeBlock() const { return loop_merge_; }
+  inline void SetMergeBlock(BasicBlock* merge);
 
   // Returns the loop pre-header, nullptr means that the loop predecessor does
   // not qualify as a preheader.
@@ -242,6 +243,7 @@ class LoopUtils {
   // loop as sole predecessors.
   // By construction, structured control flow already has a dedicated exit
   // block.
+  // Preserves: CFG, def/use and instruction to block mapping.
   void CreateLoopDedicateExits();
 
  private:
