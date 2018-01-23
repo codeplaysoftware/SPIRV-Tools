@@ -194,14 +194,18 @@ bool LICMPass::FindLoopInvariants(ir::Loop& loop,
   std::vector<ir::BasicBlock*> valid_blocks = FindValidBasicBlocks(loop);
   std::vector<ir::Instruction*> visited_insts{};
   for (ir::BasicBlock* block : valid_blocks) {
+    // We store invariants in an unordered_map for quick caching and look up,
+    // but must go through each instruction in order and push invariants to
+    // invars to keep them in order for later motion.
+    if (IsInvariant(loop, block->GetLabelInst(), &invariants_map,
+                    &visited_insts)) {
+      invars.push_back(block->GetLabelInst());
+    }
     for (ir::Instruction& inst : *block) {
       if (invariants_map.find(&inst) == invariants_map.end()) {
         visited_insts.clear();
         if (IsInvariant(loop, &inst, &invariants_map, &visited_insts)) {
-          invariants_map.emplace(std::make_pair(&inst, true));
           invars.push_back(&inst);
-        } else {
-          invariants_map.emplace(std::make_pair(&inst, false));
         }
       } else {
         if (invariants_map.find(&inst)->second == true) {
@@ -688,15 +692,15 @@ bool LICMPass::IsInvariant(
   }
 
   for (ir::Instruction* user : users) {
-    if (std::find(visited_insts->begin(), visited_insts->end(), user) ==
-        visited_insts->end()) {
+    //if (std::find(visited_insts->begin(), visited_insts->end(), user) ==
+    //    visited_insts->end()) {
       bool is_user_invariant =
           IsInvariant(loop, user, invariants_map, visited_insts);
       if (loop.IsInsideLoop(user) && !is_user_invariant) {
         invariant = false;
         break;
       }
-    }
+    //}
   }
 
   // The instructions has been proved variant or invariant, so cache the result
