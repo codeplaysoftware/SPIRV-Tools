@@ -224,6 +224,18 @@ class LoopUnrollerUtilsImpl {
   size_t number_of_loop_iterations_;
 };
 
+
+static uint32_t GetPhiIndexFromLabel(const ir::BasicBlock* block,
+                                     const ir::Instruction* phi) {
+  for (uint32_t i = 3; i < phi->NumOperands(); i += 2) {
+    if (block->id() == phi->GetSingleWordOperand(i)) {
+      return i;
+    }
+  }
+  assert(false && "Could not find operand in instruction.");
+  return 0;
+}
+
 void LoopUnrollerUtilsImpl::Init(ir::Loop* loop) {
   loop_condition_block_ = loop->FindConditionBlock(function_);
 
@@ -350,7 +362,8 @@ void LoopUnrollerUtilsImpl::Unroll(ir::Loop* loop, size_t factor) {
   FoldConditionBlock(loop_condition_block_, 1);
 
   // TODO: Remove this constant.
-  uint32_t phi_index = 5;
+  uint32_t phi_index =
+      GetPhiIndexFromLabel(state_.previous_continue_block_ , state_.previous_phi_);
   uint32_t phi_variable =
       state_.previous_phi_->GetSingleWordOperand(phi_index - 1);
   uint32_t phi_label = state_.previous_phi_->GetSingleWordOperand(phi_index);
@@ -358,7 +371,6 @@ void LoopUnrollerUtilsImpl::Unroll(ir::Loop* loop, size_t factor) {
   ir::Instruction* original_phi = loop_induction_variable_;
 
   // SetInOperands are offset by two.
-  // TODO: Work out why.
   original_phi->SetInOperand(phi_index - 3, {phi_variable});
   original_phi->SetInOperand(phi_index - 2, {phi_label});
 }
