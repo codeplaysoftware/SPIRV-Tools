@@ -120,17 +120,13 @@ class Loop {
   // Returns the set of all basic blocks contained within the loop. Will be all
   // BasicBlocks dominated by the header which are not also dominated by the
   // loop merge block.
-  inline const BasicBlockListTy& GetBlocks() {
-    if (loop_basic_blocks_.size() == 0) FindLoopBasicBlocks();
-    return loop_basic_blocks_;
-  }
+  inline const BasicBlockListTy& GetBlocks() { return loop_basic_blocks_; }
 
   BasicBlockOrderedListTy& GetOrderedBlocksRef() {
     return loop_basic_blocks_in_order_;
   }
 
   inline const BasicBlockOrderedListTy& GetOrderedBlocks() {
-    if (loop_basic_blocks_in_order_.size() == 0) FindLoopBasicBlocks();
     return loop_basic_blocks_in_order_;
   }
   // Returns true if the basic block |bb| is inside this loop.
@@ -223,9 +219,6 @@ class Loop {
   // This is only to allow LoopDescriptor::dummy_top_loop_ to add top level
   // loops as child.
   friend class LoopDescriptor;
-
-  // Populates the set of basic blocks in the loop.
-  void FindLoopBasicBlocks();
 };
 
 // Loop descriptions class for a given function.

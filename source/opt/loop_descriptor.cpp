@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "constants.h"
 #include "opt/iterator.h"
 #include "opt/loop_descriptor.h"
 #include "opt/make_unique.h"
@@ -33,19 +34,32 @@ namespace {
 // Takes in an instruction |inst| and stores the constant integer found inside
 // the instruction. Returns false if the |inst| does not contain a constant
 // integer.
-static bool GetConstant(const ir::Instruction* inst, uint32_t* value) {
-  if (inst->opcode() != SpvOp::SpvOpConstant) {
-    return false;
+static bool GetConstant(const ir::Instruction* inst, ir::IRContext* context,
+                        uint32_t* value) {
+  // Get the constant manager from the ir context.
+  opt::analysis::ConstantManager* const_manager = context->get_constant_mgr();
+  assert(const_manager);
+
+  const opt::analysis::Constant* c =
+      const_manager->FindDeclaredConstant(inst->result_id());
+
+  // If we couldn't find a constant at all.
+  if (!c) return false;
+
+  const opt::analysis::IntConstant* val = c->AsIntConstant();
+
+  // If the constant isn't an integer scalar.
+  if (!val) return false;
+
+  // If the constant is more than 32 bits.
+  if (val->words().size() != 1) return false;
+
+  // If value is nullptr just return whether or not it was found otherwise store
+  // the value first.
+  if (value) {
+    *value = val->words()[0];
   }
 
-  const ir::Operand& operand = inst->GetOperand(2);
-
-  if (operand.type != SPV_OPERAND_TYPE_TYPED_LITERAL_NUMBER ||
-      operand.words.size() != 1) {
-    return false;
-  }
-
-  *value = operand.words[0];
   return true;
 }
 
@@ -107,7 +121,7 @@ static bool GetInductionInitValue(const ir::Instruction* induction,
 
   if (!constant) return false;
 
-  return GetConstant(constant, value);
+  return GetConstant(constant, context, value);
 }
 
 }  // namespace
@@ -239,24 +253,6 @@ void LoopDescriptor::PopulateList(const Function* f) {
   }
 }
 
-void Loop::FindLoopBasicBlocks() {
-  loop_basic_blocks_.clear();
-  loop_basic_blocks_in_order_.clear();
-
-  opt::DominatorTree& tree = dom_analysis_->GetDomTree();
-
-  // Starting the loop header BasicBlock, traverse the dominator tree until we
-  // reach the merge blockand add every node we traverse to the set of blocks
-  // which we consider to be the loop.
-  auto begin_itr = tree.GetTreeNode(loop_header_)->df_begin();
-  for (; begin_itr != tree.end(); ++begin_itr) {
-    if (!dom_analysis_->Dominates(loop_merge_, begin_itr->bb_)) {
-      loop_basic_blocks_in_order_.push_back(begin_itr->bb_);
-      AddBasicBlockToLoop(begin_itr->bb_);
-    }
-  };
-}
-
 ir::BasicBlock* Loop::FindConditionBlock(const ir::Function& function) {
   ir::BasicBlock* condition_block = nullptr;
 
@@ -290,7 +286,7 @@ bool Loop::FindNumberOfIterations(const ir::Instruction* induction,
 
   // Exit out if we couldn't resolve the rhs to be a constant integer.
   uint32_t condition_value = 0;
-  if (!GetConstant(rhs_inst, &condition_value)) return false;
+  if (!GetConstant(rhs_inst, ir_context_, &condition_value)) return false;
 
   // Find the instruction which is stepping through the loop.
   ir::Instruction* step_inst = GetInductionStepOperation(
@@ -304,7 +300,7 @@ bool Loop::FindNumberOfIterations(const ir::Instruction* induction,
 
   uint32_t step_value = 0;
   // Exit out if we couldn't resolve the rhs to be a constant integer.
-  if (!GetConstant(step_amount_inst, &step_value)) return false;
+  if (!GetConstant(step_amount_inst, ir_context_, &step_value)) return false;
 
   // Find the inital value of the loop and make sure it is a constant integer.
   uint32_t init_value = 0;
