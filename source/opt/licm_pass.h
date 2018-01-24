@@ -38,70 +38,39 @@ class LICMPass : public Pass {
 
   // Checks the function for loops, calling ProcessLoop on each one found.
   // Returns true if a change was made to the function, false otherwise.
-  bool ProcessFunction(ir::Function* f, ir::CFG& cfg);
+  bool ProcessFunction(ir::Function* f);
 
   // Checks for invariants in the loop and attempts to move them to the loops
   // preheader. Works from inner loop to outer when nested loops are found.
   // Returns true if a change was made to the loop, false otherwise.
   bool ProcessLoop(ir::Loop& loop, ir::Function* f);
 
-  // Finds all basic blocks in the between the header and merge blocks of the
-  // loop, not contained in a nested loop
-  std::vector<ir::BasicBlock*> FindValidBasicBlocks(ir::Loop& loop);
+  // Gathers all instructions in the loop whos opcodes do not have side effects
+  void GatherAllLoopInstructions(ir::Loop& loop,
+                                 std::vector<ir::Instruction*>* instructions);
 
-  // Finds all basic blocks in the loop, including the header and blocks inside
-  // nested loops
-  std::vector<ir::BasicBlock*> FindAllLoopBlocks(ir::Loop* loop);
+  // Move the instruction to the given BasicBlock
+  // This method will update the instruction to block mapping for the context
+  void HoistInstruction(ir::BasicBlock* pre_header_bb, ir::Instruction* inst);
 
-  // Finds and returns a vector of all basic blocks in nested loops
-  std::vector<ir::BasicBlock*> FindAllNestedBasicBlocks(ir::Loop& loop);
+  // Returns true if the given opcode is known to have side effects.
+  bool DoesOpcodeHaveSideEffects(SpvOp opcode);
 
-  // Moves the given basic block out of the loop and into the loops
-  // preheader
-  bool HoistInstructions(ir::BasicBlock* pre_header_bb,
-                         ir::InstructionList* invariants_list);
+  // Returns true if all operands of inst are in basic blocks not contained in
+  // loop
+  bool AllOperandsOutsideLoop(ir::Loop& loop, ir::Instruction* inst);
 
-  // Finds all invariants in the loop and pushes them to invariants_list
-  // Returns true if any invariants were found
-  bool FindLoopInvariants(ir::Loop& loop, ir::InstructionList* invariants_list);
+  // Iterates over the instructions list checking each instruction to see if all
+  // of its operands are outside the loop. If so, moves the instruction to a
+  // queue. Once the list has been iterated over, hoists each inst in the queue
+  // outside of the loop.
+  // This cycle continues until a full iteration over the instructions list
+  // results in no instructions being queued.
+  bool ProcessInstructionList(ir::Loop& loop,
+                              std::vector<ir::Instruction*>* instructions);
 
-  // Tests if an individual instruction is invariant
-  // The algorithm used for this is the following.
-  // At all times have a cache of all known instructions and their variance
-  // Keep a list of visited instructions in this traversal
-  // As we enter the method
-  // Add the instruction to the visited list
-  // Check the instruction type, some are known to always be variant or
-  // invariant
-  // If possible, cache the result and return
-  // If at a store, check if we are storing to a variable used in the stored
-  // value
-  //    If we are, this store is variant. Cache the result and return
-  //    Otherwise, we must also check the variable stored to is not stored to
-  //    another time inside the loop. If it is stored to multiple times inside
-  //    the loop, all stores to it are variant
-  // Now we have to iterate through all the operands of the instruction
-  //    Ignore any instructions we have already visited, and check invariance on
-  //    all others using IsInvariant
-  // If no operands are proven to be variant we must evaluate all users
-  // For each user, if it is not already visited call IsInvariant on them
-  // If no user is proved variant, this must be invariant, cache and return.
-  bool IsInvariant(ir::Loop& loop, ir::Instruction* inst,
-                   std::unordered_map<ir::Instruction*, bool>* invariants_map,
-                   std::vector<ir::Instruction*>* visited_insts);
-
-  // Recurses through all operands of the given instruction, finding each loaded
-  // variable and pushing them to loaded_vars
-  void FindLoadedVars(ir::Loop& loop, ir::Instruction* inst,
-                      std::vector<ir::Instruction*>* loaded_vars,
-                      std::vector<ir::Instruction*>* visited_insts);
-
-  // Checks all uses of the given instruction to see if it is stored to once or
-  // multiple times in the given loop
-  bool IsStoredOnceInLoop(ir::Loop& loop, ir::Instruction* inst);
-
+ private:
   ir::IRContext* ir_context;
-  opt::DominatorAnalysis* dom_analysis;
 };
 
 }  // namespace opt

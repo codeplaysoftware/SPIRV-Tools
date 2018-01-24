@@ -33,7 +33,8 @@ using ::testing::UnorderedElementsAre;
 using PassClassTest = PassTest<::testing::Test>;
 
 /*
-  Generated from the following GLSL
+  Generated from the following GLSL fragment shader
+--eliminate-local-multi-store has also been run on the spv binary
 #version 440 core
 layout(location = 0) out vec4 c;
 layout(location = 1) out vec4 d;

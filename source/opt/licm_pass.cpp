@@ -37,20 +37,19 @@ Pass::Status LICMPass::Process(ir::IRContext* context) {
 bool LICMPass::ProcessIRContext() {
   bool modified = false;
   ir::Module* module = ir_context->module();
-  ir::CFG cfg(ir_context->module());
 
   // Process each function in the module
   for (ir::Function& f : *module) {
-    modified |= ProcessFunction(&f, cfg);
+    modified |= ProcessFunction(&f);
   }
   return modified;
 }
 
-bool LICMPass::ProcessFunction(ir::Function* f, ir::CFG& cfg) {
+bool LICMPass::ProcessFunction(ir::Function* f) {
   bool modified = false;
   ir::LoopDescriptor loop_descriptor{f};
 
-  dom_analysis = ir_context->GetDominatorAnalysis(f, cfg);
+  // dom_analysis = ir_context->GetDominatorAnalysis(f, cfg);
 
   // Process each loop in the function
   for (ir::Loop& loop : loop_descriptor) {
@@ -61,197 +60,103 @@ bool LICMPass::ProcessFunction(ir::Function* f, ir::CFG& cfg) {
 
 bool LICMPass::ProcessLoop(ir::Loop& loop, ir::Function* f) {
   // Process all nested loops first
-  for (ir::Loop*& nested_loop : loop) {
+  for (ir::Loop* nested_loop : loop) {
     ProcessLoop(*nested_loop, f);
   }
 
-  ir::InstructionList invariants_list{};
-  if (FindLoopInvariants(loop, &invariants_list)) {
-    ir::BasicBlock* pre_header = loop.GetPreHeaderBlock();
-    // Insert the new list of invariants into the pre_header block
-    return HoistInstructions(pre_header, &invariants_list);
-  }
-  return false;
+  std::vector<ir::Instruction*> instructions{};
+  GatherAllLoopInstructions(loop, &instructions);
+
+  return ProcessInstructionList(loop, &instructions);
 }
 
-bool LICMPass::HoistInstructions(ir::BasicBlock* pre_header_bb,
-                                 ir::InstructionList* invariants_list) {
-  // If there is no preheader, we have nowhere to insert the invariants, so
-  // can't move them
+void LICMPass::GatherAllLoopInstructions(
+    ir::Loop& loop, std::vector<ir::Instruction*>* instructions) {
+  for (uint32_t bb_id : loop.GetBlocks()) {
+    ir::BasicBlock* bb = ir_context->get_instr_block(bb_id);
+    for (ir::Instruction& inst : *bb) {
+      if (!DoesOpcodeHaveSideEffects(inst.opcode())) {
+        instructions->push_back(&inst);
+      }
+    }
+  }
+}
+
+void LICMPass::HoistInstruction(ir::BasicBlock* pre_header_bb,
+                                ir::Instruction* inst) {
+  ir::InstructionList inst_list{};
+  inst_list.push_back(std::unique_ptr<ir::Instruction>(inst));
+  auto pre_header_branch_inst_it = pre_header_bb->tail();
+
+  pre_header_branch_inst_it.MoveBefore(&inst_list);
+  ir_context->set_instr_block(inst, pre_header_bb);
+}
+
+bool LICMPass::AllOperandsOutsideLoop(ir::Loop& loop,
+                                         ir::Instruction* inst) {
+  for (ir::Operand& operand : *inst) {
+    if (operand.type == SPV_OPERAND_TYPE_ID) {
+      if (loop.IsInsideLoop(
+              ir_context->get_def_use_mgr()->GetDef(operand.words.front()))) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool LICMPass::ProcessInstructionList(
+    ir::Loop& loop, std::vector<ir::Instruction*>* instructions) {
+  std::queue<ir::Instruction*> instruction_queue{};
+  ir::BasicBlock* pre_header_bb = loop.GetPreHeaderBlock();
+  bool list_exhausted = false;
+  bool modified = false;
+
   if (pre_header_bb == nullptr) {
     return false;
   }
 
-  // Get preheader branch instruction
-  auto pre_header_branch_inst_it = --pre_header_bb->end();
-  pre_header_branch_inst_it.MoveBefore(invariants_list);
+  while (!list_exhausted) {
+    list_exhausted = true;
 
-  return true;
-}
-
-std::vector<ir::BasicBlock*> LICMPass::FindValidBasicBlocks(ir::Loop& loop) {
-  std::vector<ir::BasicBlock*> blocks = {};
-  std::vector<ir::BasicBlock*> nested_blocks = FindAllNestedBasicBlocks(loop);
-
-  opt::DominatorTree& tree = dom_analysis->GetDomTree();
-
-  // Find every basic block in the loop, excluding the header, merge, and any
-  // blocks belonging to a nested loop
-  auto begin_it = tree.get_iterator(loop.GetHeaderBlock());
-  for (; begin_it != tree.end(); ++begin_it) {
-    ir::BasicBlock* cur_block = begin_it->bb_;
-    if (cur_block == loop.GetHeaderBlock()) continue;
-    if (dom_analysis->Dominates(loop.GetMergeBlock(), cur_block)) continue;
-
-    // Check block is not nested within another loop
-    bool nested = false;
-    for (auto nested_it = nested_blocks.begin();
-         nested_it != nested_blocks.end(); ++nested_it) {
-      if (cur_block == *nested_it) {
-        nested = true;
-        break;
+    // Collect all currently invariant instructions
+    for (ir::Instruction* inst : *instructions) {
+      if (AllOperandsOutsideLoop(loop, inst)) {
+        instruction_queue.push(inst);
       }
     }
 
-    if (!nested) blocks.push_back(cur_block);
-  }
-  return blocks;
-}
+    // Check if we found any invariants
+    if (!instruction_queue.empty()) {
+      modified = true;
+      list_exhausted = false;
+    }
 
-std::vector<ir::BasicBlock*> LICMPass::FindAllLoopBlocks(ir::Loop* loop) {
-  std::vector<ir::BasicBlock*> blocks = {};
-
-  opt::DominatorTree& tree = dom_analysis->GetDomTree();
-
-  // Every block dominated by the header but not by the merge block of the loop
-  auto begin_it = tree.get_iterator(loop->GetHeaderBlock());
-  for (; begin_it != tree.end(); ++begin_it) {
-    ir::BasicBlock* cur_block = begin_it->bb_;
-    if (dom_analysis->Dominates(loop->GetMergeBlock(), cur_block)) break;
-
-    blocks.push_back(cur_block);
-  }
-  return blocks;
-}
-
-std::vector<ir::BasicBlock*> LICMPass::FindAllNestedBasicBlocks(
-    ir::Loop& loop) {
-  std::vector<ir::BasicBlock*> blocks = {};
-
-  opt::DominatorTree& tree = dom_analysis->GetDomTree();
-
-  if (loop.HasNestedLoops()) {
-    // Go through each nested loop
-    for (ir::Loop* nested_loop : loop) {
-      // Test the blocks of the nested loop against the dominator tree
-      auto tree_it = tree.get_iterator(nested_loop->GetHeaderBlock());
-      for (; tree_it != tree.end(); ++tree_it) {
-        if (dom_analysis->Dominates(nested_loop->GetMergeBlock(), tree_it->bb_))
-          break;
-        blocks.push_back(tree_it->bb_);
-      }
-
-      // Add the header and merge blocks, as they won't be caught in the above
-      // loop
-      blocks.push_back(nested_loop->GetHeaderBlock());
-      blocks.push_back(nested_loop->GetMergeBlock());
+    // Hoist all invariants
+    while (!instruction_queue.empty()) {
+      HoistInstruction(pre_header_bb, instruction_queue.front());
+      instruction_queue.pop();
     }
   }
 
-  return blocks;
+  return modified;
 }
 
-bool LICMPass::FindLoopInvariants(ir::Loop& loop,
-                                  ir::InstructionList* invariants_list) {
-  std::unordered_map<ir::Instruction*, bool> invariants_map{};
-  std::vector<ir::Instruction*> invars{};
-
-  // There are some initial variants from the loop
-  // The loop header OpLoopMerge and OpBranch
-  invariants_map.emplace(&*loop.GetHeaderBlock()->begin(), false);
-  invariants_map.emplace(&*loop.GetHeaderBlock()->tail(), false);
-  // The loop latch OpBranch
-  invariants_map.emplace(&*loop.GetLatchBlock()->tail(), false);
-  // The loop end of the loop body OpBranch to latch
-  ir::Instruction* branch_to_latch_inst =
-      &*dom_analysis->ImmediateDominator(loop.GetLatchBlock()->id())->tail();
-  invariants_map.emplace(branch_to_latch_inst, false);
-  // The loop condition OpBranch
-  ir::BasicBlock* loop_condition_bb = ir_context->get_instr_block(
-      (loop.GetHeaderBlock()->tail())->begin()->words.front());
-  invariants_map.emplace(&*loop_condition_bb->tail(), false);
-
-  // We also need mark all nested loop instructions as variant wrt this loop
-  // to ensure any OpBranch instructions to the nested loops are marked variant
-  std::vector<ir::BasicBlock*> nested_blocks = FindAllNestedBasicBlocks(loop);
-  for (ir::BasicBlock* nested_block : nested_blocks) {
-    invariants_map.emplace(std::make_pair(nested_block->GetLabelInst(), false));
-    for (ir::Instruction& nested_inst : *nested_block) {
-      invariants_map.emplace(std::make_pair(&nested_inst, false));
-    }
-  }
-
-  std::vector<ir::BasicBlock*> valid_blocks = FindValidBasicBlocks(loop);
-  std::vector<ir::Instruction*> visited_insts{};
-  for (ir::BasicBlock* block : valid_blocks) {
-    // We store invariants in an unordered_map for quick caching and look up,
-    // but must go through each instruction in order and push invariants to
-    // invars to keep them in order for later motion.
-    if (IsInvariant(loop, block->GetLabelInst(), &invariants_map,
-                    &visited_insts)) {
-      invars.push_back(block->GetLabelInst());
-    }
-    for (ir::Instruction& inst : *block) {
-      if (invariants_map.find(&inst) == invariants_map.end()) {
-        visited_insts.clear();
-        if (IsInvariant(loop, &inst, &invariants_map, &visited_insts)) {
-          invars.push_back(&inst);
-        }
-      } else {
-        if (invariants_map.find(&inst)->second == true) {
-          invars.push_back(&inst);
-        }
-      }
-    }
-  }
-
-  for (auto invar_it = invars.begin(); invar_it != invars.end(); ++invar_it) {
-    invariants_list->push_back(std::unique_ptr<ir::Instruction>(*invar_it));
-  }
-
-  // Return if there were invariants found
-  return invariants_list->begin() != invariants_list->end();
-}
-
-bool LICMPass::IsInvariant(
-    ir::Loop& loop, ir::Instruction* inst,
-    std::unordered_map<ir::Instruction*, bool>* invariants_map,
-    std::vector<ir::Instruction*>* visited_insts) {
-  // We must create a collection of all instructions visited so far, as to avoid
-  // infinite looping when a chain of instructions leads back to its start.
-  // When we find an instruction already in this collection during examination
-  // of another instructions uses or users we must not examine it again, as we
-  // are already in the process of examining it
-  visited_insts->push_back(inst);
-
-  // Check if this instruction has already been calculated
-  auto map_val = invariants_map->find(inst);
-  if (map_val != invariants_map->end()) {
-    return map_val->second;
-  }
-
-  // The following always are or are not invariant
-  // TODO(Alexander) OpStore is invariant iff
-  // the stored value is invariant wrt the loop
-  // if the value is the result of another operation it must
-  // be created from other invariants wrt the loop.
-  // If a variable is stored to with a value whos creation involved the variable
-  // that store is variant, i.e. a += 1 == a = a + 1
-  // TODO(Alexander) Branches to the loop header, continue, merge
-  switch (inst->opcode()) {
+bool LICMPass::DoesOpcodeHaveSideEffects(SpvOp opcode) {
+  switch (opcode) {
     // We do not check side effects from function calls, so they must be marked
     // as variant
     case SpvOpFunctionCall:
+    // Loads and stores present after multiple store elimination have side
+    // effects
+    case SpvOpStore:
+    case SpvOpLoad:
+    // Any control flow is marked as having side effects
+    case SpvOpBranch:
+    case SpvOpBranchConditional:
+    case SpvOpSelectionMerge:
+    case SpvOpLoopMerge:
+    case SpvOpLabel:
     // We do not check side effects from barriers, so they must be marked as
     // variant
     case SpvOpControlBarrier:
@@ -409,355 +314,10 @@ bool LICMPass::IsInvariant(
     // While SpvOpMax is not a valid instruction, it must be included in this
     // switch
     case SpvOpMax:
-      invariants_map->emplace(std::make_pair(inst, false));
-      return false;
-    // The following are always invariant
-    case SpvOpExtension:
-    case SpvOpExtInstImport:
-    case SpvOpExtInst:
-    case SpvOpMemoryModel:
-    case SpvOpEntryPoint:
-    case SpvOpExecutionMode:
-    case SpvOpExecutionModeId:
-    case SpvOpCapability:
-    case SpvOpModuleProcessed:
-    // Type definitions are invariant
-    case SpvOpTypeVoid:
-    case SpvOpTypeBool:
-    case SpvOpTypeInt:
-    case SpvOpTypeFloat:
-    case SpvOpTypeVector:
-    case SpvOpTypeMatrix:
-    case SpvOpTypeImage:
-    case SpvOpTypeSampler:
-    case SpvOpTypeSampledImage:
-    case SpvOpTypeArray:
-    case SpvOpTypeRuntimeArray:
-    case SpvOpTypeStruct:
-    case SpvOpTypeOpaque:
-    case SpvOpTypePointer:
-    case SpvOpTypeFunction:
-    case SpvOpTypeEvent:
-    case SpvOpTypeDeviceEvent:
-    case SpvOpTypeReserveId:
-    case SpvOpTypeQueue:
-    case SpvOpTypePipe:
-    case SpvOpTypeForwardPointer:
-    // Constants are invariant
-    case SpvOpConstantTrue:
-    case SpvOpConstantFalse:
-    case SpvOpConstant:
-    case SpvOpConstantComposite:
-    case SpvOpConstantSampler:
-    case SpvOpConstantNull:
-    case SpvOpSpecConstantTrue:
-    case SpvOpSpecConstantFalse:
-    case SpvOpSpecConstant:
-    case SpvOpSpecConstantComposite:
-    case SpvOpSpecConstantOp:
-    // The start and end of a function are invariant, as they can not occur
-    // inside a loop but may be seen from a chain of instructions
-    case SpvOpFunction:
-    case SpvOpFunctionParameter:
-    case SpvOpFunctionEnd:
-    // Decorates are invariant
-    case SpvOpDecorate:
-    case SpvOpMemberDecorate:
-    case SpvOpDecorationGroup:
-    case SpvOpGroupDecorate:
-    case SpvOpGroupMemberDecorate:
-    case SpvOpDecorateId:
-    // The following Ops have no semantic impact on a module
-    case SpvOpName:
-    case SpvOpMemberName:
-    case SpvOpSource:
-    case SpvOpSourceContinued:
-    case SpvOpSourceExtension:
-    case SpvOpString:
-    case SpvOpLine:
-    case SpvOpNoLine:
-      invariants_map->emplace(std::make_pair(inst, true));
       return true;
-    // The following Ops can be proved variant or invariant
-    case SpvOpVariable:
-    case SpvOpUndef:
-    case SpvOpImageTexelPointer:
-    case SpvOpLoad:
-    case SpvOpCopyMemory:
-    case SpvOpCopyMemorySized:
-    case SpvOpAccessChain:
-    case SpvOpInBoundsAccessChain:
-    case SpvOpPtrAccessChain:
-    case SpvOpArrayLength:
-    case SpvOpInBoundsPtrAccessChain:
-    // Vectors
-    case SpvOpVectorExtractDynamic:
-    case SpvOpVectorInsertDynamic:
-    case SpvOpVectorShuffle:
-    // Composites
-    case SpvOpCompositeConstruct:
-    case SpvOpCompositeExtract:
-    case SpvOpCompositeInsert:
-    // Copy
-    case SpvOpCopyObject:
-    // Images
-    case SpvOpSampledImage:
-    case SpvOpImageSampleExplicitLod:
-    case SpvOpImageFetch:
-    case SpvOpImageRead:
-    case SpvOpImageWrite:
-    case SpvOpImage:
-    // Conversions
-    case SpvOpConvertFToU:
-    case SpvOpConvertFToS:
-    case SpvOpConvertSToF:
-    case SpvOpConvertUToF:
-    case SpvOpUConvert:
-    case SpvOpSConvert:
-    case SpvOpFConvert:
-    case SpvOpQuantizeToF16:
-    case SpvOpConvertPtrToU:
-    case SpvOpSatConvertSToU:
-    case SpvOpSatConvertUToS:
-    case SpvOpConvertUToPtr:
-    case SpvOpPtrCastToGeneric:
-    case SpvOpGenericCastToPtr:
-    case SpvOpGenericCastToPtrExplicit:
-    case SpvOpBitcast:
-    // Arithmetic
-    case SpvOpSNegate:
-    case SpvOpFNegate:
-    case SpvOpIAdd:
-    case SpvOpFAdd:
-    case SpvOpISub:
-    case SpvOpFSub:
-    case SpvOpIMul:
-    case SpvOpFMul:
-    case SpvOpUDiv:
-    case SpvOpSDiv:
-    case SpvOpFDiv:
-    case SpvOpUMod:
-    case SpvOpSRem:
-    case SpvOpSMod:
-    case SpvOpFRem:
-    case SpvOpFMod:
-    case SpvOpVectorTimesScalar:
-    case SpvOpMatrixTimesScalar:
-    case SpvOpVectorTimesMatrix:
-    case SpvOpMatrixTimesVector:
-    case SpvOpMatrixTimesMatrix:
-    case SpvOpOuterProduct:
-    case SpvOpDot:
-    case SpvOpIAddCarry:
-    case SpvOpISubBorrow:
-    case SpvOpUMulExtended:
-    case SpvOpSMulExtended:
-    case SpvOpAny:
-    case SpvOpAll:
-    case SpvOpIsNan:
-    case SpvOpIsInf:
-    case SpvOpIsFinite:
-    case SpvOpIsNormal:
-    case SpvOpSignBitSet:
-    case SpvOpLessOrGreater:
-    case SpvOpOrdered:
-    case SpvOpUnordered:
-    case SpvOpLogicalEqual:
-    case SpvOpLogicalNotEqual:
-    case SpvOpLogicalOr:
-    case SpvOpLogicalAnd:
-    case SpvOpLogicalNot:
-    case SpvOpSelect:
-    case SpvOpIEqual:
-    case SpvOpINotEqual:
-    case SpvOpUGreaterThan:
-    case SpvOpSGreaterThan:
-    case SpvOpUGreaterThanEqual:
-    case SpvOpSGreaterThanEqual:
-    case SpvOpULessThan:
-    case SpvOpSLessThan:
-    case SpvOpULessThanEqual:
-    case SpvOpSLessThanEqual:
-    case SpvOpFOrdEqual:
-    case SpvOpFUnordEqual:
-    case SpvOpFOrdNotEqual:
-    case SpvOpFUnordNotEqual:
-    case SpvOpFOrdLessThan:
-    case SpvOpFUnordLessThan:
-    case SpvOpFOrdGreaterThan:
-    case SpvOpFUnordGreaterThan:
-    case SpvOpFOrdLessThanEqual:
-    case SpvOpFUnordLessThanEqual:
-    case SpvOpFOrdGreaterThanEqual:
-    case SpvOpFUnordGreaterThanEqual:
-    case SpvOpShiftRightLogical:
-    case SpvOpShiftRightArithmetic:
-    case SpvOpShiftLeftLogical:
-    case SpvOpBitwiseOr:
-    case SpvOpBitwiseXor:
-    case SpvOpBitwiseAnd:
-    case SpvOpNot:
-    case SpvOpBitCount:
-    case SpvOpSizeOf:
-    // Some control Ops can be invariant
-    case SpvOpLoopMerge:
-    case SpvOpSelectionMerge:
-    case SpvOpLabel:
-    case SpvOpBranch:
-    case SpvOpBranchConditional:
-    case SpvOpSwitch:
-    case SpvOpReturn:
-    case SpvOpReturnValue:
-    case SpvOpLifetimeStart:
-    case SpvOpLifetimeStop:
-    case SpvOpGroupAsyncCopy:
-    case SpvOpGroupWaitEvents:
-    case SpvOpGroupAll:
-    case SpvOpGroupAny:
-    case SpvOpGroupBroadcast:
-    case SpvOpGroupIAdd:
-    case SpvOpGroupFAdd:
-    case SpvOpGroupFMin:
-    case SpvOpGroupUMin:
-    case SpvOpGroupSMin:
-    case SpvOpGroupFMax:
-    case SpvOpGroupUMax:
-    case SpvOpGroupSMax:
-      break;
-    // OpStore is a special case
-    case SpvOpStore:
-      std::vector<ir::Instruction*> loaded_vars{};
-      std::vector<ir::Instruction*> visited_vars_store_traversal{};
-      ir::Instruction* stored_var = ir_context->get_def_use_mgr()->GetDef(
-          inst->GetOperand(0).words.front());
-      FindLoadedVars(loop, inst, &loaded_vars, &visited_vars_store_traversal);
-      if (std::find(loaded_vars.begin(), loaded_vars.end(), stored_var) !=
-          loaded_vars.end()) {
-        // We are storing to a loaded variable, so this store is variant
-        invariants_map->emplace(std::make_pair(inst, false));
-        return false;
-      }
-      if (!IsStoredOnceInLoop(loop, stored_var)) {
-        // The variable is stored to more than once in the loop, so this store
-        // is variant
-        invariants_map->emplace(std::make_pair(inst, false));
-        return false;
-      }
-      break;
+    default:
+      return false;
   }
-
-  // Recurse though all instructions leading this instruction. If any of them is
-  // variant wrt the loop, all instructions using that instruction are variant.
-  bool invariant = true;
-  for (ir::Operand& operand : *inst) {
-    switch (operand.type) {
-      default:
-        break;
-      case SPV_OPERAND_TYPE_ID:
-        uint32_t operand_id = operand.words.front();
-        ir::Instruction* next_inst =
-            ir_context->get_def_use_mgr()->GetDef(operand_id);
-
-        if (std::find(visited_insts->begin(), visited_insts->end(),
-                      next_inst) == visited_insts->end()) {
-          invariant &=
-              IsInvariant(loop, next_inst, invariants_map, visited_insts);
-        }
-    }
-  }
-
-  // The instruction has been proven invariant wrt the loop by one or more of
-  // the instructions leading to it being invariant
-  if (!invariant) {
-    invariants_map->emplace(std::make_pair(inst, invariant));
-    return invariant;
-  }
-
-  // If this instruction has no invariants leading to it wrt to the loop, we
-  // must now look at it's uses within the loop to find it is invariant
-  std::vector<ir::Instruction*> users = {};
-
-  std::function<void(ir::Instruction*)> collect_users =
-      [this, &loop, &users, &collect_users](ir::Instruction* user) {
-        if (loop.IsInsideLoop(user)) {
-          users.push_back(user);
-          if (user->result_id() != 0) {
-            ir_context->get_def_use_mgr()->ForEachUser(user, collect_users);
-          }
-        }
-      };
-
-  if (inst->result_id() != 0) {
-    ir_context->get_def_use_mgr()->ForEachUser(inst, collect_users);
-  }
-
-  for (ir::Instruction* user : users) {
-    //if (std::find(visited_insts->begin(), visited_insts->end(), user) ==
-    //    visited_insts->end()) {
-      bool is_user_invariant =
-          IsInvariant(loop, user, invariants_map, visited_insts);
-      if (loop.IsInsideLoop(user) && !is_user_invariant) {
-        invariant = false;
-        break;
-      }
-    //}
-  }
-
-  // The instructions has been proved variant or invariant, so cache the result
-  invariants_map->emplace(std::make_pair(inst, invariant));
-
-  return invariant;
-}
-
-void LICMPass::FindLoadedVars(ir::Loop& loop, ir::Instruction* inst,
-                              std::vector<ir::Instruction*>* loaded_vars,
-                              std::vector<ir::Instruction*>* visited_insts) {
-  if (std::find(visited_insts->begin(), visited_insts->end(), inst) !=
-      visited_insts->end()) {
-    return;
-  }
-  visited_insts->push_back(inst);
-  if (inst->opcode() == SpvOpLoad) {
-    loaded_vars->push_back(ir_context->get_def_use_mgr()->GetDef(
-        inst->GetOperand(2).words.front()));
-    return;
-  }
-  for (ir::Operand& operand : *inst) {
-    switch (operand.type) {
-      default:
-        break;
-      case SPV_OPERAND_TYPE_ID:
-        FindLoadedVars(
-            loop, ir_context->get_def_use_mgr()->GetDef(operand.words.front()),
-            loaded_vars, visited_insts);
-        // These operand types do not lead to further instructions which may be
-        // variant
-        break;
-    }
-  }
-}
-
-bool LICMPass::IsStoredOnceInLoop(ir::Loop& loop, ir::Instruction* inst) {
-  std::vector<ir::Instruction*> users{};
-
-  std::function<void(ir::Instruction*)> collect_users =
-      [&loop, &users](ir::Instruction* user) {
-        if (loop.IsInsideLoop(user)) {
-          users.push_back(user);
-        }
-      };
-
-  ir_context->get_def_use_mgr()->ForEachUser(inst, collect_users);
-
-  int stores = 0;
-  for (ir::Instruction* user : users) {
-    if (user->opcode() == SpvOpStore &&
-        user->begin()->words.front() == inst->result_id()) {
-      ++stores;
-    }
-  }
-
-  return stores == 1;
 }
 
 }  // namespace opt
