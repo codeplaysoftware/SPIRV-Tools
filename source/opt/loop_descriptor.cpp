@@ -132,8 +132,7 @@ Loop::Loop(IRContext* context, opt::DominatorAnalysis* dom_analysis,
       loop_merge_(merge_target),
       loop_preheader_(nullptr),
       parent_(nullptr),
-      ir_context_(context),
-      dom_analysis_(dom_analysis) {
+      ir_context_(context) {
   assert(context);
   assert(dom_analysis);
   loop_preheader_ = FindLoopPreheader(context, dom_analysis);

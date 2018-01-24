@@ -22,21 +22,33 @@
 namespace spvtools {
 namespace opt {
 
+// LoopUtils is used to encapsulte loop optimizations and from the passes which
+// use them. Any pass which needs a loop optimization should do it through this
+// or through a pass which is using this.
 class LoopUtils {
  public:
-  using BasicBlockListTy = std::vector<std::unique_ptr<ir::BasicBlock>>;
-
+  // Store references to |function| and |context| and create the loop descriptor
+  // from the |function|.
   LoopUtils(ir::Function* function, ir::IRContext* context)
       : function_(*function),
         ir_context_(context),
         loop_descriptor_(&function_) {}
 
+  // Perfom a partial unroll of |loop| by given |factor|. This will copy the
+  // body of the loop |factor| times. So a |factor| of one would give a new loop
+  // with the original body plus one unrolled copy body.
   bool PartiallyUnroll(ir::Loop* loop, size_t factor);
 
+  // Fully unroll |loop|.
   bool FullyUnroll(ir::Loop* loop);
 
+  // Get the stored loop descriptor generated from the function passed into the
+  // constructor.
   ir::LoopDescriptor& GetLoopDescriptor() { return loop_descriptor_; }
 
+  // This function validates that |loop| meets the assumptions made by the
+  // implementation of the loop unroller. As the implementation accommodates
+  // more types of loops this function can reduce its checks.
   bool CanPerformUnroll(ir::Loop* loop);
 
  private:

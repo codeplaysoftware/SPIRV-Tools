@@ -139,6 +139,8 @@ struct LoopUnrollState {
 // maintain the state of the unrolling inbetween steps.
 class LoopUnrollerUtilsImpl {
  public:
+  using BasicBlockListTy = std::vector<std::unique_ptr<ir::BasicBlock>>;
+
   LoopUnrollerUtilsImpl(ir::IRContext* c, ir::Function* function)
       : ir_context_(c),
         function_(*function),
@@ -212,8 +214,10 @@ class LoopUnrollerUtilsImpl {
   void CopyBasicBlock(ir::Loop* loop, const ir::BasicBlock* block_to_copy,
                       bool preserve_instructions);
 
-  //
-  void Unroll(ir::Loop*, size_t);
+  // The actual implementation of the unroll step. Unrolls |loop| by given
+  // |factor| by copying the body by |factor| times. Also propagates the
+  // induction variable value throughout the copies.
+  void Unroll(ir::Loop* loop, size_t);
 
   // Fills the loop_blocks_inorder_ field with the ordered list of basic blocks
   // as computed by the method ComputeLoopOrderedBlocks.
@@ -228,7 +232,7 @@ class LoopUnrollerUtilsImpl {
 
   // A list of basic blocks to be added to the loop at the end of an unroll
   // step.
-  LoopUtils::BasicBlockListTy blocks_to_add_;
+  BasicBlockListTy blocks_to_add_;
 
   // Maintains the current state of the transform between calls to unroll.
   LoopUnrollState state_;
@@ -427,7 +431,9 @@ void LoopUnrollerUtilsImpl::FullyUnroll(ir::Loop* loop) {
 }
 
 // Copy a given basic block, give it a new result_id, and store the new block
-// and the id mapping in the state.
+// and the id mapping in the state. |preserve_instructions| is used to determine
+// whether or not this function should edit instructions other than the
+// |result_id|.
 void LoopUnrollerUtilsImpl::CopyBasicBlock(ir::Loop* loop,
                                            const ir::BasicBlock* itr,
                                            bool preserve_instructions) {

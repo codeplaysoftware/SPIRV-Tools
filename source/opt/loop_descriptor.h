@@ -197,7 +197,6 @@ class Loop {
   BasicBlockListTy loop_basic_blocks_;
 
   ir::IRContext* ir_context_;
-  opt::DominatorAnalysis* dom_analysis_;
 
   // Sets the parent loop of this loop, that is, a loop which contains this loop
   // as a nested child loop.
