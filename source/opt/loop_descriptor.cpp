@@ -15,6 +15,7 @@
 #include "opt/loop_descriptor.h"
 #include <algorithm>
 #include <iostream>
+#include <queue>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -150,6 +151,7 @@ BasicBlock* Loop::GetOrCreatePreHeaderBlock(ir::IRContext* context) {
     loop_preheader_ = &*header_it.InsertBefore(std::unique_ptr<ir::BasicBlock>(
         new ir::BasicBlock(std::unique_ptr<ir::Instruction>(new ir::Instruction(
             context, SpvOpLabel, 0, context->TakeNextId(), {})))));
+    loop_preheader_->SetParent(fn);
     uint32_t loop_preheader_id = loop_preheader_->id();
 
     opt::InstructionBuilder<ir::IRContext::kAnalysisDefUse> builder(
@@ -199,13 +201,38 @@ BasicBlock* Loop::GetOrCreatePreHeaderBlock(ir::IRContext* context) {
   return loop_preheader_;
 }
 
-void Loop::SetMergeBlock(BasicBlock* merge) {
-  loop_merge_ = merge;
+void Loop::SetLatchBlock(BasicBlock* latch) {
+#ifndef NDEBUG
+  assert(latch->GetParent() && "The basic block does not belong to a function");
 
-  ir::BasicBlock::iterator merge_inst = GetHeaderBlock()->tail();
-  if (merge_inst != GetHeaderBlock()->begin() &&
-      (--merge_inst)->opcode() == SpvOpLoopMerge) {
-    merge_inst->SetInOperand(0, {loop_merge_->id()});
+  latch->ForEachSuccessorLabel([this](uint32_t id) {
+    assert((!IsInsideLoop(id) || id == GetHeaderBlock()->id()) &&
+           "A predecessor of the continue block does not belong to the loop");
+  });
+#endif  // NDEBUG
+  assert(IsInsideLoop(latch) && "The continue block is not in the loop");
+
+  SetLatchBlockImpl(latch);
+  if (IsStructured()) {
+    UpdateLoopMergeInst();
+  }
+}
+
+void Loop::SetMergeBlock(BasicBlock* merge) {
+#ifndef NDEBUG
+  assert(merge->GetParent() && "The basic block does not belong to a function");
+  CFG& cfg = *merge->GetParent()->GetParent()->context()->cfg();
+
+  for (uint32_t pred : cfg.preds(merge->id())) {
+    assert(IsInsideLoop(pred) &&
+           "A predecessor of the merge block does not belong to the loop");
+  }
+#endif  // NDEBUG
+  assert(!IsInsideLoop(merge) && "The merge block is in the loop");
+
+  SetMergeBlockImpl(merge);
+  if (IsStructured()) {
+    UpdateLoopMergeInst();
   }
 }
 
@@ -302,6 +329,7 @@ void LoopUtils::CreateLoopDedicateExits() {
         std::unique_ptr<ir::BasicBlock>(new ir::BasicBlock(
             std::unique_ptr<ir::Instruction>(new ir::Instruction(
                 context_, SpvOpLabel, 0, context_->TakeNextId(), {})))));
+    exit.SetParent(function);
 
     // Redirect in loop predecessors to |exit| block.
     for (uint32_t exit_pred_id : bb_pred) {
@@ -581,6 +609,62 @@ void LoopUtils::MakeLoopClosedSSA() {
 
 LoopDescriptor::LoopDescriptor(const Function* f) { PopulateList(f); }
 
+void LoopDescriptor::PopulateStructred(IRContext* context,
+                                       opt::DominatorAnalysis* dom_analysis,
+                                       opt::DominatorTreeNode* node,
+                                       Instruction* merge_inst) {
+  opt::DominatorTree& dom_tree = dom_analysis->GetDomTree();
+
+  // The id of the merge basic block of this loop.
+  uint32_t merge_bb_id = merge_inst->GetSingleWordOperand(0);
+
+  // The id of the continue basic block of this loop.
+  uint32_t continue_bb_id = merge_inst->GetSingleWordOperand(1);
+
+  // The merge target of this loop.
+  BasicBlock* merge_bb = context->cfg()->block(merge_bb_id);
+
+  // The continue target of this loop.
+  BasicBlock* continue_bb = context->cfg()->block(continue_bb_id);
+
+  // The basic block containing the merge instruction.
+  BasicBlock* header_bb = context->get_instr_block(merge_inst);
+
+  // Add the loop to the list of all the loops in the function.
+  loops_.emplace_back(MakeUnique<Loop>(context, dom_analysis, header_bb,
+                                       continue_bb, merge_bb));
+  Loop* current_loop = loops_.back().get();
+
+  // We have a bottom-up construction, so if this loop has nested-loops,
+  // they are by construction at the tail of the loop list.
+  for (auto itr = loops_.rbegin() + 1; itr != loops_.rend(); ++itr) {
+    Loop* previous_loop = itr->get();
+
+    // If the loop already has a parent, then it has been processed.
+    if (previous_loop->HasParent()) continue;
+
+    // If the current loop does not dominates the previous loop then it is
+    // not nested loop.
+    if (!dom_analysis->Dominates(header_bb, previous_loop->GetHeaderBlock()))
+      continue;
+    // If the current loop merge dominates the previous loop then it is
+    // not nested loop.
+    if (dom_analysis->Dominates(merge_bb, previous_loop->GetHeaderBlock()))
+      continue;
+
+    current_loop->AddNestedLoop(previous_loop);
+  }
+  opt::DominatorTreeNode* dom_merge_node = dom_tree.GetTreeNode(merge_bb);
+  for (opt::DominatorTreeNode& loop_node :
+       make_range(node->df_begin(), node->df_end())) {
+    // Check if we are in the loop.
+    if (dom_tree.Dominates(dom_merge_node, &loop_node)) continue;
+    current_loop->AddBasicBlockToLoop(loop_node.bb_);
+    basic_block_to_loop_.insert(
+        std::make_pair(loop_node.bb_->id(), current_loop));
+  }
+}
+
 void LoopDescriptor::PopulateList(const Function* f) {
   IRContext* context = f->GetParent()->context();
 
@@ -596,54 +680,69 @@ void LoopDescriptor::PopulateList(const Function* f) {
        ir::make_range(dom_tree.post_begin(), dom_tree.post_end())) {
     Instruction* merge_inst = node.bb_->GetLoopMergeInst();
     if (merge_inst) {
-      // The id of the merge basic block of this loop.
-      uint32_t merge_bb_id = merge_inst->GetSingleWordOperand(0);
-
-      // The id of the continue basic block of this loop.
-      uint32_t continue_bb_id = merge_inst->GetSingleWordOperand(1);
-
-      // The merge target of this loop.
-      BasicBlock* merge_bb = context->cfg()->block(merge_bb_id);
-
-      // The continue target of this loop.
-      BasicBlock* continue_bb = context->cfg()->block(continue_bb_id);
-
-      // The basic block containing the merge instruction.
-      BasicBlock* header_bb = context->get_instr_block(merge_inst);
-
-      // Add the loop to the list of all the loops in the function.
-      loops_.emplace_back(MakeUnique<Loop>(context, dom_analysis, header_bb,
-                                           continue_bb, merge_bb));
-      Loop* current_loop = loops_.back().get();
-
-      // We have a bottom-up construction, so if this loop has nested-loops,
-      // they are by construction at the tail of the loop list.
-      for (auto itr = loops_.rbegin() + 1; itr != loops_.rend(); ++itr) {
-        Loop* previous_loop = itr->get();
-
-        // If the loop already has a parent, then it has been processed.
-        if (previous_loop->HasParent()) continue;
-
-        // If the current loop does not dominates the previous loop then it is
-        // not nested loop.
-        if (!dom_analysis->Dominates(header_bb,
-                                     previous_loop->GetHeaderBlock()))
-          continue;
-        // If the current loop merge dominates the previous loop then it is
-        // not nested loop.
-        if (dom_analysis->Dominates(merge_bb, previous_loop->GetHeaderBlock()))
-          continue;
-
-        current_loop->AddNestedLoop(previous_loop);
+      // merge instruction have all we need.
+      PopulateStructred(context, dom_analysis, &node, merge_inst);
+    } else {
+      ir::CFG& cfg = *context->cfg();
+      std::queue<BasicBlock*> back_edges;
+      // Try to find back-edge in an unstructured CFG.
+      for (uint32_t pred_id : cfg.preds(node.bb_->id())) {
+        if (dom_analysis->Dominates(node.bb_->id(), pred_id)) {
+          back_edges.push(cfg.block(pred_id));
+        }
       }
-      opt::DominatorTreeNode* dom_merge_node = dom_tree.GetTreeNode(merge_bb);
-      for (opt::DominatorTreeNode& loop_node :
-           make_range(node.df_begin(), node.df_end())) {
-        // Check if we are in the loop.
-        if (dom_tree.Dominates(dom_merge_node, &loop_node)) continue;
-        current_loop->AddBasicBlockToLoop(loop_node.bb_);
-        basic_block_to_loop_.insert(
-            std::make_pair(loop_node.bb_->id(), current_loop));
+      if (back_edges.size()) {
+        // We have a loop with no merge instruction.
+        // The loop might still be structured in the sense of SPIR-V but nothing
+        // explicit.
+
+        // Add the loop to the list of all the loops in the function.
+        loops_.emplace_back(MakeUnique<Loop>());
+        Loop* current_loop = loops_.back().get();
+        current_loop->AddBasicBlockToLoop(node.bb_);
+        if (back_edges.size() == 1) {
+          current_loop->SetLatchBlockImpl(back_edges.front());
+        }
+
+        while (back_edges.empty()) {
+          BasicBlock* bb = back_edges.front();
+          back_edges.pop();
+          for (uint32_t pred_id : cfg.preds(node.bb_->id())) {
+            if (!current_loop->IsInsideLoop(pred_id))
+              back_edges.push(cfg.block(pred_id));
+          }
+          current_loop->AddBasicBlockToLoop(bb);
+          Loop* inner_loop = FindLoopForBasicBlock(bb->id());
+          if (inner_loop) {
+            // If the basic block belong to an inner loop, find the outer most
+            // loop and register current_loop as a parent of the outer most.
+            for (; inner_loop->GetParent();
+                 inner_loop = inner_loop->GetParent())
+              ;
+            if (inner_loop != current_loop) {
+              // The outer most loop is not current_loop, so we found a new
+              // inner loop.
+              inner_loop->SetParent(current_loop);
+            }
+          } else {
+            // We found a new block, register current_loop as the inner most
+            // loop for this basic block.
+            basic_block_to_loop_[bb->id()] = current_loop;
+          }
+        }
+        std::unordered_set<BasicBlock*> exit_blocks;
+        // Look for a unique merge block.
+        current_loop->GetExitBlocks(context, &exit_blocks);
+        if (exit_blocks.size() == 1) {
+          const std::vector<uint32_t>& merge_pred =
+              cfg.preds((*exit_blocks.begin())->id());
+          if (std::all_of(merge_pred.begin(), merge_pred.end(),
+                          [current_loop](uint32_t pred) {
+                            return current_loop->IsInsideLoop(pred);
+                          })) {
+            current_loop->SetMergeBlockImpl(*exit_blocks.begin());
+          }
+        }
       }
     }
   }
