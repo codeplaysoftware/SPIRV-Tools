@@ -21,6 +21,7 @@
 
 #include "opt/cfg.h"
 #include "opt/ir_builder.h"
+#include "opt/ir_context.h"
 #include "opt/iterator.h"
 #include "opt/loop_descriptor.h"
 #include "opt/make_unique.h"
@@ -116,6 +117,26 @@ BasicBlock* Loop::FindLoopPreheader(IRContext* ir_context,
       });
   if (is_preheader) return loop_pred;
   return nullptr;
+}
+
+bool Loop::IsInsideLoop(Instruction* inst) const {
+  const BasicBlock* parent_block = inst->context()->get_instr_block(inst);
+  if (!parent_block) return false;
+  return IsInsideLoop(parent_block);
+}
+
+bool Loop::IsBasicBlockInLoopSlow(const BasicBlock* bb) {
+  assert(bb->GetParent() && "The basic block does not belong to a function");
+  IRContext* context = bb->GetParent()->GetParent()->context();
+
+  opt::DominatorAnalysis* dom_analysis =
+      context->GetDominatorAnalysis(bb->GetParent(), *context->cfg());
+  if (!dom_analysis->Dominates(GetHeaderBlock(), bb)) return false;
+
+  opt::PostDominatorAnalysis* postdom_analysis =
+      context->GetPostDominatorAnalysis(bb->GetParent(), *context->cfg());
+  if (!postdom_analysis->Dominates(GetMergeBlock(), bb)) return false;
+  return true;
 }
 
 BasicBlock* Loop::GetOrCreatePreHeaderBlock(ir::IRContext* context) {
