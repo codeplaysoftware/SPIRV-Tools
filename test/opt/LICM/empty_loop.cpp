@@ -79,10 +79,42 @@ OpReturn
 OpFunctionEnd
 )";
 
-  const std::string after_hoist = R"(
+  const std::string after_hoist = R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %main "main"
+OpExecutionMode %main OriginUpperLeft
+OpSource GLSL 440
+OpName %main "main"
+%void = OpTypeVoid
+%4 = OpTypeFunction %void
+%int = OpTypeInt 32 1
+%_ptr_Function_int = OpTypePointer Function %int
+%int_0 = OpConstant %int 0
+%int_10 = OpConstant %int 10
+%bool = OpTypeBool
+%int_1 = OpConstant %int 1
+%main = OpFunction %void None %4
+%11 = OpLabel
+OpBranch %12
+%12 = OpLabel
+%13 = OpPhi %int %int_0 %11 %14 %15
+OpLoopMerge %16 %15 None
+OpBranch %17
+%17 = OpLabel
+%18 = OpSLessThan %bool %13 %int_10
+OpBranchConditional %18 %19 %16
+%19 = OpLabel
+OpBranch %15
+%15 = OpLabel
+%14 = OpIAdd %int %13 %int_1
+OpBranch %12
+%16 = OpLabel
+OpReturn
+OpFunctionEnd
 )";
 
-  SinglePassRunAndCheck<opt::LICMPass>(before_hoist, after_hoist, true);
+  SinglePassRunAndCheck<opt::LICMPass>(before_hoist, after_hoist, false);
 }
 
 }  // namespace
