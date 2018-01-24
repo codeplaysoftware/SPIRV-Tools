@@ -68,6 +68,7 @@ class Loop {
   // OpLoopMerge instruction.
   inline BasicBlock* GetHeaderBlock() { return loop_header_; }
   inline const BasicBlock* GetHeaderBlock() const { return loop_header_; }
+  inline void SetHeaderBlock(BasicBlock* header) { loop_header_ = header; }
 
   // Returns true if the loop can be considered as structured according to
   // SPIR-V rules:
@@ -353,10 +354,6 @@ class LoopDescriptor {
 
   // Creates loop descriptors for the function |f|.
   void PopulateList(const Function* f);
-
-  void PopulateStructred(IRContext* context,
-                         opt::DominatorAnalysis* dom_analysis,
-                         opt::DominatorTreeNode* node, Instruction* merge_inst);
 
   // Returns the inner most loop that contains the basic block id |block_id|.
   inline Loop* FindLoopForBasicBlock(uint32_t block_id) const {
