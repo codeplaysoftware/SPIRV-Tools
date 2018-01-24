@@ -26,8 +26,8 @@ class LoopUtils {
  public:
   using BasicBlockListTy = std::vector<std::unique_ptr<ir::BasicBlock>>;
 
-  LoopUtils(ir::Function& function, ir::IRContext* context)
-      : function_(function),
+  LoopUtils(ir::Function* function, ir::IRContext* context)
+      : function_(*function),
         ir_context_(context),
         loop_descriptor_(&function_) {}
 
@@ -45,8 +45,7 @@ class LoopUtils {
   ir::LoopDescriptor loop_descriptor_;
 };
 
-
-} // namespace opt
-} // namespace spvtools
+}  // namespace opt
+}  // namespace spvtools
 
 #endif  // SOURCE_OPT_LOOP_UTILS_H_

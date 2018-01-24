@@ -349,9 +349,6 @@ ir::Instruction* Loop::FindInductionVariable(
         return nullptr;
       }
 
-      // const ir::Instruction* phi_rhs =
-      // def_use_manager->GetDef(variable_inst->GetSingleWordOperand(4));
-
       if (!FindNumberOfIterations(variable_inst, &branch_inst, nullptr))
         return nullptr;
       induction = variable_inst;

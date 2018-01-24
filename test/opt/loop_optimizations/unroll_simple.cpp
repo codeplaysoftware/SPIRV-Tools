@@ -287,7 +287,7 @@ class PartialUnrollerTestPass : public opt::Pass {
 
   Status Process(ir::IRContext* context) override {
     for (ir::Function& f : *context->module()) {
-      opt::LoopUtils loop_utils{f, context};
+      opt::LoopUtils loop_utils{&f, context};
 
       for (auto& loop : loop_utils.GetLoopDescriptor()) {
         loop_utils.PartiallyUnroll(&loop, factor);

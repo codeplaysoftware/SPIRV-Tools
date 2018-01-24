@@ -164,9 +164,10 @@ class Loop {
                               const ir::Instruction* condition,
                               size_t* iterations) const;
 
-  bool HasUnrollLoopControl() const {
+  inline bool HasUnrollLoopControl() const {
     assert(loop_header_);
-    assert(loop_header_->GetLoopMergeInst());
+    if (!loop_header_->GetLoopMergeInst()) return false;
+
     return loop_header_->GetLoopMergeInst()->GetSingleWordOperand(2) == 1;
   }
 
