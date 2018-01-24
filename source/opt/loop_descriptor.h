@@ -41,6 +41,7 @@ class Loop {
   using iterator = ChildrenList::iterator;
   using const_iterator = ChildrenList::const_iterator;
   using BasicBlockListTy = std::unordered_set<uint32_t>;
+  using BasicBlockOrderedListTy = std::vector<const ir::BasicBlock*>;
 
   Loop()
       : loop_header_(nullptr),
@@ -65,13 +66,19 @@ class Loop {
   inline BasicBlock* GetHeaderBlock() { return loop_header_; }
   inline const BasicBlock* GetHeaderBlock() const { return loop_header_; }
 
+  void SetHeaderBlock(ir::BasicBlock* new_header) { loop_header_ = new_header; }
+
   // Returns the latch basic block (basic block that holds the back-edge).
   inline BasicBlock* GetLatchBlock() { return loop_continue_; }
   inline const BasicBlock* GetLatchBlock() const { return loop_continue_; }
+  void SetLatchBlock(ir::BasicBlock* new_continue) {
+    loop_continue_ = new_continue;
+  }
 
   // Returns the BasicBlock which marks the end of the loop.
   inline BasicBlock* GetMergeBlock() { return loop_merge_; }
   inline const BasicBlock* GetMergeBlock() const { return loop_merge_; }
+  void SetMergeBlock(ir::BasicBlock* new_merge) { loop_merge_ = new_merge; }
 
   // Returns the loop pre-header, nullptr means that the loop predecessor does
   // not qualify as a preheader.
@@ -113,9 +120,7 @@ class Loop {
   // Returns the set of all basic blocks contained within the loop. Will be all
   // BasicBlocks dominated by the header which are not also dominated by the
   // loop merge block.
-  inline const BasicBlockListTy& GetBlocks() const {
-    return loop_basic_blocks_;
-  }
+  inline const BasicBlockListTy& GetBlocks() { return loop_basic_blocks_; }
 
   // Returns true if the basic block |bb| is inside this loop.
   inline bool IsInsideLoop(const BasicBlock* bb) const {
@@ -154,6 +159,20 @@ class Loop {
     }
   }
 
+  ir::Instruction* FindInductionVariable(const ir::BasicBlock* condition) const;
+  bool FindNumberOfIterations(const ir::Instruction* induction,
+                              const ir::Instruction* condition,
+                              size_t* iterations) const;
+
+  inline bool HasUnrollLoopControl() const {
+    assert(loop_header_);
+    if (!loop_header_->GetLoopMergeInst()) return false;
+
+    return loop_header_->GetLoopMergeInst()->GetSingleWordOperand(2) == 1;
+  }
+
+  ir::BasicBlock* FindConditionBlock(const ir::Function& function);
+
  private:
   // The block which marks the start of the loop.
   BasicBlock* loop_header_;
@@ -176,6 +195,8 @@ class Loop {
   // A set of all the basic blocks which comprise the loop structure. Will be
   // computed only when needed on demand.
   BasicBlockListTy loop_basic_blocks_;
+
+  ir::IRContext* ir_context_;
 
   // Sets the parent loop of this loop, that is, a loop which contains this loop
   // as a nested child loop.

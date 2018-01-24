@@ -123,6 +123,32 @@ class InstructionBuilder {
     return AddInstruction(std::move(phi_inst));
   }
 
+  // Adds an unsigned int32 constant to the binary.
+  // The |value| parameter is the constant value to be added.
+  ir::Instruction* Add32BitUnsignedIntegerConstant(uint32_t value) {
+    // Create the integer type.
+    analysis::Integer uint_type(32, false);
+    uint32_t uint32_type_id =
+        GetContext()->get_type_mgr()->GetTypeInstruction(&uint_type);
+
+    // Create the constant value.
+    ir::Operand constant(spv_operand_type_t::SPV_OPERAND_TYPE_LITERAL_INTEGER,
+                         {value});
+
+    // Create the OpConstant instruction using the type and the value.
+    std::unique_ptr<ir::Instruction> new_constant(
+        new ir::Instruction(GetContext(), SpvOp::SpvOpConstant, uint32_type_id,
+                            GetContext()->TakeNextId(), {constant}));
+
+    // Get the pointer to the instruction and add the constant to the modules
+    // global values.
+    ir::Instruction* instruction_to_return = new_constant.get();
+    GetContext()->module()->AddGlobalValue(std::move(new_constant));
+
+    UpdateDefUseMgr(instruction_to_return);
+    return instruction_to_return;
+  }
+
   // Inserts the new instruction before the insertion point.
   ir::Instruction* AddInstruction(std::unique_ptr<ir::Instruction>&& insn) {
     ir::Instruction* insn_ptr = &*insert_before_.InsertBefore(std::move(insn));

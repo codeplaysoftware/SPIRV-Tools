@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "constants.h"
 #include "opt/iterator.h"
 #include "opt/loop_descriptor.h"
 #include "opt/make_unique.h"
@@ -26,6 +27,103 @@
 namespace spvtools {
 namespace ir {
 
+// Static helper functions to extract information from induction variable
+// instructions.
+namespace {
+
+// Takes in an instruction |inst| and stores the constant integer found inside
+// the instruction. Returns false if the |inst| does not contain a constant
+// integer.
+static bool GetConstant(const ir::Instruction* inst, ir::IRContext* context,
+                        uint32_t* value) {
+  // Get the constant manager from the ir context.
+  opt::analysis::ConstantManager* const_manager = context->get_constant_mgr();
+  assert(const_manager);
+
+  const opt::analysis::Constant* c =
+      const_manager->FindDeclaredConstant(inst->result_id());
+
+  // If we couldn't find a constant at all.
+  if (!c) return false;
+
+  const opt::analysis::IntConstant* val = c->AsIntConstant();
+
+  // If the constant isn't an integer scalar.
+  if (!val) return false;
+
+  // If the constant is more than 32 bits.
+  if (val->words().size() != 1) return false;
+
+  // If value is nullptr just return whether or not it was found otherwise store
+  // the value first.
+  if (value) {
+    *value = val->words()[0];
+  }
+
+  return true;
+}
+
+// Takes in a phi instruction |induction| and the loop |header| and returns the
+// step operation of the loop.
+static ir::Instruction* GetInductionStepOperation(
+    const ir::Loop* loop, const ir::Instruction* induction,
+    ir::IRContext* context) {
+  ir::Instruction* step = nullptr;
+
+  opt::analysis::DefUseManager* def_use_manager = context->get_def_use_mgr();
+
+  // Verify the phi node.
+  for (uint32_t operand_id = 1; operand_id < induction->NumInOperands();
+       operand_id += 2) {
+    // Incoming edge.
+    ir::BasicBlock* incoming_block =
+        context->cfg()->block(induction->GetSingleWordInOperand(operand_id));
+
+    // Check if the block is dominated by header, and thus coming from within
+    // the loop.
+    if (loop->IsInsideLoop(incoming_block)) {
+      step = def_use_manager->GetDef(
+          induction->GetSingleWordInOperand(operand_id - 1));
+    }
+  }
+
+  if (!step || step->opcode() != SpvOp::SpvOpIAdd) {
+    return nullptr;
+  }
+
+  return step;
+}
+
+// Extract the initial value from the |induction| variable and store it in
+// |value|. If the function couldn't find the initial value of |induction|
+// return false.
+static bool GetInductionInitValue(const ir::Loop* loop,
+                                  const ir::Instruction* induction,
+                                  ir::IRContext* context, uint32_t* value) {
+  // We assume that the immediate dominator of the loop start block should
+  // contain the initialiser for the induction variables.
+
+  ir::Instruction* constant = nullptr;
+  opt::analysis::DefUseManager* def_use_manager = context->get_def_use_mgr();
+
+  for (uint32_t operand_id = 3; operand_id < induction->NumOperands();
+       operand_id += 2) {
+    ir::BasicBlock* bb =
+        context->cfg()->block(induction->GetSingleWordOperand(operand_id));
+
+    if (!loop->IsInsideLoop(bb)) {
+      constant = def_use_manager->GetDef(
+          induction->GetSingleWordOperand(operand_id - 1));
+    }
+  }
+
+  if (!constant) return false;
+
+  return GetConstant(constant, context, value);
+}
+
+}  // namespace
+
 Loop::Loop(IRContext* context, opt::DominatorAnalysis* dom_analysis,
            BasicBlock* header, BasicBlock* continue_target,
            BasicBlock* merge_target)
@@ -33,12 +131,11 @@ Loop::Loop(IRContext* context, opt::DominatorAnalysis* dom_analysis,
       loop_continue_(continue_target),
       loop_merge_(merge_target),
       loop_preheader_(nullptr),
-      parent_(nullptr) {
+      parent_(nullptr),
+      ir_context_(context) {
   assert(context);
   assert(dom_analysis);
   loop_preheader_ = FindLoopPreheader(context, dom_analysis);
-  AddBasicBlockToLoop(header);
-  AddBasicBlockToLoop(continue_target);
 }
 
 BasicBlock* Loop::FindLoopPreheader(IRContext* ir_context,
@@ -151,6 +248,123 @@ void LoopDescriptor::PopulateList(const Function* f) {
   for (std::unique_ptr<Loop>& loop : loops_) {
     if (!loop->HasParent()) dummy_top_loop_.nested_loops_.push_back(loop.get());
   }
+}
+
+ir::BasicBlock* Loop::FindConditionBlock(const ir::Function& function) {
+  ir::BasicBlock* condition_block = nullptr;
+
+  opt::DominatorAnalysis* dom_analysis =
+      ir_context_->GetDominatorAnalysis(&function, *ir_context_->cfg());
+  ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_merge_);
+
+  if (!bb) return nullptr;
+
+  if (bb->ctail()->opcode() == SpvOpBranchConditional) {
+    condition_block = bb;
+  }
+
+  return condition_block;
+}
+
+bool Loop::FindNumberOfIterations(const ir::Instruction* induction,
+                                  const ir::Instruction* branch_inst,
+                                  size_t* iterations) const {
+  // From the branch instruction find the branch condition.
+  opt::analysis::DefUseManager* def_use_manager =
+      ir_context_->get_def_use_mgr();
+
+  // Condition instruction from the OpConditionalBranch.
+  ir::Instruction* condition =
+      def_use_manager->GetDef(branch_inst->GetSingleWordOperand(0));
+
+  assert(condition->opcode() == SpvOpSLessThan);
+
+  // The right hand side operand of the operation.
+  const ir::Instruction* rhs_inst =
+      def_use_manager->GetDef(condition->GetSingleWordOperand(3));
+
+  // Exit out if we couldn't resolve the rhs to be a constant integer.
+  uint32_t condition_value = 0;
+  if (!GetConstant(rhs_inst, ir_context_, &condition_value)) return false;
+
+  // Find the instruction which is stepping through the loop.
+  ir::Instruction* step_inst =
+      GetInductionStepOperation(this, induction, ir_context_);
+
+  if (!step_inst) return false;
+
+  // The instruction representing the constant value being applied in the step
+  // operation.
+  const ir::Instruction* step_amount_inst =
+      def_use_manager->GetDef(step_inst->GetSingleWordOperand(3));
+
+  uint32_t step_value = 0;
+  // Exit out if we couldn't resolve the rhs to be a constant integer.
+  if (!GetConstant(step_amount_inst, ir_context_, &step_value)) return false;
+
+  // Find the inital value of the loop and make sure it is a constant integer.
+  uint32_t init_value = 0;
+  if (!GetInductionInitValue(this, induction, ir_context_, &init_value))
+    return false;
+
+  // If iterations is non null then store the value in that.
+  if (iterations) {
+    *iterations = (condition_value / step_value) - init_value;
+  }
+
+  return true;
+}
+
+ir::Instruction* Loop::FindInductionVariable(
+    const ir::BasicBlock* condition_block) const {
+  // Find the branch instruction.
+  const ir::Instruction& branch_inst = *condition_block->ctail();
+
+  ir::Instruction* induction = nullptr;
+  // Verify that the branch instruction is a conditional branch.
+  if (branch_inst.opcode() == SpvOp::SpvOpBranchConditional) {
+    // From the branch instruction find the branch condition.
+    opt::analysis::DefUseManager* def_use_manager =
+        ir_context_->get_def_use_mgr();
+
+    // Find the instruction representing the condition used in the conditional
+    // branch.
+    ir::Instruction* condition =
+        def_use_manager->GetDef(branch_inst.GetSingleWordOperand(0));
+
+    // Ensure that the condition is a less than operation.
+    if (condition && condition->opcode() == SpvOp::SpvOpSLessThan) {
+      // The left hand side operand of the operation.
+      ir::Instruction* variable_inst =
+          def_use_manager->GetDef(condition->GetSingleWordOperand(2));
+
+      // Make sure the variable instruction used is a phi.
+      if (!variable_inst || variable_inst->opcode() != SpvOpPhi) return nullptr;
+
+      // Make sure the phi instruction only has two incoming blocks.
+      if (variable_inst->NumOperands() == 6) {
+        // Make sure one of them is the preheader.
+        if (variable_inst->GetSingleWordOperand(3) != loop_preheader_->id() &&
+            variable_inst->GetSingleWordOperand(5) != loop_preheader_->id()) {
+          return nullptr;
+        }
+
+        // And make sure that the other is the continue block.
+        if (variable_inst->GetSingleWordOperand(3) != loop_continue_->id() &&
+            variable_inst->GetSingleWordOperand(5) != loop_continue_->id()) {
+          return nullptr;
+        }
+      } else {
+        return nullptr;
+      }
+
+      if (!FindNumberOfIterations(variable_inst, &branch_inst, nullptr))
+        return nullptr;
+      induction = variable_inst;
+    }
+  }
+
+  return induction;
 }
 
 }  // namespace ir
