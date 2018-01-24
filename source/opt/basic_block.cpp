@@ -114,9 +114,9 @@ void BasicBlock::ForEachSuccessorLabel(
   auto br = &insts_.back();
   switch (br->opcode()) {
     case SpvOpBranch: {
-      uint32_t id = br->GetOperand(0).words[0];
-      f(&id);
-      if (id != br->GetOperand(0).words[0]) br->SetOperand(0, {id});
+      uint32_t tmp_id = br->GetOperand(0).words[0];
+      f(&tmp_id);
+      if (tmp_id != br->GetOperand(0).words[0]) br->SetOperand(0, {tmp_id});
     } break;
     case SpvOpBranchConditional:
     case SpvOpSwitch: {
