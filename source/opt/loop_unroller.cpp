@@ -16,6 +16,7 @@
 #include <map>
 #include <memory>
 #include <utility>
+#include "opt/ir_builder.h"
 #include "opt/loop_utils.h"
 
 // Implements loop util unrolling functionality for fully and partially
@@ -305,7 +306,6 @@ void LoopUnrollerUtilsImpl::PartiallyUnrollUnevenFactor(ir::Loop* loop,
   // right at the start of the new blocks.
   blocks_to_add_.push_back(std::move(new_exit_bb));
   ir::BasicBlock* new_exit_bb_raw = blocks_to_add_[0].get();
-
   ir::BasicBlock* original_condition_block = loop_condition_block_;
 
   // Duplicate the loop, providing access to the blocks of both loops.
@@ -316,37 +316,24 @@ void LoopUnrollerUtilsImpl::PartiallyUnrollUnevenFactor(ir::Loop* loop,
   AddBlocksToFunction(loop->GetMergeBlock());
   blocks_to_add_.clear();
 
+  InstructionBuilder<ir::IRContext::kAnalysisNone> builder{ir_context_,
+                                                           new_exit_bb_raw};
   // Make the first loop branch to the second.
-  std::unique_ptr<ir::Instruction> new_branch{new ir::Instruction(
-      ir_context_, SpvOp::SpvOpBranch, 0, 0,
-      {{SPV_OPERAND_TYPE_ID, {new_loop.GetHeaderBlock()->id()}}})};
-  new_exit_bb_raw->AddInstruction(std::move(new_branch));
-
-  ir_context_->InvalidateAnalysesExceptFor(
-      ir::IRContext::Analysis::kAnalysisNone);
+  builder.AddBranch(new_loop.GetHeaderBlock()->id());
 
   loop_condition_block_ = state_.new_condition_block;
   loop_induction_variable_ = state_.new_phi;
 
-  // Create a new merge block for the first loop.
+  // Unroll the new loop by the factor with the usual -1 to account for the
+  // existing block iteration.
   Unroll(&new_loop, factor - 1u);
-
-  analysis::Integer uint(32, false);
-  uint32_t uint32_type_id =
-      ir_context_->get_type_mgr()->GetTypeInstruction(&uint);
 
   // We need to account for the initial body when calculating the remainder.
   size_t remainder = number_of_loop_iterations_ % (factor + 1u);
 
-  // Construct the constant.
-  uint32_t resultId = ir_context_->TakeNextId();
-  ir::Operand constant(spv_operand_type_t::SPV_OPERAND_TYPE_LITERAL_INTEGER,
-                       {static_cast<unsigned int>(remainder)});
-  std::unique_ptr<ir::Instruction> newConstant(new ir::Instruction(
-      ir_context_, SpvOp::SpvOpConstant, uint32_type_id, resultId, {constant}));
-
-  uint32_t constant_id = newConstant->result_id();
-  ir_context_->module()->AddGlobalValue(std::move(newConstant));
+  ir::Instruction* new_constant =
+      builder.AddIntegerConstant(static_cast<uint32_t>(remainder));
+  uint32_t constant_id = new_constant->result_id();
 
   // Add the merge block to the back of the binary.
   blocks_to_add_.push_back(
@@ -365,11 +352,20 @@ void LoopUnrollerUtilsImpl::PartiallyUnrollUnevenFactor(ir::Loop* loop,
   ir::Instruction& conditional_branch = *original_condition_block->tail();
   ir::Instruction* condition_check =
       def_use_manager->GetDef(conditional_branch.GetSingleWordOperand(0));
+
+  // This should have been checked by the LoopUtils::CanPerformUnroll function
+  // before entering this.
+  assert(condition_check->opcode() == SpvOpSLessThan);
   condition_check->SetInOperand(1, {constant_id});
 
-  // Update the next phi node.
-  loop_induction_variable_->SetInOperand(0, {constant_id});
-  loop_induction_variable_->SetInOperand(1, {new_merge_id});
+  // Update the next phi node. The phi will have a constant value coming in from
+  // the preheader block. For the duplicated loop we need to update the constant
+  // to be the amount of iterations covered by the first loop and the incoming
+  // block to be the first loops new merge block.
+  uint32_t phi_incoming_index =
+      GetPhiIndexFromLabel(loop->GetPreHeaderBlock(), loop_induction_variable_);
+  loop_induction_variable_->SetInOperand(phi_incoming_index - 1, {constant_id});
+  loop_induction_variable_->SetInOperand(phi_incoming_index, {new_merge_id});
 
   ir_context_->InvalidateAnalysesExceptFor(
       ir::IRContext::Analysis::kAnalysisNone);
