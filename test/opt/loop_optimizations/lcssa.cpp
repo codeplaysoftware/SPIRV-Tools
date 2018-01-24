@@ -27,6 +27,7 @@
 
 #include "opt/build_module.h"
 #include "opt/loop_descriptor.h"
+#include "opt/loop_utils.h"
 #include "opt/pass.h"
 
 namespace {
@@ -147,7 +148,7 @@ TEST_F(LCSSATest, SimpleLCSSA) {
   const ir::Function* f = spvtest::GetFunction(module, 2);
   ir::LoopDescriptor ld{f};
 
-  ir::LoopUtils Util(context.get(), ld[17]);
+  opt::LoopUtils Util(context.get(), ld[17]);
   Util.MakeLoopClosedSSA();
   Match(text, context.get());
 }
@@ -244,7 +245,7 @@ TEST_F(LCSSATest, DualLoopLCSSA) {
   const ir::Function* f = spvtest::GetFunction(module, 2);
   ir::LoopDescriptor ld{f};
 
-  ir::LoopUtils Util(context.get(), ld[16]);
+  opt::LoopUtils Util(context.get(), ld[16]);
   Util.MakeLoopClosedSSA();
   Match(text, context.get());
 }
@@ -334,7 +335,7 @@ TEST_F(LCSSATest, PhiUserLCSSA) {
   const ir::Function* f = spvtest::GetFunction(module, 2);
   ir::LoopDescriptor ld{f};
 
-  ir::LoopUtils Util(context.get(), ld[19]);
+  opt::LoopUtils Util(context.get(), ld[19]);
   Util.MakeLoopClosedSSA();
   Match(text, context.get());
 }

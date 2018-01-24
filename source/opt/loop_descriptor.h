@@ -106,7 +106,7 @@ class Loop {
   //  - must be the only block branching back to the header block.
   // If the loop has an OpLoopMerge in it header, this instruction is also
   // updated.
-  inline void SetLatchBlock(BasicBlock* latch);
+  void SetLatchBlock(BasicBlock* latch);
 
   inline bool HasUniqueMergeBlock() { return !!loop_merge_; }
   // Returns the basic block which marks the end of the loop.
@@ -120,7 +120,7 @@ class Loop {
   //  - it must not be already used as merge block.
   // If the loop has an OpLoopMerge in it header, this instruction is also
   // updated.
-  inline void SetMergeBlock(BasicBlock* merge);
+  void SetMergeBlock(BasicBlock* merge);
 
   // Returns the loop pre-header, nullptr means that the loop predecessor does
   // not qualify as a preheader.
@@ -143,11 +143,6 @@ class Loop {
   // at least one predecessor in the loop.
   void GetExitBlocks(IRContext* context,
                      std::unordered_set<uint32_t>* exit_blocks) const;
-
-  // Fills |exit_blocks| with all basic blocks that are not in the loop and has
-  // at least one predecessor in the loop.
-  void GetExitBlocks(IRContext* context,
-                     std::unordered_set<BasicBlock*>* exit_blocks) const;
 
   bool IsLCSSA(IRContext* context) const;
 
@@ -258,49 +253,6 @@ class Loop {
   // loops as child.
   friend class LoopDescriptor;
   friend class LoopUtils;
-};
-
-class LoopUtils {
- public:
-  LoopUtils(IRContext* context, Loop* loop) : context_(context), loop_(loop) {}
-
-  // The make the current loop in the loop closed SSA form.
-  // In the loop closed SSA, all loop exiting values goes through a dedicate SSA
-  // instruction. For instance:
-  //
-  // for (...) {
-  //   A1 = ...
-  //   if (...)
-  //     A2 = ...
-  //   A = phi A1, A2
-  // }
-  // ... = op A ...
-  //
-  // Becomes
-  //
-  // for (...) {
-  //   A1 = ...
-  //   if (...)
-  //     A2 = ...
-  //   A = phi A1, A2
-  // }
-  // C = phi A
-  // ... = op C ...
-  //
-  // This makes some loop transformations (such as loop unswitch) simpler
-  // (removes the needs to take care of exiting variables).
-  void MakeLoopClosedSSA();
-
-  // Create dedicate exit basic block. This ensure all exit basic blocks as the
-  // loop as sole predecessors.
-  // By construction, structured control flow already has a dedicated exit
-  // block.
-  // Preserves: CFG, def/use and instruction to block mapping.
-  void CreateLoopDedicateExits();
-
- private:
-  IRContext* context_;
-  Loop* loop_;
 };
 
 // Loop descriptions class for a given function.
