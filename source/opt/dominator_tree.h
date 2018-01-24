@@ -224,6 +224,17 @@ class DominatorTree {
     return true;
   }
 
+  // Applies the std::function |func| to all nodes in the dominator tree.
+  // Tree nodes are visited in a depth first pre-order.
+  void VisitChildrenIf(std::function<bool(DominatorTreeNode*)> func,
+                       iterator node) {
+    if (func(&*node)) {
+      for (auto n : *node) {
+        VisitChildrenIf(func, n->df_begin());
+      }
+    }
+  }
+
   // Returns the DominatorTreeNode associated with the basic block |bb|.
   // If the |bb| is unknown to the dominator tree, it returns null.
   inline DominatorTreeNode* GetTreeNode(ir::BasicBlock* bb) {

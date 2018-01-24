@@ -342,10 +342,20 @@ ir::Instruction* Loop::FindInductionVariable(
       // Make sure the variable instruction used is a phi.
       if (!variable_inst || variable_inst->opcode() != SpvOpPhi) return nullptr;
 
-      // .
-      if (variable_inst->NumOperands() != 6 ||
-          variable_inst->GetSingleWordOperand(3) != loop_preheader_->id() ||
-          variable_inst->GetSingleWordOperand(5) != loop_continue_->id()) {
+      // Make sure the phi instruction only has two incoming blocks.
+      if (variable_inst->NumOperands() == 6) {
+        // Make sure one of them is the preheader.
+        if (variable_inst->GetSingleWordOperand(3) != loop_preheader_->id() &&
+            variable_inst->GetSingleWordOperand(5) != loop_preheader_->id()) {
+          return nullptr;
+        }
+
+        // And make sure that the other is the continue block.
+        if (variable_inst->GetSingleWordOperand(3) != loop_continue_->id() &&
+            variable_inst->GetSingleWordOperand(5) != loop_continue_->id()) {
+          return nullptr;
+        }
+      } else {
         return nullptr;
       }
 

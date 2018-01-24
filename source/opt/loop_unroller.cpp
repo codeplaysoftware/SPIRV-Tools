@@ -332,7 +332,7 @@ void LoopUnrollerUtilsImpl::PartiallyUnrollUnevenFactor(ir::Loop* loop,
   size_t remainder = number_of_loop_iterations_ % (factor + 1u);
 
   ir::Instruction* new_constant =
-      builder.AddIntegerConstant(static_cast<uint32_t>(remainder));
+      builder.Add32BitUnsignedIntegerConstant(static_cast<uint32_t>(remainder));
   uint32_t constant_id = new_constant->result_id();
 
   // Add the merge block to the back of the binary.
@@ -527,14 +527,15 @@ uint32_t LoopUnrollerUtilsImpl::GetPhiDefID(const ir::Instruction* phi,
 
 void LoopUnrollerUtilsImpl::FoldConditionBlock(ir::BasicBlock* condition_block,
                                                uint32_t operand_label) {
+  // Remove the old conditional branch to the merge and continue blocks.
   ir::Instruction& old_branch = *condition_block->tail();
-
   uint32_t new_target = old_branch.GetSingleWordOperand(operand_label);
-  std::unique_ptr<ir::Instruction> new_branch{
-      new ir::Instruction(ir_context_, SpvOp::SpvOpBranch, 0, 0,
-                          {{SPV_OPERAND_TYPE_ID, {new_target}}})};
   ir_context_->KillInst(&old_branch);
-  condition_block->AddInstruction(std::move(new_branch));
+
+  // Add the new unconditional branch to the merge block.
+  InstructionBuilder<ir::IRContext::kAnalysisNone> builder{ir_context_,
+                                                           condition_block};
+  builder.AddBranch(new_target);
 }
 
 void LoopUnrollerUtilsImpl::CloseUnrolledLoop(ir::Loop* loop) {
@@ -589,8 +590,7 @@ void LoopUnrollerUtilsImpl::AddBlocksToFunction(
 }
 
 // Assign all result_ids in |basic_block| instructions to new IDs and preserve
-// the
-// mapping of new ids to old ones.
+// the mapping of new ids to old ones.
 void LoopUnrollerUtilsImpl::AssignNewResultIds(ir::BasicBlock* basic_block) {
   // Label instructions aren't covered by normal traversal of the
   // instructions.
@@ -651,11 +651,16 @@ void LoopUnrollerUtilsImpl::ComputeLoopOrderedBlocks(ir::Loop* loop) {
   // reach the merge blockand add every node we traverse to the set of blocks
   // which we consider to be the loop.
   auto begin_itr = tree.GetTreeNode(loop->GetHeaderBlock())->df_begin();
-  for (; begin_itr != tree.end(); ++begin_itr) {
-    if (!analysis->Dominates(loop->GetMergeBlock(), begin_itr->bb_)) {
-      loop_blocks_inorder_.push_back(begin_itr->bb_);
+  const ir::BasicBlock* merge = loop->GetMergeBlock();
+  auto func = [merge, &tree, this](DominatorTreeNode* node) {
+    if (!tree.Dominates(merge->id(), node->id())) {
+      this->loop_blocks_inorder_.push_back(node->bb_);
+      return true;
     }
+    return false;
   };
+
+  tree.VisitChildrenIf(func, begin_itr);
 }
 
 /*
@@ -671,6 +676,11 @@ void LoopUnrollerUtilsImpl::ComputeLoopOrderedBlocks(ir::Loop* loop) {
  * */
 
 bool LoopUtils::CanPerformUnroll(ir::Loop* loop) {
+  // The loop is expected to be in structured order.
+  if (!loop->GetHeaderBlock()->GetMergeInst()) {
+    return false;
+  }
+
   // Find check the loop has a condition we can find and evaluate.
   const ir::BasicBlock* condition = loop->FindConditionBlock(function_);
   if (!condition) return false;
