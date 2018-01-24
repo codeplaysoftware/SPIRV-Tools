@@ -58,17 +58,15 @@ using PassClassTest = PassTest<::testing::Test>;
 
 /*
 Generated from the following GLSL
-#version 330 core
-layout(location = 0) out vec4 c;
+#version 410 core
+layout(location = 0) flat in int in_upper_bound;
 void main() {
-  int lower_bound = 1;
-  float x[10];
-  for (int i = lower_bound; i < 10; ++i) {
+  for (int i = ; i < in_upper_bound; ++i) {
     x[i] = 1.0f;
   }
 }
 */
-TEST_F(PassClassTest, SimpleFullyUnrollTest) {
+TEST_F(PassClassTest, CheckUpperBound) {
   // clang-format off
   // With opt::LocalMultiStoreElimPass
   const std::string text = R"(OpCapability Shader

@@ -283,10 +283,15 @@ void LoopUnrollerUtilsImpl::Init(ir::Loop* loop) {
   loop_induction_variable_ = loop->FindInductionVariable(loop_condition_block_);
   assert(loop_induction_variable_);
 
-  assert(loop->FindNumberOfIterations(loop_induction_variable_,
+#ifndef NDEBUG
+  bool found = 
+#endif
+  loop->FindNumberOfIterations(loop_induction_variable_,
                                       &*loop_condition_block_->ctail(),
-                                      &number_of_loop_iterations_));
-
+                                      &number_of_loop_iterations_);
+#ifndef NDEBUG
+  assert(found);
+#endif
   ComputeLoopOrderedBlocks(loop);
 }
 
