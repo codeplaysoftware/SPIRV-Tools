@@ -68,6 +68,28 @@ class CFG {
   void ComputeStructuredOrder(ir::Function* func, ir::BasicBlock* root,
                               std::list<ir::BasicBlock*>* order);
 
+  // Registers |bb| as a basic block in the cfg, this also updates the
+  // predecessor lists of each successors of |bb|.
+  void RegisterBlock(ir::BasicBlock* blk) {
+    uint32_t blkId = blk->id();
+    id2block_[blkId] = blk;
+    AddEdges(blk);
+  }
+
+  // Registers |blk| to all of its successors.
+  void AddEdges(ir::BasicBlock* blk) {
+    uint32_t blkId = blk->id();
+    // Force the creation of an entry, not all basic block have predecessors
+    // (such as the entry block and some unreachables)
+    label2preds_[blkId];
+    blk->ForEachSuccessorLabel(
+        [blkId, this](uint32_t sbid) { label2preds_[sbid].push_back(blkId); });
+  }
+
+  // Removes any edges that non longer exists from the predecessor mapping for
+  // the basic block id |blk_id|.
+  void RemoveNonExistingEdges(uint32_t blk_id);
+
  private:
   using cbb_ptr = const ir::BasicBlock*;
 
