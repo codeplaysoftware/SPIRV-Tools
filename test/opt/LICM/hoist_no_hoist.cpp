@@ -60,16 +60,12 @@ OpEntryPoint Fragment %main "main" %c %in_val
 OpExecutionMode %main OriginUpperLeft
 OpSource GLSL 440
 OpName %main "main"
-OpName %a "a"
-OpName %b "b"
-OpName %hoist "hoist"
 OpName %c "c"
-OpName %i "i"
 OpName %in_val "in_val"
 OpDecorate %c Location 0
 OpDecorate %in_val Location 1
 %void = OpTypeVoid
-%10 = OpTypeFunction %void
+%6 = OpTypeFunction %void
 %int = OpTypeInt 32 1
 %_ptr_Function_int = OpTypePointer Function %int
 %int_1 = OpConstant %int 1
@@ -80,7 +76,7 @@ OpDecorate %in_val Location 1
 %_ptr_Output_v4float = OpTypePointer Output %v4float
 %c = OpVariable %_ptr_Output_v4float Output
 %float_0 = OpConstant %float 0
-%20 = OpConstantComposite %v4float %float_0 %float_0 %float_0 %float_0
+%16 = OpConstantComposite %v4float %float_0 %float_0 %float_0 %float_0
 %_ptr_Input_v4float = OpTypePointer Input %v4float
 %in_val = OpVariable %_ptr_Input_v4float Input
 %uint = OpTypeInt 32 0
@@ -88,142 +84,43 @@ OpDecorate %in_val Location 1
 %_ptr_Input_float = OpTypePointer Input %float
 %uint_1 = OpConstant %uint 1
 %bool = OpTypeBool
-%main = OpFunction %void None %10
+%main = OpFunction %void None %6
+%23 = OpLabel
+OpStore %c %16
+%24 = OpAccessChain %_ptr_Input_float %in_val %uint_0
+%25 = OpLoad %float %24
+%26 = OpConvertFToS %int %25
+OpBranch %27
 %27 = OpLabel
-%a = OpVariable %_ptr_Function_int Function
-%b = OpVariable %_ptr_Function_int Function
-%hoist = OpVariable %_ptr_Function_int Function
-%i = OpVariable %_ptr_Function_int Function
-OpStore %a %int_1
-OpStore %b %int_2
-OpStore %hoist %int_0
-OpStore %c %20
-%28 = OpAccessChain %_ptr_Input_float %in_val %uint_0
-%29 = OpLoad %float %28
-%30 = OpConvertFToS %int %29
-OpStore %i %30
-OpBranch %31
-%31 = OpLabel
-OpLoopMerge %32 %33 None
+%28 = OpPhi %int %int_0 %23 %29 %30
+%31 = OpPhi %int %26 %23 %32 %30
+OpLoopMerge %33 %30 None
 OpBranch %34
 %34 = OpLabel
-%35 = OpLoad %int %i
-%36 = OpAccessChain %_ptr_Input_float %in_val %uint_1
-%37 = OpLoad %float %36
-%38 = OpConvertFToS %int %37
-%39 = OpSLessThan %bool %35 %38
-OpBranchConditional %39 %40 %32
-%40 = OpLabel
-%41 = OpLoad %int %a
-%42 = OpLoad %int %b
-%43 = OpIAdd %int %41 %42
-OpStore %hoist %43
-%44 = OpLoad %int %i
-%45 = OpConvertSToF %float %44
-%46 = OpLoad %int %i
-%47 = OpConvertSToF %float %46
-%48 = OpLoad %int %i
-%49 = OpConvertSToF %float %48
-%50 = OpLoad %int %i
-%51 = OpConvertSToF %float %50
-%52 = OpCompositeConstruct %v4float %45 %47 %49 %51
-OpStore %c %52
-OpBranch %33
+%35 = OpAccessChain %_ptr_Input_float %in_val %uint_1
+%36 = OpLoad %float %35
+%37 = OpConvertFToS %int %36
+%38 = OpSLessThan %bool %31 %37
+OpBranchConditional %38 %39 %33
+%39 = OpLabel
+%29 = OpIAdd %int %int_1 %int_2
+%40 = OpConvertSToF %float %31
+%41 = OpConvertSToF %float %31
+%42 = OpConvertSToF %float %31
+%43 = OpConvertSToF %float %31
+%44 = OpCompositeConstruct %v4float %40 %41 %42 %43
+OpStore %c %44
+OpBranch %30
+%30 = OpLabel
+%32 = OpIAdd %int %31 %int_1
+OpBranch %27
 %33 = OpLabel
-%53 = OpLoad %int %i
-%54 = OpIAdd %int %53 %int_1
-OpStore %i %54
-OpBranch %31
-%32 = OpLabel
 OpReturn
 OpFunctionEnd
 )";
 
 
-const std::string end = R"(OpCapability Shader
-%1 = OpExtInstImport "GLSL.std.450"
-OpMemoryModel Logical GLSL450
-OpEntryPoint Fragment %main "main" %c %in_val
-OpExecutionMode %main OriginUpperLeft
-OpSource GLSL 440
-OpName %main "main"
-OpName %a "a"
-OpName %b "b"
-OpName %hoist "hoist"
-OpName %c "c"
-OpName %i "i"
-OpName %in_val "in_val"
-OpDecorate %c Location 0
-OpDecorate %in_val Location 1
-%void = OpTypeVoid
-%10 = OpTypeFunction %void
-%int = OpTypeInt 32 1
-%_ptr_Function_int = OpTypePointer Function %int
-%int_1 = OpConstant %int 1
-%int_2 = OpConstant %int 2
-%int_0 = OpConstant %int 0
-%float = OpTypeFloat 32
-%v4float = OpTypeVector %float 4
-%_ptr_Output_v4float = OpTypePointer Output %v4float
-%c = OpVariable %_ptr_Output_v4float Output
-%float_0 = OpConstant %float 0
-%20 = OpConstantComposite %v4float %float_0 %float_0 %float_0 %float_0
-%_ptr_Input_v4float = OpTypePointer Input %v4float
-%in_val = OpVariable %_ptr_Input_v4float Input
-%uint = OpTypeInt 32 0
-%uint_0 = OpConstant %uint 0
-%_ptr_Input_float = OpTypePointer Input %float
-%uint_1 = OpConstant %uint 1
-%bool = OpTypeBool
-%main = OpFunction %void None %10
-%27 = OpLabel
-%a = OpVariable %_ptr_Function_int Function
-%b = OpVariable %_ptr_Function_int Function
-%hoist = OpVariable %_ptr_Function_int Function
-%i = OpVariable %_ptr_Function_int Function
-OpStore %a %int_1
-OpStore %b %int_2
-OpStore %hoist %int_0
-OpStore %c %20
-%28 = OpAccessChain %_ptr_Input_float %in_val %uint_0
-%29 = OpLoad %float %28
-%30 = OpConvertFToS %int %29
-OpStore %i %30
-%41 = OpLoad %int %a
-%42 = OpLoad %int %b
-%43 = OpIAdd %int %41 %42
-OpStore %hoist %43
-OpBranch %31
-%31 = OpLabel
-OpLoopMerge %32 %33 None
-OpBranch %34
-%34 = OpLabel
-%35 = OpLoad %int %i
-%36 = OpAccessChain %_ptr_Input_float %in_val %uint_1
-%37 = OpLoad %float %36
-%38 = OpConvertFToS %int %37
-%39 = OpSLessThan %bool %35 %38
-OpBranchConditional %39 %40 %32
-%40 = OpLabel
-%44 = OpLoad %int %i
-%45 = OpConvertSToF %float %44
-%46 = OpLoad %int %i
-%47 = OpConvertSToF %float %46
-%48 = OpLoad %int %i
-%49 = OpConvertSToF %float %48
-%50 = OpLoad %int %i
-%51 = OpConvertSToF %float %50
-%52 = OpCompositeConstruct %v4float %45 %47 %49 %51
-OpStore %c %52
-OpBranch %33
-%33 = OpLabel
-%53 = OpLoad %int %i
-%54 = OpIAdd %int %53 %int_1
-OpStore %i %54
-OpBranch %31
-%32 = OpLabel
-OpReturn
-OpFunctionEnd
+const std::string end = R"(
 )";
 
   SinglePassRunAndCheck<opt::LICMPass>(start, end, true);

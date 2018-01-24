@@ -72,132 +72,102 @@ OpEntryPoint Fragment %main "main"
 OpExecutionMode %main OriginUpperLeft
 OpSource GLSL 440
 OpName %main "main"
-OpName %i_1 "i_1"
-OpName %i_2 "i_2"
-OpName %i_3 "i_3"
-OpName %hoist "hoist"
-OpName %i_4 "i_4"
-OpName %i_5 "i_5"
-OpName %i_6 "i_6"
 %void = OpTypeVoid
-%11 = OpTypeFunction %void
+%4 = OpTypeFunction %void
 %int = OpTypeInt 32 1
 %_ptr_Function_int = OpTypePointer Function %int
 %int_0 = OpConstant %int 0
 %int_10 = OpConstant %int 10
 %bool = OpTypeBool
 %int_1 = OpConstant %int 1
-%main = OpFunction %void None %11
-%18 = OpLabel
-%i_1 = OpVariable %_ptr_Function_int Function
-%i_2 = OpVariable %_ptr_Function_int Function
-%i_3 = OpVariable %_ptr_Function_int Function
-%hoist = OpVariable %_ptr_Function_int Function
-%i_4 = OpVariable %_ptr_Function_int Function
-%i_5 = OpVariable %_ptr_Function_int Function
-%i_6 = OpVariable %_ptr_Function_int Function
-OpStore %i_1 %int_0
-OpStore %i_1 %int_0
-OpBranch %19
+%main = OpFunction %void None %4
+%11 = OpLabel
+OpBranch %12
+%12 = OpLabel
+%13 = OpPhi %int %int_0 %11 %14 %15
+OpLoopMerge %16 %15 None
+OpBranch %17
+%17 = OpLabel
+%18 = OpSLessThan %bool %13 %int_10
+OpBranchConditional %18 %19 %16
 %19 = OpLabel
-OpLoopMerge %20 %21 None
-OpBranch %22
-%22 = OpLabel
-%23 = OpLoad %int %i_1
-%24 = OpSLessThan %bool %23 %int_10
-OpBranchConditional %24 %25 %20
-%25 = OpLabel
-OpBranch %21
-%21 = OpLabel
-%26 = OpLoad %int %i_1
-%27 = OpIAdd %int %26 %int_1
-OpStore %i_1 %27
-OpBranch %19
+OpBranch %15
+%15 = OpLabel
+%14 = OpIAdd %int %13 %int_1
+OpBranch %12
+%16 = OpLabel
+OpBranch %20
 %20 = OpLabel
-OpStore %i_2 %int_0
+%21 = OpPhi %int %int_0 %16 %22 %23
+OpLoopMerge %24 %23 None
+OpBranch %25
+%25 = OpLabel
+%26 = OpSLessThan %bool %21 %int_10
+OpBranchConditional %26 %27 %24
+%27 = OpLabel
+%22 = OpIAdd %int %21 %int_1
+OpBranch %23
+%23 = OpLabel
+OpBranch %20
+%24 = OpLabel
 OpBranch %28
 %28 = OpLabel
-OpLoopMerge %29 %30 None
+%29 = OpPhi %int %int_0 %24 %30 %31
+OpLoopMerge %32 %31 None
+OpBranch %33
+%33 = OpLabel
+%30 = OpIAdd %int %29 %int_1
 OpBranch %31
 %31 = OpLabel
-%32 = OpLoad %int %i_2
-%33 = OpSLessThan %bool %32 %int_10
-OpBranchConditional %33 %34 %29
-%34 = OpLabel
-%35 = OpLoad %int %i_2
-%36 = OpIAdd %int %35 %int_1
-OpStore %i_2 %36
-OpBranch %30
-%30 = OpLabel
-OpBranch %28
-%29 = OpLabel
-OpStore %i_3 %int_0
-OpBranch %37
-%37 = OpLabel
-OpLoopMerge %38 %39 None
-OpBranch %40
-%40 = OpLabel
-%41 = OpLoad %int %i_3
-%42 = OpIAdd %int %41 %int_1
-OpStore %i_3 %42
-OpBranch %39
-%39 = OpLabel
-%43 = OpLoad %int %i_3
-%44 = OpSLessThan %bool %43 %int_10
-OpBranchConditional %44 %37 %38
-%38 = OpLabel
-OpStore %hoist %int_0
-OpStore %i_4 %int_0
-OpStore %i_5 %int_0
-OpStore %i_6 %int_0
-OpStore %i_4 %int_0
-OpBranch %45
-%45 = OpLabel
-OpLoopMerge %46 %47 None
-OpBranch %48
+%34 = OpSLessThan %bool %30 %int_10
+OpBranchConditional %34 %28 %32
+%32 = OpLabel
+OpBranch %35
+%35 = OpLabel
+%36 = OpPhi %int %int_0 %32 %37 %38
+%39 = OpPhi %int %int_0 %32 %40 %38
+%41 = OpPhi %int %int_0 %32 %42 %38
+%43 = OpPhi %int %int_0 %32 %44 %38
+OpLoopMerge %45 %38 None
+OpBranch %46
+%46 = OpLabel
+%47 = OpSLessThan %bool %39 %int_10
+OpBranchConditional %47 %48 %45
 %48 = OpLabel
-%49 = OpLoad %int %i_4
-%50 = OpSLessThan %bool %49 %int_10
-OpBranchConditional %50 %51 %46
-%51 = OpLabel
-OpBranch %52
-%52 = OpLabel
-OpLoopMerge %53 %54 None
-OpBranch %55
-%55 = OpLabel
-%56 = OpLoad %int %i_5
-%57 = OpSLessThan %bool %56 %int_10
-OpBranchConditional %57 %58 %53
-%58 = OpLabel
-OpBranch %59
-%59 = OpLabel
-OpLoopMerge %60 %61 None
-OpBranch %62
-%62 = OpLabel
-OpStore %hoist %int_1
-%63 = OpLoad %int %i_6
-%64 = OpIAdd %int %63 %int_1
-OpStore %i_6 %64
-OpBranch %61
-%61 = OpLabel
-%65 = OpLoad %int %i_6
-%66 = OpSLessThan %bool %65 %int_10
-OpBranchConditional %66 %59 %60
-%60 = OpLabel
-%67 = OpLoad %int %i_5
-%68 = OpIAdd %int %67 %int_1
-OpStore %i_5 %68
+OpBranch %49
+%49 = OpLabel
+%37 = OpPhi %int %36 %48 %int_1 %50
+%42 = OpPhi %int %41 %48 %51 %50
+%44 = OpPhi %int %43 %48 %52 %50
+OpLoopMerge %53 %50 None
 OpBranch %54
 %54 = OpLabel
-OpBranch %52
+%55 = OpSLessThan %bool %42 %int_10
+OpBranchConditional %55 %56 %53
+%56 = OpLabel
+OpBranch %57
+%57 = OpLabel
+%58 = OpPhi %int %37 %56 %int_1 %59
+%60 = OpPhi %int %44 %56 %52 %59
+OpLoopMerge %61 %59 None
+OpBranch %62
+%62 = OpLabel
+%52 = OpIAdd %int %60 %int_1
+OpBranch %59
+%59 = OpLabel
+%63 = OpSLessThan %bool %52 %int_10
+OpBranchConditional %63 %57 %61
+%61 = OpLabel
+%51 = OpIAdd %int %42 %int_1
+OpBranch %50
+%50 = OpLabel
+OpBranch %49
 %53 = OpLabel
-OpBranch %47
-%47 = OpLabel
-%69 = OpLoad %int %i_4
-%70 = OpIAdd %int %69 %int_1
-OpStore %i_4 %70
-OpBranch %45
-%46 = OpLabel
+OpBranch %38
+%38 = OpLabel
+%40 = OpIAdd %int %39 %int_1
+OpBranch %35
+%45 = OpLabel
 OpReturn
 OpFunctionEnd
 )";

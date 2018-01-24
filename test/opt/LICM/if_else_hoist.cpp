@@ -57,11 +57,8 @@ OpEntryPoint Fragment %main "main"
 OpExecutionMode %main OriginUpperLeft
 OpSource GLSL 440
 OpName %main "main"
-OpName %a "a"
-OpName %b "b"
-OpName %i "i"
 %void = OpTypeVoid
-%7 = OpTypeFunction %void
+%4 = OpTypeFunction %void
 %int = OpTypeInt 32 1
 %_ptr_Function_int = OpTypePointer Function %int
 %int_1 = OpConstant %int 1
@@ -69,41 +66,34 @@ OpName %i "i"
 %int_10 = OpConstant %int 10
 %bool = OpTypeBool
 %int_2 = OpConstant %int 2
-%main = OpFunction %void None %7
-%15 = OpLabel
-%a = OpVariable %_ptr_Function_int Function
-%b = OpVariable %_ptr_Function_int Function
-%i = OpVariable %_ptr_Function_int Function
-OpStore %a %int_1
-OpStore %b %int_1
-OpStore %i %int_0
+%main = OpFunction %void None %4
+%12 = OpLabel
+OpBranch %13
+%13 = OpLabel
+%14 = OpPhi %int %int_1 %12 %15 %16
+%17 = OpPhi %int %int_1 %12 %18 %16
+%19 = OpPhi %int %int_0 %12 %20 %16
+OpLoopMerge %21 %16 None
+OpBranch %22
+%22 = OpLabel
+%23 = OpSLessThan %bool %19 %int_10
+OpBranchConditional %23 %24 %21
+%24 = OpLabel
+%25 = OpIEqual %bool %14 %int_1
+OpSelectionMerge %26 None
+OpBranchConditional %25 %27 %28
+%27 = OpLabel
+OpBranch %26
+%28 = OpLabel
+OpBranch %26
+%26 = OpLabel
+%15 = OpPhi %int %int_2 %27 %14 %28
+%18 = OpPhi %int %17 %27 %int_1 %28
 OpBranch %16
 %16 = OpLabel
-OpLoopMerge %17 %18 None
-OpBranch %19
-%19 = OpLabel
-%20 = OpLoad %int %i
-%21 = OpSLessThan %bool %20 %int_10
-OpBranchConditional %21 %22 %17
-%22 = OpLabel
-%23 = OpLoad %int %a
-%24 = OpIEqual %bool %23 %int_1
-OpSelectionMerge %25 None
-OpBranchConditional %24 %26 %27
-%26 = OpLabel
-OpStore %a %int_2
-OpBranch %25
-%27 = OpLabel
-OpStore %b %int_1
-OpBranch %25
-%25 = OpLabel
-OpBranch %18
-%18 = OpLabel
-%28 = OpLoad %int %i
-%29 = OpIAdd %int %28 %int_1
-OpStore %i %29
-OpBranch %16
-%17 = OpLabel
+%20 = OpIAdd %int %19 %int_1
+OpBranch %13
+%21 = OpLabel
 OpReturn
 OpFunctionEnd
 )";

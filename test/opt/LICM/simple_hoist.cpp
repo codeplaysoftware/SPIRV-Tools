@@ -55,12 +55,8 @@ OpEntryPoint Fragment %main "main"
 OpExecutionMode %main OriginUpperLeft
 OpSource GLSL 440
 OpName %main "main"
-OpName %a "a"
-OpName %b "b"
-OpName %hoist "hoist"
-OpName %i "i"
 %void = OpTypeVoid
-%8 = OpTypeFunction %void
+%4 = OpTypeFunction %void
 %int = OpTypeInt 32 1
 %_ptr_Function_int = OpTypePointer Function %int
 %int_1 = OpConstant %int 1
@@ -68,93 +64,30 @@ OpName %i "i"
 %int_0 = OpConstant %int 0
 %int_10 = OpConstant %int 10
 %bool = OpTypeBool
-%main = OpFunction %void None %8
-%16 = OpLabel
-%a = OpVariable %_ptr_Function_int Function
-%b = OpVariable %_ptr_Function_int Function
-%hoist = OpVariable %_ptr_Function_int Function
-%i = OpVariable %_ptr_Function_int Function
-OpStore %a %int_1
-OpStore %b %int_2
-OpStore %hoist %int_0
-OpStore %i %int_0
-OpBranch %17
-%17 = OpLabel
-OpLoopMerge %18 %19 None
+%main = OpFunction %void None %4
+%12 = OpLabel
+OpBranch %13
+%13 = OpLabel
+%14 = OpPhi %int %int_0 %12 %15 %16
+%17 = OpPhi %int %int_0 %12 %18 %16
+OpLoopMerge %19 %16 None
 OpBranch %20
 %20 = OpLabel
-%21 = OpLoad %int %i
-%22 = OpSLessThan %bool %21 %int_10
-OpBranchConditional %22 %23 %18
-%23 = OpLabel
-%24 = OpLoad %int %a
-%25 = OpLoad %int %b
-%26 = OpIAdd %int %24 %25
-OpStore %hoist %26
-OpBranch %19
+%21 = OpSLessThan %bool %17 %int_10
+OpBranchConditional %21 %22 %19
+%22 = OpLabel
+%15 = OpIAdd %int %int_1 %int_2
+OpBranch %16
+%16 = OpLabel
+%18 = OpIAdd %int %17 %int_1
+OpBranch %13
 %19 = OpLabel
-%27 = OpLoad %int %i
-%28 = OpIAdd %int %27 %int_1
-OpStore %i %28
-OpBranch %17
-%18 = OpLabel
 OpReturn
 OpFunctionEnd
 )";
 
 
-  const std::string after_hoist = R"(OpCapability Shader
-%1 = OpExtInstImport "GLSL.std.450"
-OpMemoryModel Logical GLSL450
-OpEntryPoint Fragment %main "main"
-OpExecutionMode %main OriginUpperLeft
-OpSource GLSL 440
-OpName %main "main"
-OpName %a "a"
-OpName %b "b"
-OpName %hoist "hoist"
-OpName %i "i"
-%void = OpTypeVoid
-%8 = OpTypeFunction %void
-%int = OpTypeInt 32 1
-%_ptr_Function_int = OpTypePointer Function %int
-%int_1 = OpConstant %int 1
-%int_2 = OpConstant %int 2
-%int_0 = OpConstant %int 0
-%int_10 = OpConstant %int 10
-%bool = OpTypeBool
-%main = OpFunction %void None %8
-%16 = OpLabel
-%a = OpVariable %_ptr_Function_int Function
-%b = OpVariable %_ptr_Function_int Function
-%hoist = OpVariable %_ptr_Function_int Function
-%i = OpVariable %_ptr_Function_int Function
-OpStore %a %int_1
-OpStore %b %int_2
-OpStore %hoist %int_0
-OpStore %i %int_0
-%24 = OpLoad %int %a
-%25 = OpLoad %int %b
-%26 = OpIAdd %int %24 %25
-OpStore %hoist %26
-OpBranch %17
-%17 = OpLabel
-OpLoopMerge %18 %19 None
-OpBranch %20
-%20 = OpLabel
-%21 = OpLoad %int %i
-%22 = OpSLessThan %bool %21 %int_10
-OpBranchConditional %22 %23 %18
-%23 = OpLabel
-OpBranch %19
-%19 = OpLabel
-%27 = OpLoad %int %i
-%28 = OpIAdd %int %27 %int_1
-OpStore %i %28
-OpBranch %17
-%18 = OpLabel
-OpReturn
-OpFunctionEnd
+  const std::string after_hoist = R"(
 )";
 
   SinglePassRunAndCheck<opt::LICMPass>(before_hoist, after_hoist, true);
