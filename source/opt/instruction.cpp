@@ -470,5 +470,52 @@ bool Instruction::IsOpaqueType() const {
 
 bool Instruction::IsFoldable() const { return opt::IsFoldableOpcode(opcode()); }
 
+bool Instruction::HasSideEffects() const {
+  switch (opcode_) {
+    // Loads and stores present after multiple store elimination have side
+    // effects
+    case SpvOpStore:
+    case SpvOpLoad:
+    // Control Flow
+    case SpvOpBranch:
+    case SpvOpBranchConditional:
+    case SpvOpSelectionMerge:
+    case SpvOpLoopMerge:
+    case SpvOpLabel:
+    case SpvOpFunctionCall:
+    case SpvOpPhi:
+    case SpvOpUnreachable:
+    case SpvOpNop:
+    // Barriers
+    case SpvOpControlBarrier:
+    case SpvOpMemoryBarrier:
+    case SpvOpMemoryNamedBarrier:
+    case SpvOpTypeNamedBarrier:
+    case SpvOpNamedBarrierInitialize:
+    // Atomics
+    case SpvOpAtomicLoad:
+    case SpvOpAtomicStore:
+    case SpvOpAtomicExchange:
+    case SpvOpAtomicCompareExchange:
+    case SpvOpAtomicCompareExchangeWeak:
+    case SpvOpAtomicIIncrement:
+    case SpvOpAtomicIDecrement:
+    case SpvOpAtomicIAdd:
+    case SpvOpAtomicISub:
+    case SpvOpAtomicSMin:
+    case SpvOpAtomicUMin:
+    case SpvOpAtomicSMax:
+    case SpvOpAtomicUMax:
+    case SpvOpAtomicAnd:
+    case SpvOpAtomicOr:
+    case SpvOpAtomicXor:
+    case SpvOpAtomicFlagTestAndSet:
+    case SpvOpAtomicFlagClear:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace ir
 }  // namespace spvtools

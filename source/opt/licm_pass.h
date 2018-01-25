@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Google Inc.
+// Copyright (c) 2018 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,22 +43,19 @@ class LICMPass : public Pass {
   // Checks for invariants in the loop and attempts to move them to the loops
   // preheader. Works from inner loop to outer when nested loops are found.
   // Returns true if a change was made to the loop, false otherwise.
-  bool ProcessLoop(ir::Loop& loop, ir::Function* f);
+  bool ProcessLoop(ir::Loop* loop, ir::Function* f);
 
   // Gathers all instructions in the loop whos opcodes do not have side effects
-  void GatherAllLoopInstructions(ir::Loop& loop,
-                                 std::vector<ir::Instruction*>* instructions);
+  void GatherAllImmediatelyInvariantInstructions(
+      ir::Loop* loop, std::queue<ir::Instruction*>* loop_iv_instr);
 
   // Move the instruction to the given BasicBlock
   // This method will update the instruction to block mapping for the context
   void HoistInstruction(ir::BasicBlock* pre_header_bb, ir::Instruction* inst);
 
-  // Returns true if the given opcode is known to have side effects.
-  bool DoesOpcodeHaveSideEffects(SpvOp opcode);
-
   // Returns true if all operands of inst are in basic blocks not contained in
   // loop
-  bool AllOperandsOutsideLoop(ir::Loop& loop, ir::Instruction* inst);
+  bool AllOperandsOutsideLoop(ir::Loop* loop, ir::Instruction* inst);
 
   // Iterates over the instructions list checking each instruction to see if all
   // of its operands are outside the loop. If so, moves the instruction to a
@@ -66,8 +63,8 @@ class LICMPass : public Pass {
   // outside of the loop.
   // This cycle continues until a full iteration over the instructions list
   // results in no instructions being queued.
-  bool ProcessInstructionList(ir::Loop& loop,
-                              std::vector<ir::Instruction*>* instructions);
+  bool ProcessInstructionList(ir::Loop* loop,
+                              std::queue<ir::Instruction*>* loop_iv_instr);
 
  private:
   ir::IRContext* ir_context;

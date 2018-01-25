@@ -107,12 +107,6 @@ class DominatorTree {
   DominatorTree() : postdominator_(false) {}
   explicit DominatorTree(bool post) : postdominator_(post) {}
 
-  iterator get_iterator(const ir::BasicBlock* bb) {
-    auto found_itr = nodes_.find(bb->id());
-    if (found_itr == nodes_.end()) return end();
-    return iterator(&found_itr->second);
-  }
-
   // Depth first iterators.
   // Traverse the dominator tree in a depth first pre-order.
   // The pseudo-block is ignored.

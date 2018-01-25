@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Google Inc.
+// Copyright (c) 2018 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,7 +43,6 @@ void main(){
   int b = 2;
   int hoist = 0;
   for (int i = 0; i < 10; i++) {
-    // invariant
     hoist = a + b;
   }
 }

@@ -252,6 +252,9 @@ class Instruction : public utils::IntrusiveNodeBase<Instruction> {
   // Returns true if any operands can be labels
   inline bool HasLabels() const;
 
+  // Returns true if |this| is an instruction which has side effects
+  bool HasSideEffects() const;
+
   // Pushes the binary segments for this instruction into the back of *|binary|.
   void ToBinaryWithoutAttachedDebugInsts(std::vector<uint32_t>* binary) const;
 
