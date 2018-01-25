@@ -252,69 +252,61 @@ void LoopDescriptor::PopulateList(const Function* f) {
 
   loops_.clear();
 
+  // Post-order traversal of the dominator tree to find all the OpLoopMerge
+  // instructions.
   opt::DominatorTree& dom_tree = dom_analysis->GetDomTree();
   for (opt::DominatorTreeNode& node :
        ir::make_range(dom_tree.post_begin(), dom_tree.post_end())) {
-    ir::CFG& cfg = *context->cfg();
-    std::queue<BasicBlock*> back_edges;
-    // Try to find back-edge in an unstructured CFG.
-    for (uint32_t pred_id : cfg.preds(node.bb_->id())) {
-      if (dom_analysis->Dominates(node.bb_->id(), pred_id)) {
-        back_edges.push(cfg.block(pred_id));
-      }
-    }
-    if (back_edges.size()) {
-      // We have a loop with no merge instruction.
-      // The loop might still be structured in the sense of SPIR-V but nothing
-      // explicit.
+    Instruction* merge_inst = node.bb_->GetLoopMergeInst();
+    if (merge_inst) {
+      // The id of the merge basic block of this loop.
+      uint32_t merge_bb_id = merge_inst->GetSingleWordOperand(0);
+
+      // The id of the continue basic block of this loop.
+      uint32_t continue_bb_id = merge_inst->GetSingleWordOperand(1);
+
+      // The merge target of this loop.
+      BasicBlock* merge_bb = context->cfg()->block(merge_bb_id);
+
+      // The continue target of this loop.
+      BasicBlock* continue_bb = context->cfg()->block(continue_bb_id);
+
+      // The basic block containing the merge instruction.
+      BasicBlock* header_bb = context->get_instr_block(merge_inst);
 
       // Add the loop to the list of all the loops in the function.
-      loops_.emplace_back(MakeUnique<Loop>());
+      loops_.emplace_back(MakeUnique<Loop>(context, dom_analysis, header_bb,
+                                           continue_bb, merge_bb));
       Loop* current_loop = loops_.back().get();
-      current_loop->SetHeaderBlock(node.bb_);
-      current_loop->AddBasicBlock(node.bb_);
-      basic_block_to_loop_[node.bb_->id()] = current_loop;
-      if (back_edges.size() == 1) {
-        current_loop->SetLatchBlockImpl(back_edges.front());
-      }
 
-      while (!back_edges.empty()) {
-        BasicBlock* bb = back_edges.front();
-        back_edges.pop();
-        for (uint32_t pred_id : cfg.preds(bb->id())) {
-          if (!current_loop->IsInsideLoop(pred_id))
-            back_edges.push(cfg.block(pred_id));
-        }
-        current_loop->AddBasicBlock(bb);
-        Loop* inner_loop = FindLoopForBasicBlock(bb->id());
-        if (inner_loop) {
-          // If the basic block belong to an inner loop, find the outer most
-          // loop and register current_loop as a parent of the outer most.
-          for (; inner_loop->GetParent(); inner_loop = inner_loop->GetParent())
-            ;
-          if (inner_loop != current_loop) {
-            // The outer most loop is not current_loop, so we found a new
-            // inner loop.
-            inner_loop->SetParent(current_loop);
-          }
-        } else {
-          // We found a new block, register current_loop as the inner most
-          // loop for this basic block.
-          basic_block_to_loop_[bb->id()] = current_loop;
-        }
+      // We have a bottom-up construction, so if this loop has nested-loops,
+      // they are by construction at the tail of the loop list.
+      for (auto itr = loops_.rbegin() + 1; itr != loops_.rend(); ++itr) {
+        Loop* previous_loop = itr->get();
+
+        // If the loop already has a parent, then it has been processed.
+        if (previous_loop->HasParent()) continue;
+
+        // If the current loop does not dominates the previous loop then it is
+        // not nested loop.
+        if (!dom_analysis->Dominates(header_bb,
+                                     previous_loop->GetHeaderBlock()))
+          continue;
+        // If the current loop merge dominates the previous loop then it is
+        // not nested loop.
+        if (dom_analysis->Dominates(merge_bb, previous_loop->GetHeaderBlock()))
+          continue;
+
+        current_loop->AddNestedLoop(previous_loop);
       }
-      std::unordered_set<uint32_t> exit_blocks;
-      // Look for a unique merge block.
-      current_loop->GetExitBlocks(context, &exit_blocks);
-      if (exit_blocks.size() == 1) {
-        uint32_t exit_id = *exit_blocks.begin();
-        const std::vector<uint32_t>& merge_pred = cfg.preds(exit_id);
-        if (std::all_of(merge_pred.begin(), merge_pred.end(),
-                        [current_loop](uint32_t pred) {
-                          return current_loop->IsInsideLoop(pred);
-                        })) {
-          current_loop->SetMergeBlockImpl(cfg.block(exit_id));
-        }
+      opt::DominatorTreeNode* dom_merge_node = dom_tree.GetTreeNode(merge_bb);
+      for (opt::DominatorTreeNode& loop_node :
+           make_range(node.df_begin(), node.df_end())) {
+        // Check if we are in the loop.
+        if (dom_tree.Dominates(dom_merge_node, &loop_node)) continue;
+        current_loop->AddBasicBlockToLoop(loop_node.bb_);
+        basic_block_to_loop_.insert(
+            std::make_pair(loop_node.bb_->id(), current_loop));
       }
     }
   }
