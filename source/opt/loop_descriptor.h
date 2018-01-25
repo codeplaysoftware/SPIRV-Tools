@@ -191,17 +191,15 @@ class Loop {
   bool IsInsideLoop(Instruction* inst) const;
 
   // Adds the Basic Block |bb| this loop and its parents.
-  void AddBasicBlockToLoop(BasicBlock* bb) {
-#ifndef NDEBUG
+  void AddBasicBlockToLoop(const BasicBlock* bb) {
     assert(IsBasicBlockInLoopSlow(bb) &&
            "Basic block does not belong to the loop");
-#endif  // NDEBUG
 
     AddBasicBlock(bb);
   }
 
   // Adds the Basic Block |bb| this loop and its parents.
-  void AddBasicBlock(BasicBlock* bb) {
+  void AddBasicBlock(const BasicBlock* bb) {
     for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
       loop_basic_blocks_.insert(bb->id());
     }
