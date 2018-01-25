@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "opt/cfg.h"
+#include "opt/dominator_tree.h"
 #include "opt/ir_builder.h"
 #include "opt/ir_context.h"
 #include "opt/iterator.h"
