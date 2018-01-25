@@ -181,6 +181,17 @@ bool IRContext::IsConsistent() {
       return false;
     }
   }
+  if (AreAnalysesValid(kAnalysisInstrToBlockMapping)) {
+    for (auto& func : *module()) {
+      for (auto& block : func) {
+        if (!block.WhileEachInst([this, &block](ir::Instruction* inst) {
+              if (get_instr_block(inst) != &block) return false;
+              return true;
+            }))
+          return false;
+      }
+    }
+  }
   return true;
 }
 
