@@ -299,6 +299,11 @@ class LoopDescriptor {
     return const_iterator::end(&dummy_top_loop_);
   }
 
+  // Returns the inner most loop that contains the basic block |bb|.
+  inline void SetBasicBlockToLoop(uint32_t bb_id, Loop* loop) {
+    basic_block_to_loop_[bb_id] = loop;
+  }
+
  private:
   using LoopContainerType = std::vector<std::unique_ptr<Loop>>;
 

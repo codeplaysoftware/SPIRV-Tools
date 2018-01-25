@@ -83,7 +83,13 @@ class CFG {
     // (such as the entry block and some unreachables)
     label2preds_[blkId];
     blk->ForEachSuccessorLabel(
-        [blkId, this](uint32_t sbid) { label2preds_[sbid].push_back(blkId); });
+        [blkId, this](uint32_t sbid) { AddEdge(blkId, sbid); });
+  }
+
+  // Registers the basic bloc id |pred_blk_id| as being a predecessor of the
+  // basic block id |succ_blk_id|.
+  void AddEdge(uint32_t pred_blk_id, uint32_t succ_blk_id) {
+    label2preds_[succ_blk_id].push_back(pred_blk_id);
   }
 
   // Removes any edges that non longer exists from the predecessor mapping for
