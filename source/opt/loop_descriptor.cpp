@@ -18,6 +18,9 @@
 #include <utility>
 #include <vector>
 
+#include "opt/cfg.h"
+#include "opt/dominator_tree.h"
+#include "opt/ir_context.h"
 #include "opt/iterator.h"
 #include "opt/loop_descriptor.h"
 #include "opt/make_unique.h"
