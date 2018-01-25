@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "opt/cfg.h"
+#include "opt/dominator_tree.h"
 #include "opt/ir_builder.h"
 #include "opt/ir_context.h"
 #include "opt/iterator.h"
@@ -207,7 +208,7 @@ void Loop::GetExitBlocks(IRContext* context,
 
   for (uint32_t bb_id : GetBlocks()) {
     const spvtools::ir::BasicBlock* bb = cfg->block(bb_id);
-    bb->ForEachSuccessorLabel([exit_blocks, cfg, this](uint32_t succ) {
+    bb->ForEachSuccessorLabel([exit_blocks, this](uint32_t succ) {
       if (!IsInsideLoop(succ)) {
         exit_blocks->insert(succ);
       }
