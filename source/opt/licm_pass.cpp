@@ -83,7 +83,7 @@ void LICMPass::GatherAllImmediatelyInvariantInstructions(
 
 void LICMPass::HoistInstruction(ir::BasicBlock* pre_header_bb,
                                 ir::Instruction* inst) {
-  pre_header_bb->tail()->InsertBefore(std::move(inst));
+  inst->InsertBefore(std::move(&(*pre_header_bb->tail())));
   ir_context->set_instr_block(inst, pre_header_bb);
 }
 

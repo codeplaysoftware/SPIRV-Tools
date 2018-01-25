@@ -130,7 +130,7 @@ class Loop {
   // Returns true if the instruction |inst| is inside this loop.
   inline bool IsInsideLoop(Instruction* inst) const {
     const BasicBlock* parent_block = inst->context()->get_instr_block(inst);
-    if (!parent_block) return true;
+    if (!parent_block) return false;
     return IsInsideLoop(parent_block);
   }
 

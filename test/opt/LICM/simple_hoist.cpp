@@ -43,6 +43,7 @@ void main(){
   int b = 2;
   int hoist = 0;
   for (int i = 0; i < 10; i++) {
+    // invariant
     hoist = a + b;
   }
 }
@@ -87,7 +88,42 @@ OpFunctionEnd
 )";
 
 
-  const std::string after_hoist = R"(
+  const std::string after_hoist = R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %main "main"
+OpExecutionMode %main OriginUpperLeft
+OpSource GLSL 440
+OpName %main "main"
+%void = OpTypeVoid
+%4 = OpTypeFunction %void
+%int = OpTypeInt 32 1
+%_ptr_Function_int = OpTypePointer Function %int
+%int_1 = OpConstant %int 1
+%int_2 = OpConstant %int 2
+%int_0 = OpConstant %int 0
+%int_10 = OpConstant %int 10
+%bool = OpTypeBool
+%main = OpFunction %void None %4
+%12 = OpLabel
+%15 = OpIAdd %int %int_1 %int_2
+OpBranch %13
+%13 = OpLabel
+%14 = OpPhi %int %int_0 %12 %15 %16
+%17 = OpPhi %int %int_0 %12 %18 %16
+OpLoopMerge %19 %16 None
+OpBranch %20
+%20 = OpLabel
+%21 = OpSLessThan %bool %17 %int_10
+OpBranchConditional %21 %22 %19
+%22 = OpLabel
+OpBranch %16
+%16 = OpLabel
+%18 = OpIAdd %int %17 %int_1
+OpBranch %13
+%19 = OpLabel
+OpReturn
+OpFunctionEnd
 )";
 
   SinglePassRunAndCheck<opt::LICMPass>(before_hoist, after_hoist, true);

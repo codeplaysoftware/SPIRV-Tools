@@ -39,10 +39,11 @@ using PassClassTest = PassTest<::testing::Test>;
 --eliminate-local-multi-store has also been run on the spv binary
 #version 440 core
 void main(){
+  int a = 0;
   for (int i = 0; i < 10; i++) {
     for (int j = 0; j < 10; j++) {
-      // hoist a out of j loop, but not j loop
-      int a = i;
+      // hoist 'a = i' out of j loop, but not i loop
+      a = i;
     }
   }
 }
@@ -69,32 +70,32 @@ OpName %main "main"
 OpBranch %13
 %13 = OpLabel
 %14 = OpPhi %int %int_0 %12 %15 %16
-%17 = OpPhi %int %11 %12 %18 %16
+%17 = OpPhi %int %int_0 %12 %18 %16
 %19 = OpPhi %int %11 %12 %20 %16
 OpLoopMerge %21 %16 None
 OpBranch %22
 %22 = OpLabel
-%23 = OpSLessThan %bool %14 %int_10
+%23 = OpSLessThan %bool %17 %int_10
 OpBranchConditional %23 %24 %21
 %24 = OpLabel
 OpBranch %25
 %25 = OpLabel
-%18 = OpPhi %int %int_0 %24 %26 %27
-%20 = OpPhi %int %19 %24 %14 %27
-OpLoopMerge %28 %27 None
+%15 = OpPhi %int %14 %24 %17 %26
+%20 = OpPhi %int %int_0 %24 %27 %26
+OpLoopMerge %28 %26 None
 OpBranch %29
 %29 = OpLabel
-%30 = OpSLessThan %bool %18 %int_10
+%30 = OpSLessThan %bool %20 %int_10
 OpBranchConditional %30 %31 %28
 %31 = OpLabel
-OpBranch %27
-%27 = OpLabel
-%26 = OpIAdd %int %18 %int_1
+OpBranch %26
+%26 = OpLabel
+%27 = OpIAdd %int %20 %int_1
 OpBranch %25
 %28 = OpLabel
 OpBranch %16
 %16 = OpLabel
-%15 = OpIAdd %int %14 %int_1
+%18 = OpIAdd %int %17 %int_1
 OpBranch %13
 %21 = OpLabel
 OpReturn
