@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Google Inc.
+// Copyright (c) 2018 Google LLC.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,8 +48,6 @@ bool LICMPass::ProcessFunction(ir::Function* f) {
   bool modified = false;
   ir::LoopDescriptor loop_descriptor{f};
 
-  // dom_analysis = ir_context->GetDominatorAnalysis(f, cfg);
-
   // Process each loop in the function
   for (ir::Loop& loop : loop_descriptor) {
     modified |= ProcessLoop(&loop, f);
@@ -71,10 +69,13 @@ bool LICMPass::ProcessLoop(ir::Loop* loop, ir::Function* f) {
 
 void LICMPass::GatherAllImmediatelyInvariantInstructions(
     ir::Loop* loop, std::queue<ir::Instruction*>* loop_iv_instr) {
+  // For each instruction in each basic block in the loop, check if it is
+  // invariant. If so, push it to our invariants queue.
   for (uint32_t bb_id : loop->GetBlocks()) {
     ir::BasicBlock* bb = ir_context->get_instr_block(bb_id);
     for (ir::Instruction& inst : *bb) {
-      if (!inst.HasSideEffects() && AllOperandsOutsideLoop(loop, &inst)) {
+      if (inst.opcode() != SpvOpPhi && !inst.HasSideEffects() &&
+          AllOperandsOutsideLoop(loop, &inst)) {
         loop_iv_instr->push(&inst);
       }
     }
@@ -110,13 +111,17 @@ bool LICMPass::ProcessInstructionList(
 
   ir::BasicBlock* pre_header_bb = loop->GetPreHeaderBlock();
 
+  // If the input instruction is invariant, push it onto the invariants queue
   const std::function<void(ir::Instruction*)> check_users_now_invariant =
       [this, &loop, &loop_iv_instr](ir::Instruction* inst) {
-        if (!inst->HasSideEffects() && AllOperandsOutsideLoop(loop, inst)) {
+        if (inst->opcode() != SpvOpPhi && !inst->HasSideEffects() &&
+            AllOperandsOutsideLoop(loop, inst)) {
           loop_iv_instr->push(inst);
         }
       };
 
+  // While there are invariant instructions in the queue, hoist them outside of
+  // the loop, then add their users to the queue if they have become invariant
   while (!loop_iv_instr->empty()) {
     ir::Instruction* inst = loop_iv_instr->front();
     loop_iv_instr->pop();

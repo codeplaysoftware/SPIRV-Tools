@@ -483,7 +483,6 @@ bool Instruction::HasSideEffects() const {
     case SpvOpLoopMerge:
     case SpvOpLabel:
     case SpvOpFunctionCall:
-    case SpvOpPhi:
     case SpvOpUnreachable:
     case SpvOpNop:
     // Barriers

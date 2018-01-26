@@ -14,18 +14,8 @@
 
 #include <gmock/gmock.h>
 
-#include <iostream>
-#include <memory>
-#include <string>
-#include <vector>
-
-#include "../assembly_builder.h"
-#include "../function_utils.h"
 #include "../pass_fixture.h"
-#include "../pass_utils.h"
 #include "opt/licm_pass.h"
-#include "opt/loop_descriptor.h"
-#include "opt/pass.h"
 
 namespace {
 
@@ -35,6 +25,8 @@ using ::testing::UnorderedElementsAre;
 using PassClassTest = PassTest<::testing::Test>;
 
 /*
+  Tests that the LICM pass will analyse multiple independent loops in a function
+
   Generated from the following GLSL fragment shader
 --eliminate-local-multi-store has also been run on the spv binary
 #version 440 core
@@ -46,9 +38,20 @@ void main(){
     // invariant
     hoist = a + b;
   }
+  for (int i = 0; i < 10; i++) {
+    // invariant
+    hoist = a + b;
+  }
+  int c = 1;
+  int d = 2;
+  int hoist2 = 0;
+  for (int i = 0; i < 10; i++) {
+    // invariant
+    hoist2 = c + d;
+  }
 }
 */
-TEST_F(PassClassTest, SimpleHoist) {
+TEST_F(PassClassTest, HoistFromIndependentLoops) {
   const std::string before_hoist = R"(OpCapability Shader
 %1 = OpExtInstImport "GLSL.std.450"
 OpMemoryModel Logical GLSL450
@@ -83,6 +86,38 @@ OpBranch %16
 %18 = OpIAdd %int %17 %int_1
 OpBranch %13
 %19 = OpLabel
+OpBranch %23
+%23 = OpLabel
+%24 = OpPhi %int %14 %19 %25 %26
+%27 = OpPhi %int %int_0 %19 %28 %26
+OpLoopMerge %29 %26 None
+OpBranch %30
+%30 = OpLabel
+%31 = OpSLessThan %bool %27 %int_10
+OpBranchConditional %31 %32 %29
+%32 = OpLabel
+%25 = OpIAdd %int %int_1 %int_2
+OpBranch %26
+%26 = OpLabel
+%28 = OpIAdd %int %27 %int_1
+OpBranch %23
+%29 = OpLabel
+OpBranch %33
+%33 = OpLabel
+%34 = OpPhi %int %int_0 %29 %35 %36
+%37 = OpPhi %int %int_0 %29 %38 %36
+OpLoopMerge %39 %36 None
+OpBranch %40
+%40 = OpLabel
+%41 = OpSLessThan %bool %37 %int_10
+OpBranchConditional %41 %42 %39
+%42 = OpLabel
+%35 = OpIAdd %int %int_1 %int_2
+OpBranch %36
+%36 = OpLabel
+%38 = OpIAdd %int %37 %int_1
+OpBranch %33
+%39 = OpLabel
 OpReturn
 OpFunctionEnd
 )";
@@ -122,6 +157,38 @@ OpBranch %16
 %18 = OpIAdd %int %17 %int_1
 OpBranch %13
 %19 = OpLabel
+%25 = OpIAdd %int %int_1 %int_2
+OpBranch %23
+%23 = OpLabel
+%24 = OpPhi %int %14 %19 %25 %26
+%27 = OpPhi %int %int_0 %19 %28 %26
+OpLoopMerge %29 %26 None
+OpBranch %30
+%30 = OpLabel
+%31 = OpSLessThan %bool %27 %int_10
+OpBranchConditional %31 %32 %29
+%32 = OpLabel
+OpBranch %26
+%26 = OpLabel
+%28 = OpIAdd %int %27 %int_1
+OpBranch %23
+%29 = OpLabel
+%35 = OpIAdd %int %int_1 %int_2
+OpBranch %33
+%33 = OpLabel
+%34 = OpPhi %int %int_0 %29 %35 %36
+%37 = OpPhi %int %int_0 %29 %38 %36
+OpLoopMerge %39 %36 None
+OpBranch %40
+%40 = OpLabel
+%41 = OpSLessThan %bool %37 %int_10
+OpBranchConditional %41 %42 %39
+%42 = OpLabel
+OpBranch %36
+%36 = OpLabel
+%38 = OpIAdd %int %37 %int_1
+OpBranch %33
+%39 = OpLabel
 OpReturn
 OpFunctionEnd
 )";
