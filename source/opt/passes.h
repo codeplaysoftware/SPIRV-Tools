@@ -30,6 +30,7 @@
 #include "flatten_decoration_pass.h"
 #include "fold_spec_constant_op_and_composite_pass.h"
 #include "freeze_spec_constant_value_pass.h"
+#include "if_conversion.h"
 #include "inline_exhaustive_pass.h"
 #include "inline_opaque_pass.h"
 #include "insert_extract_elim.h"
@@ -49,5 +50,6 @@
 #include "strength_reduction_pass.h"
 #include "strip_debug_info_pass.h"
 #include "unify_const_pass.h"
+#include "workaround1209.h"
 
 #endif  // LIBSPIRV_OPT_PASSES_H_

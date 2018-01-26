@@ -1,4 +1,4 @@
-# Copyright (c) 2017 Google Inc.
+# Copyright (c) 2018 Google LLC.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,31 +25,31 @@ add_spvtools_unittest(TARGET loop_descriptor_nested
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET LICM_all_loop_types
+add_spvtools_unittest(TARGET licm_all_loop_types
     SRCS ../function_utils.h
         hoist_all_loop_types.cpp
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET LICM_hoist_independent_loops
+add_spvtools_unittest(TARGET licm_hoist_independent_loops
     SRCS ../function_utils.h
         hoist_from_independent_loops.cpp
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET LICM_hoist_double_nested_loops
+add_spvtools_unittest(TARGET licm_hoist_double_nested_loops
     SRCS ../function_utils.h
         hoist_double_nested_loops.cpp
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET LICM_hoist_single_nested_loops
+add_spvtools_unittest(TARGET licm_hoist_single_nested_loops
     SRCS ../function_utils.h
         hoist_single_nested_loops.cpp
     LIBS SPIRV-Tools-opt
 )
 
-add_spvtools_unittest(TARGET LICM_hoist_simple_case
+add_spvtools_unittest(TARGET licm_hoist_simple_case
     SRCS ../function_utils.h
         hoist_simple_case.cpp
     LIBS SPIRV-Tools-opt
