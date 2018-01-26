@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "licm_pass.h"
-#include "module.h"
+#include <queue>
+#include <utility>
 
-#include "pass.h"
+#include "opt/licm_pass.h"
+#include "opt/module.h"
+#include "opt/pass.h"
 
 namespace spvtools {
 namespace opt {
 
-LICMPass::LICMPass(){};
+LICMPass::LICMPass() {}
 
 Pass::Status LICMPass::Process(ir::IRContext* context) {
   bool modified = false;

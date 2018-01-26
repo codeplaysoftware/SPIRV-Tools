@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <string>
+
 #include <gmock/gmock.h>
 
 #include "../pass_fixture.h"
@@ -98,7 +100,6 @@ OpReturn
 OpFunctionEnd
 )";
 
-
   const std::string after_hoist = R"(OpCapability Shader
 %1 = OpExtInstImport "GLSL.std.450"
 OpMemoryModel Logical GLSL450
@@ -158,8 +159,3 @@ OpFunctionEnd
 }
 
 }  // namespace
-
-
-
-
-

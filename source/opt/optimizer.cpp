@@ -133,7 +133,6 @@ Optimizer& Optimizer::RegisterPerformancePasses() {
       .RegisterPass(CreateCFGCleanupPass())
       // Currently exposing driver bugs resulting in crashes (#946)
       // .RegisterPass(CreateCommonUniformElimPass())
-      .RegisterPass(CreateDeadVariableEliminationPass())
       .RegisterPass(CreateLICMPass())
       .RegisterPass(CreateAggressiveDCEPass());
 }
