@@ -148,8 +148,11 @@ TEST_F(LCSSATest, SimpleLCSSA) {
   const ir::Function* f = spvtest::GetFunction(module, 2);
   ir::LoopDescriptor ld{f};
 
-  opt::LoopUtils Util(context.get(), ld[17]);
+  ir::Loop* loop = ld[17];
+  EXPECT_FALSE(loop->IsLCSSA());
+  opt::LoopUtils Util(context.get(), loop);
   Util.MakeLoopClosedSSA();
+  EXPECT_TRUE(loop->IsLCSSA());
   Match(text, context.get());
 }
 
@@ -245,8 +248,11 @@ TEST_F(LCSSATest, DualLoopLCSSA) {
   const ir::Function* f = spvtest::GetFunction(module, 2);
   ir::LoopDescriptor ld{f};
 
-  opt::LoopUtils Util(context.get(), ld[16]);
+  ir::Loop* loop = ld[16];
+  EXPECT_FALSE(loop->IsLCSSA());
+  opt::LoopUtils Util(context.get(), loop);
   Util.MakeLoopClosedSSA();
+  EXPECT_TRUE(loop->IsLCSSA());
   Match(text, context.get());
 }
 
@@ -335,8 +341,11 @@ TEST_F(LCSSATest, PhiUserLCSSA) {
   const ir::Function* f = spvtest::GetFunction(module, 2);
   ir::LoopDescriptor ld{f};
 
-  opt::LoopUtils Util(context.get(), ld[19]);
+  ir::Loop* loop = ld[19];
+  EXPECT_FALSE(loop->IsLCSSA());
+  opt::LoopUtils Util(context.get(), loop);
   Util.MakeLoopClosedSSA();
+  EXPECT_TRUE(loop->IsLCSSA());
   Match(text, context.get());
 }
 

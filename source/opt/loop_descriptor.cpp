@@ -236,7 +236,8 @@ void Loop::GetExitBlocks(IRContext* context,
   }
 }
 
-bool Loop::IsLCSSA(IRContext* context) const {
+bool Loop::IsLCSSA() const {
+  IRContext* context = GetHeaderBlock()->GetParent()->GetParent()->context();
   ir::CFG* cfg = context->cfg();
   opt::analysis::DefUseManager* def_use_mgr = context->get_def_use_mgr();
 
@@ -247,7 +248,7 @@ bool Loop::IsLCSSA(IRContext* context) const {
     for (Instruction& insn : *cfg->block(bb_id)) {
       // All uses must be either:
       //  - In the loop;
-      //  - In an exit block and a phi instruction.
+      //  - In an exit block and in a phi instruction.
       if (!def_use_mgr->WhileEachUser(
               &insn, [&exit_blocks, context, this](ir::Instruction* use) {
                 BasicBlock* parent = context->get_instr_block(use);

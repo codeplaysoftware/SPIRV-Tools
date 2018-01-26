@@ -144,7 +144,7 @@ class Loop {
   void GetExitBlocks(IRContext* context,
                      std::unordered_set<uint32_t>* exit_blocks) const;
 
-  bool IsLCSSA(IRContext* context) const;
+  bool IsLCSSA() const;
 
   // Returns the depth of this loop in the loop nest.
   // The outer-most loop has a depth of 1.
