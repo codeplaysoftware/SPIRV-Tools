@@ -25,3 +25,33 @@ add_spvtools_unittest(TARGET loop_descriptor_nested
     LIBS SPIRV-Tools-opt
 )
 
+add_spvtools_unittest(TARGET licm_all_loop_types
+    SRCS ../function_utils.h
+        hoist_all_loop_types.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET licm_hoist_independent_loops
+    SRCS ../function_utils.h
+        hoist_from_independent_loops.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET licm_hoist_double_nested_loops
+    SRCS ../function_utils.h
+        hoist_double_nested_loops.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET licm_hoist_single_nested_loops
+    SRCS ../function_utils.h
+        hoist_single_nested_loops.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET licm_hoist_simple_case
+    SRCS ../function_utils.h
+        hoist_simple_case.cpp
+    LIBS SPIRV-Tools-opt
+)
+
