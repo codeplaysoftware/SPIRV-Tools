@@ -451,7 +451,7 @@ Optimizer::PassToken CreateLocalRedundancyEliminationPass();
 // Create LICM pass.
 // This pass will look for invariant instructions inside loops and hoist them to
 // the loops preheader.
-Optimizer::PassToken CreateLICMPass();
+Optimizer::PassToken CreateLoopInvariantCodeMotionPass();
 
 // Create global value numbering pass.
 // This pass will look for instructions where the same value is computed on all

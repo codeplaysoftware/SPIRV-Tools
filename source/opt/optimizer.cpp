@@ -133,7 +133,6 @@ Optimizer& Optimizer::RegisterPerformancePasses() {
       .RegisterPass(CreateCFGCleanupPass())
       // Currently exposing driver bugs resulting in crashes (#946)
       // .RegisterPass(CreateCommonUniformElimPass())
-      .RegisterPass(CreateLICMPass())
       .RegisterPass(CreateAggressiveDCEPass());
 }
 
@@ -330,7 +329,7 @@ Optimizer::PassToken CreateLocalRedundancyEliminationPass() {
       MakeUnique<opt::LocalRedundancyEliminationPass>());
 }
 
-Optimizer::PassToken CreateLICMPass() {
+Optimizer::PassToken CreateLoopInvariantCodeMotionPass() {
   return MakeUnique<Optimizer::PassToken::Impl>(MakeUnique<opt::LICMPass>());
 }
 

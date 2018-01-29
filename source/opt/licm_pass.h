@@ -29,7 +29,7 @@ class LICMPass : public Pass {
  public:
   LICMPass();
 
-  const char* name() const override { return "licm"; }
+  const char* name() const override { return "loop-invariant-code-motion"; }
   Status Process(ir::IRContext*) override;
 
  private:
