@@ -13,9 +13,7 @@
 // limitations under the License.
 
 #include "opt/loop_descriptor.h"
-#include <algorithm>
 #include <iostream>
-#include <queue>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -25,7 +23,6 @@
 #include "opt/ir_builder.h"
 #include "opt/ir_context.h"
 #include "opt/iterator.h"
-#include "opt/loop_descriptor.h"
 #include "opt/make_unique.h"
 #include "opt/tree_iterator.h"
 
@@ -107,84 +104,98 @@ bool Loop::IsBasicBlockInLoopSlow(const BasicBlock* bb) {
 }
 
 BasicBlock* Loop::GetOrCreatePreHeaderBlock(ir::IRContext* context) {
-  if (!loop_preheader_) {
-    Function* fn = loop_header_->GetParent();
-    Function::iterator header_it =
-        std::find_if(fn->begin(), fn->end(),
-                     [this](BasicBlock& bb) { return &bb == loop_header_; });
-    assert(header_it != fn->end());
+  if (loop_preheader_) return loop_preheader_;
 
-    loop_preheader_ = &*header_it.InsertBefore(std::unique_ptr<ir::BasicBlock>(
-        new ir::BasicBlock(std::unique_ptr<ir::Instruction>(new ir::Instruction(
-            context, SpvOpLabel, 0, context->TakeNextId(), {})))));
-    loop_preheader_->SetParent(fn);
-    uint32_t loop_preheader_id = loop_preheader_->id();
-    opt::InstructionBuilder<ir::IRContext::kAnalysisDefUse |
-                            ir::IRContext::kAnalysisInstrToBlockMapping>
-        builder(context, loop_preheader_);
-    loop_header_->ForEachPhiInst([&builder, context, this](Instruction* phi) {
-      std::vector<uint32_t> preheader_phi_ops;
-      std::vector<uint32_t> header_phi_ops;
-      for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
-        uint32_t def_id = phi->GetSingleWordInOperand(i);
-        uint32_t branch_id = phi->GetSingleWordInOperand(i + 1);
-        if (IsInsideLoop(branch_id)) {
-          header_phi_ops.push_back(def_id);
-          header_phi_ops.push_back(branch_id);
-        } else {
-          preheader_phi_ops.push_back(def_id);
-          preheader_phi_ops.push_back(branch_id);
-        }
+  Function* fn = loop_header_->GetParent();
+  // Find the insertion point for the preheader.
+  Function::iterator header_it =
+      std::find_if(fn->begin(), fn->end(),
+                   [this](BasicBlock& bb) { return &bb == loop_header_; });
+  assert(header_it != fn->end());
 
-        Instruction* preheader_insn_def = nullptr;
-        // Create a phi instruction iff the preheader_phi_ops has more than one
-        // pair.
-        if (preheader_phi_ops.size() > 2)
-          preheader_insn_def =
-              builder.AddPhi(phi->type_id(), preheader_phi_ops);
-        else
-          preheader_insn_def =
-              context->get_def_use_mgr()->GetDef(preheader_phi_ops[0]);
-        // Build the new incoming branch.
-        header_phi_ops.push_back(preheader_insn_def->result_id());
-        header_phi_ops.push_back(loop_header_->id());
-        // Rewrite operands of the header's phi instruction.
-        uint32_t idx = 0;
-        for (; idx < header_phi_ops.size(); idx++)
-          phi->SetInOperand(idx, {header_phi_ops[idx]});
-        // Remove extra operands, from last to first (more efficient).
-        for (uint32_t j = phi->NumInOperands() - 1; j >= idx; j--)
-          phi->RemoveInOperand(j);
+  // Create the preheader basic block.
+  loop_preheader_ = &*header_it.InsertBefore(std::unique_ptr<ir::BasicBlock>(
+      new ir::BasicBlock(std::unique_ptr<ir::Instruction>(new ir::Instruction(
+          context, SpvOpLabel, 0, context->TakeNextId(), {})))));
+  loop_preheader_->SetParent(fn);
+  uint32_t loop_preheader_id = loop_preheader_->id();
+
+  // Redirect the branches and patch the phi:
+  //  - For each phi instruction in the header:
+  //    - If the header has only 1 out-of-loop incoming branch:
+  //      - Change the incomning branch to be the preheader.
+  //    - If the header has more than 1 out-of-loop incoming branch:
+  //      - Create a new phi in the preheader, gathering all out-of-loops
+  //      incoming values;
+  //      - Patch the header phi instruction to use the preheader phi
+  //      instruction;
+  //  - Redirect all edges coming from outside the loop to the preheader.
+  opt::InstructionBuilder<ir::IRContext::kAnalysisDefUse |
+                          ir::IRContext::kAnalysisInstrToBlockMapping>
+      builder(context, loop_preheader_);
+  // Patch all the phi instructions.
+  loop_header_->ForEachPhiInst([&builder, context, this](Instruction* phi) {
+    std::vector<uint32_t> preheader_phi_ops;
+    std::vector<uint32_t> header_phi_ops;
+    for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
+      uint32_t def_id = phi->GetSingleWordInOperand(i);
+      uint32_t branch_id = phi->GetSingleWordInOperand(i + 1);
+      if (IsInsideLoop(branch_id)) {
+        header_phi_ops.push_back(def_id);
+        header_phi_ops.push_back(branch_id);
+      } else {
+        preheader_phi_ops.push_back(def_id);
+        preheader_phi_ops.push_back(branch_id);
       }
+    }
+
+    Instruction* preheader_insn_def = nullptr;
+    // Create a phi instruction if and only if the preheader_phi_ops has more
+    // than one pair.
+    if (preheader_phi_ops.size() > 2)
+      preheader_insn_def = builder.AddPhi(phi->type_id(), preheader_phi_ops);
+    else
+      preheader_insn_def =
+          context->get_def_use_mgr()->GetDef(preheader_phi_ops[0]);
+    // Build the new incoming edge.
+    header_phi_ops.push_back(preheader_insn_def->result_id());
+    header_phi_ops.push_back(loop_preheader_->id());
+    // Rewrite operands of the header's phi instruction.
+    uint32_t idx = 0;
+    for (; idx < header_phi_ops.size(); idx++)
+      phi->SetInOperand(idx, {header_phi_ops[idx]});
+    // Remove extra operands, from last to first (more efficient).
+    for (uint32_t j = phi->NumInOperands() - 1; j >= idx; j--)
+      phi->RemoveInOperand(j);
+  });
+  // Branch from the preheader to the header.
+  builder.AddBranch(loop_header_->id());
+
+  // Redirect all out of loop branches to the header to the preheader.
+  CFG* cfg = context->cfg();
+  cfg->RegisterBlock(loop_preheader_);
+  for (uint32_t pred_id : cfg->preds(loop_header_->id())) {
+    if (pred_id == loop_preheader_->id()) continue;
+    if (IsInsideLoop(pred_id)) continue;
+    BasicBlock* pred = cfg->block(pred_id);
+    pred->ForEachSuccessorLabel([this, loop_preheader_id](uint32_t* id) {
+      if (*id == loop_header_->id()) *id = loop_preheader_id;
     });
-    builder.AddBranch(loop_header_->id());
-
-    // Fix the CFG.
-    CFG* cfg = context->cfg();
-    cfg->RegisterBlock(loop_preheader_);
-    for (uint32_t pred_id : cfg->preds(loop_header_->id())) {
-      if (pred_id == loop_preheader_->id()) continue;
-      if (IsInsideLoop(pred_id)) continue;
-      BasicBlock* pred = cfg->block(pred_id);
-      pred->ForEachSuccessorLabel([this, loop_preheader_id](uint32_t* id) {
-        if (*id == loop_header_->id()) *id = loop_preheader_id;
-      });
-      cfg->AddEdge(pred_id, loop_preheader_id);
-    }
-    // Delete predecessors that are no longer predecessors of the loop header.
-    cfg->RemoveNonExistingEdges(loop_header_->id());
-    // Update loop descriptors.
-    if (HasParent()) {
-      GetParent()->AddBasicBlock(loop_preheader_);
-      context->GetLoopDescriptor(fn)->SetBasicBlockToLoop(loop_preheader_->id(),
-                                                          GetParent());
-    }
-
-    context->InvalidateAnalysesExceptFor(
-        builder.GetPreservedAnalysis() |
-        ir::IRContext::Analysis::kAnalysisLoopAnalysis |
-        ir::IRContext::kAnalysisCFG);
+    cfg->AddEdge(pred_id, loop_preheader_id);
   }
+  // Delete predecessors that are no longer predecessors of the loop header.
+  cfg->RemoveNonExistingEdges(loop_header_->id());
+  // Update the loop descriptors.
+  if (HasParent()) {
+    GetParent()->AddBasicBlock(loop_preheader_);
+    context->GetLoopDescriptor(fn)->SetBasicBlockToLoop(loop_preheader_->id(),
+                                                        GetParent());
+  }
+
+  context->InvalidateAnalysesExceptFor(
+      builder.GetPreservedAnalysis() |
+      ir::IRContext::Analysis::kAnalysisLoopAnalysis |
+      ir::IRContext::kAnalysisCFG);
 
   return loop_preheader_;
 }
@@ -201,9 +212,6 @@ void Loop::SetLatchBlock(BasicBlock* latch) {
   assert(IsInsideLoop(latch) && "The continue block is not in the loop");
 
   SetLatchBlockImpl(latch);
-  if (IsStructured()) {
-    UpdateLoopMergeInst();
-  }
 }
 
 void Loop::SetMergeBlock(BasicBlock* merge) {
@@ -219,7 +227,7 @@ void Loop::SetMergeBlock(BasicBlock* merge) {
   assert(!IsInsideLoop(merge) && "The merge block is in the loop");
 
   SetMergeBlockImpl(merge);
-  if (IsStructured()) {
+  if (GetHeaderBlock()->GetLoopMergeInst()) {
     UpdateLoopMergeInst();
   }
 }
@@ -238,7 +246,27 @@ void Loop::GetExitBlocks(IRContext* context,
   }
 }
 
-bool Loop::IsLCSSA(IRContext* context) const {
+void Loop::GetMergingBlocks(
+    IRContext* context, std::unordered_set<uint32_t>* merging_blocks) const {
+  assert(GetMergeBlock() && "This loop is not structured");
+  ir::CFG* cfg = context->cfg();
+
+  std::stack<const ir::BasicBlock*> to_visit;
+  to_visit.push(GetMergeBlock());
+  while (!to_visit.empty()) {
+    const ir::BasicBlock* bb = to_visit.top();
+    to_visit.pop();
+    merging_blocks->insert(bb->id());
+    for (uint32_t pred_id : cfg->preds(bb->id())) {
+      if (!IsInsideLoop(pred_id) && !merging_blocks->count(pred_id)) {
+        to_visit.push(cfg->block(pred_id));
+      }
+    }
+  }
+}
+
+bool Loop::IsLCSSA() const {
+  IRContext* context = GetHeaderBlock()->GetParent()->GetParent()->context();
   ir::CFG* cfg = context->cfg();
   opt::analysis::DefUseManager* def_use_mgr = context->get_def_use_mgr();
 
@@ -249,14 +277,15 @@ bool Loop::IsLCSSA(IRContext* context) const {
     for (Instruction& insn : *cfg->block(bb_id)) {
       // All uses must be either:
       //  - In the loop;
-      //  - In an exit block and a phi instruction.
+      //  - In an exit block and in a phi instruction.
       if (!def_use_mgr->WhileEachUser(
-              &insn, [&exit_blocks, context, this](ir::Instruction* use) {
+              &insn,
+              [&exit_blocks, context, this](ir::Instruction* use) -> bool {
                 BasicBlock* parent = context->get_instr_block(use);
                 assert(parent && "Invalid analysis");
                 if (IsInsideLoop(parent)) return true;
                 if (use->opcode() != SpvOpPhi) return false;
-                return !!exit_blocks.count(parent->id());
+                return exit_blocks.count(parent->id());
               }))
         return false;
     }
