@@ -125,6 +125,9 @@ class DefUseManager {
   ir::Instruction* GetDef(uint32_t id);
   const ir::Instruction* GetDef(uint32_t id) const;
 
+  // Replace all uses of the id |def_id| by the id |new_use|.
+  void ReplaceAllUseOf(uint32_t def_id, uint32_t new_use);
+
   // Runs the given function |f| on each unique user instruction of |def| (or
   // |id|).
   //

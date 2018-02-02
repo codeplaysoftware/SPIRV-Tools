@@ -112,6 +112,11 @@ class Loop {
 
   // Returns the loop pre-header.
   inline const BasicBlock* GetPreHeaderBlock() const { return loop_preheader_; }
+  // Sets |preheader| as the loop preheader block. A preheader block must have
+  // the following properties:
+  //  - |merge| must not be in the loop;
+  //  - have an unconditional branch to the loop header.
+  void SetPreHeaderBlock(BasicBlock* preheader);
 
   // Returns the loop pre-header, if there is no suitable preheader it will be
   // created.
@@ -195,6 +200,10 @@ class Loop {
       loop_basic_blocks_.insert(bb->id());
     }
   }
+
+  // Checks if the loop contains any instruction that will prevent it from being
+  // cloned. If the loop is structured, the merge construct is also considered.
+  bool IsSafeToClone() const;
 
   // Sets the parent loop of this loop, that is, a loop which contains this loop
   // as a nested child loop.
@@ -294,6 +303,10 @@ class LoopDescriptor {
   inline void SetBasicBlockToLoop(uint32_t bb_id, Loop* loop) {
     basic_block_to_loop_[bb_id] = loop;
   }
+
+  // Adds the loop |new_loop| and all its nested loops to the descriptor set.
+  // The object takes ownership of all the loops.
+  ir::Loop* AddLoops(std::unique_ptr<ir::Loop> new_loop);
 
  private:
   using LoopContainerType = std::vector<std::unique_ptr<Loop>>;

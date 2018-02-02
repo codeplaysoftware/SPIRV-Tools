@@ -504,6 +504,12 @@ Optimizer::PassToken CreateIfConversionPass();
 // current shader stage by constants.  Has no effect on non-shader modules.
 Optimizer::PassToken CreateReplaceInvalidOpcodePass();
 
+// Creates a loop unswitch pass.
+// This pass will look for loop independent branch conditions and move the
+// condition out of the loop and version the loop based on the taken branch.
+// Works best after LICM and local multi store elimination pass.
+Optimizer::PassToken CreateLoopUnswitchPass();
+
 }  // namespace spvtools
 
 #endif  // SPIRV_TOOLS_OPTIMIZER_HPP_

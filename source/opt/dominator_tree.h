@@ -15,6 +15,7 @@
 #ifndef LIBSPIRV_OPT_DOMINATOR_ANALYSIS_TREE_H_
 #define LIBSPIRV_OPT_DOMINATOR_ANALYSIS_TREE_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <map>
 #include <utility>
@@ -252,6 +253,33 @@ class DominatorTree {
       return nullptr;
     }
     return &node_iter->second;
+  }
+
+  // Deletes the DominatorTreeNode |dtn| and all its children.
+  // Even if the tree numbering is not updated, domination queries remains valid
+  // after this call.
+  inline void RecursivelyDeleteTreeNode(DominatorTreeNode* dtn) {
+    // Remove |dtn| from its parent.
+    auto eraser = [dtn](std::vector<DominatorTreeNode*>* container) {
+      std::vector<DominatorTreeNode*>::iterator it =
+          std::find(container->begin(), container->end(), dtn);
+      assert(it != container->end());
+      container->erase(it);
+    };
+
+    if (dtn->parent_) {
+      eraser(&dtn->parent_->children_);
+    } else {
+      eraser(&roots_);
+    }
+    // Post order traversal: remove children first to leave the iterator valid.
+    DominatorTreeNode::post_iterator node_it = dtn->post_begin();
+    DominatorTreeNode::post_iterator end_it = dtn->post_end();
+    while (node_it != end_it) {
+      uint32_t id = node_it->id();
+      node_it++;
+      nodes_.erase(id);
+    }
   }
 
  private:

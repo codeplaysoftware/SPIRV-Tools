@@ -59,6 +59,8 @@ class Function {
   inline void AddParameter(std::unique_ptr<Instruction> p);
   // Appends a basic block to this function.
   inline void AddBasicBlock(std::unique_ptr<BasicBlock> b);
+  // Appends a basic block to this function at the position |ip|.
+  inline void AddBasicBlock(std::unique_ptr<BasicBlock> b, iterator ip);
 
   // Saves the given function end instruction.
   inline void SetFunctionEnd(std::unique_ptr<Instruction> end_inst);
@@ -123,7 +125,12 @@ inline void Function::AddParameter(std::unique_ptr<Instruction> p) {
 }
 
 inline void Function::AddBasicBlock(std::unique_ptr<BasicBlock> b) {
-  blocks_.emplace_back(std::move(b));
+  AddBasicBlock(std::move(b), end());
+}
+
+inline void Function::AddBasicBlock(std::unique_ptr<BasicBlock> b,
+                                    iterator ip) {
+  ip.InsertBefore(std::move(b));
 }
 
 inline void Function::SetFunctionEnd(std::unique_ptr<Instruction> end_inst) {

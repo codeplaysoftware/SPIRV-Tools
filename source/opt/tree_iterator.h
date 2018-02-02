@@ -71,6 +71,24 @@ class TreeDFIterator {
 
   NodePtr operator->() const { return current_; }
 
+  // Moves the iterator directly to the parent of the current node, skipping all
+  // its children.
+  TreeDFIterator& SkipChildren() {
+    if (!current_) return *this;
+    if (parent_iterators_.empty()) {
+      current_ = nullptr;
+      return *this;
+    }
+    // The only case where this can happen is when |current_| is not a leaf and
+    // we didn't start to visit the children.
+    if (current_ == parent_iterators_.top().first) {
+      // Skip the children.
+      parent_iterators_.pop();
+    }
+    MoveToNextNode();
+    return *this;
+  }
+
   TreeDFIterator& operator++() {
     MoveToNextNode();
     return *this;
@@ -123,7 +141,7 @@ class TreeDFIterator {
 // The state is recorded by stacking the iteration position of the node
 // children. To move to the next node, the iterator:
 //  - Looks at the top of the stack;
-//  - If the children iterator has reach the end, then the node become the
+//  - If the children iterator has reached the end, then the node becomes the
 //    current one and we pop the stack;
 //  - Otherwise, we save the child and increment the iterator;
 //  - We walk the child sub-tree until we find a leaf, stacking all non-leaves

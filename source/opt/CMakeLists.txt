@@ -54,6 +54,7 @@ add_library(SPIRV-Tools-opt
   log.h
   loop_descriptor.h
   loop_utils.h
+  loop_unswitch_pass.h
   mem_pass.h
   merge_return_pass.h
   module.h
@@ -120,6 +121,7 @@ add_library(SPIRV-Tools-opt
   local_ssa_elim_pass.cpp
   loop_descriptor.cpp
   loop_utils.cpp
+  loop_unswitch_pass.cpp
   mem_pass.cpp
   merge_return_pass.cpp
   module.cpp

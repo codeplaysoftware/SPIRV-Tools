@@ -379,4 +379,9 @@ Optimizer::PassToken CreateReplaceInvalidOpcodePass() {
   return MakeUnique<Optimizer::PassToken::Impl>(
       MakeUnique<opt::ReplaceInvalidOpcodePass>());
 }
+
+Optimizer::PassToken CreateLoopUnswitchPass() {
+  return MakeUnique<Optimizer::PassToken::Impl>(
+      MakeUnique<opt::LoopUnswitchPass>());
+}
 }  // namespace spvtools

@@ -233,6 +233,17 @@ void Loop::SetMergeBlock(BasicBlock* merge) {
   }
 }
 
+void Loop::SetPreHeaderBlock(BasicBlock* preheader) {
+  assert(!IsInsideLoop(preheader) && "The preheader block is in the loop");
+  assert(preheader->tail()->opcode() == SpvOpBranch &&
+         "The preheader block does not unconditionally branch to the header "
+         "block");
+  assert(preheader->tail()->GetSingleWordOperand(0) == GetHeaderBlock()->id() &&
+         "The preheader block does not unconditionally branch to the header "
+         "block");
+  loop_preheader_ = preheader;
+}
+
 void Loop::GetExitBlocks(IRContext* context,
                          std::unordered_set<uint32_t>* exit_blocks) const {
   ir::CFG* cfg = context->cfg();
@@ -264,6 +275,44 @@ void Loop::GetMergingBlocks(
       }
     }
   }
+}
+
+namespace {
+
+static inline bool IsBasicBlockSafeToClone(IRContext* context, BasicBlock* bb) {
+  for (ir::Instruction& inst : *bb) {
+    if (!inst.IsBranch() && !context->IsCombinatorInstruction(&inst))
+      return false;
+  }
+
+  return true;
+}
+
+}  // namespace
+
+bool Loop::IsSafeToClone() const {
+  IRContext* context = GetHeaderBlock()->GetParent()->GetParent()->context();
+  ir::CFG& cfg = *context->cfg();
+
+  for (uint32_t bb_id : GetBlocks()) {
+    BasicBlock* bb = cfg.block(bb_id);
+    assert(bb);
+    if (!IsBasicBlockSafeToClone(context, bb)) return false;
+  }
+
+  // Look at the merge construct.
+  if (GetHeaderBlock()->GetLoopMergeInst()) {
+    std::unordered_set<uint32_t> blocks;
+    GetMergingBlocks(context, &blocks);
+    blocks.erase(GetMergeBlock()->id());
+    for (uint32_t bb_id : blocks) {
+      BasicBlock* bb = cfg.block(bb_id);
+      assert(bb);
+      if (!IsBasicBlockSafeToClone(context, bb)) return false;
+    }
+  }
+
+  return true;
 }
 
 bool Loop::IsLCSSA() const {
@@ -365,6 +414,22 @@ void LoopDescriptor::PopulateList(const Function* f) {
   for (std::unique_ptr<Loop>& loop : loops_) {
     if (!loop->HasParent()) dummy_top_loop_.nested_loops_.push_back(loop.get());
   }
+}
+
+// Adds a new loop to the descriptor set.
+ir::Loop* LoopDescriptor::AddLoops(std::unique_ptr<ir::Loop> new_loop) {
+  loops_.push_back(std::move(new_loop));
+  ir::Loop* loop = loops_.back().get();
+  if (!loop->HasParent()) dummy_top_loop_.nested_loops_.push_back(loop);
+  // Iterate from inner to outer most loop, adding basic block to loop mapping
+  // as we go.
+  for (ir::Loop& current_loop :
+       make_range(iterator::begin(loop), iterator::end(loop))) {
+    for (uint32_t bb_id : current_loop.GetBlocks())
+      basic_block_to_loop_.insert(std::make_pair(bb_id, &current_loop));
+  }
+
+  return loop;
 }
 
 }  // namespace ir

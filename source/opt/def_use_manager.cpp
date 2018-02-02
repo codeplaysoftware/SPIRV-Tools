@@ -14,6 +14,8 @@
 
 #include "def_use_manager.h"
 
+#include <vector>
+
 #include "log.h"
 #include "reflect.h"
 
@@ -81,6 +83,24 @@ const ir::Instruction* DefUseManager::GetDef(uint32_t id) const {
   const auto iter = id_to_def_.find(id);
   if (iter == id_to_def_.end()) return nullptr;
   return iter->second;
+}
+
+void DefUseManager::ReplaceAllUseOf(uint32_t def_id, uint32_t new_use) {
+  ir::Instruction* def = GetDef(def_id);
+  assert(def && "Unregistered definition");
+  // We need to update the def/user mapping. Doing on the fly might invalidate
+  // the iterator behind the ForEachUse. So we need it differ the update.
+  std::vector<ir::Instruction*> user_list;
+  ForEachUse(def_id,
+             [new_use, &user_list](ir::Instruction* user, uint32_t index) {
+               user->SetOperand(index, {new_use});
+               user_list.push_back(user);
+             });
+
+  for (ir::Instruction* insn : user_list) {
+    AnalyzeInstUse(insn);
+  }
+  AnalyzeInstUse(def);
 }
 
 DefUseManager::IdToUsersMap::const_iterator DefUseManager::UsersBegin(
