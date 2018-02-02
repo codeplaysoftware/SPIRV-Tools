@@ -33,6 +33,7 @@ SPVTOOLS_SRC_FILES := \
 		source/val/instruction.cpp \
 		source/val/validation_state.cpp \
 		source/validate.cpp \
+		source/validate_adjacency.cpp \
 		source/validate_arithmetics.cpp \
 		source/validate_atomics.cpp \
 		source/validate_bitwise.cpp \
@@ -105,6 +106,7 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/propagator.cpp \
 		source/opt/redundancy_elimination.cpp \
 		source/opt/remove_duplicates_pass.cpp \
+		source/opt/replace_invalid_opc.cpp \
 		source/opt/scalar_replacement_pass.cpp \
 		source/opt/set_spec_constant_default_value_pass.cpp \
 		source/opt/strength_reduction_pass.cpp \
