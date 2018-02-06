@@ -98,15 +98,15 @@ class LoopUnswitch {
     assert(loop_->IsLCSSA() && "This loop is not in a LCSSA form");
 
     cloned_loop_.clear();
+    ir::CFG& cfg = *context_->cfg();
 
     //////////////////////////////////////////////////////////////////////////////
-    // Step 1: Create the if merge block for structured modules. //
-    //    To do so, the |loop_| merge block will become the if's one and we //
+    // Step 1: Create the if merge block for structured modules.
+    //    To do so, the |loop_| merge block will become the if's one and we
     //    create a merge for the loop. This will limit the amount of duplicated
-    //    // code the structured control flow imposes.
-    //    // For non structured program, the new loop will be connected to
-    //    // the old loop's exit blocks.
-    //    //
+    //     code the structured control flow imposes.
+    //    For non structured program, the new loop will be connected to
+    //     the old loop's exit blocks.
     //////////////////////////////////////////////////////////////////////////////
 
     // Get the merge block if it exists.
@@ -119,7 +119,6 @@ class LoopUnswitch {
             ? CreateBasicBlock(FindBasicBlockPosition(if_merge_block))
             : nullptr;
     if (loop_merge_block) {
-      ir::CFG& cfg = *context_->cfg();
       // Add the instruction and update managers.
       opt::InstructionBuilder builder(
           context_, loop_merge_block,
@@ -128,6 +127,7 @@ class LoopUnswitch {
       builder.AddBranch(if_merge_block->id());
       builder.SetInsertPoint(&*loop_merge_block->begin());
       cfg.RegisterBlock(loop_merge_block);
+      def_use_mgr_->AnalyzeInstDef(loop_merge_block->GetLabelInst());
       // Update CFG.
       if_merge_block->ForEachPhiInst(
           [loop_merge_block, &builder, this](ir::Instruction* phi) {
@@ -141,6 +141,7 @@ class LoopUnswitch {
       // Copy the predecessor list (will get invalidate otherwise).
       std::vector<uint32_t> preds = cfg.preds(if_merge_block->id());
       for (uint32_t pid : preds) {
+        if (pid == loop_merge_block->id()) continue;
         ir::BasicBlock* p_bb = cfg.block(pid);
         p_bb->ForEachSuccessorLabel(
             [if_merge_block, loop_merge_block](uint32_t* id) {
@@ -149,46 +150,78 @@ class LoopUnswitch {
         cfg.AddEdge(pid, loop_merge_block->id());
       }
       cfg.RemoveNonExistingEdges(if_merge_block->id());
+      // Update the dominator tree.
+      DominatorTreeNode* loop_merge_dtn =
+          dom_tree_.GetOrInsertNode(loop_merge_block);
+      DominatorTreeNode* if_merge_block_dtn =
+          dom_tree_.GetOrInsertNode(if_merge_block);
+      loop_merge_dtn->parent_ = if_merge_block_dtn->parent_;
+      loop_merge_dtn->children_.push_back(if_merge_block_dtn);
+      loop_merge_dtn->parent_->children_.push_back(loop_merge_dtn);
+      if_merge_block_dtn->parent_->children_.erase(std::find(
+          if_merge_block_dtn->parent_->children_.begin(),
+          if_merge_block_dtn->parent_->children_.end(), if_merge_block_dtn));
 
       loop_->SetMergeBlock(loop_merge_block);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////
-    // Step 2: if |loop_|'s preheader is a loop header, build a header block for
-    // //
-    //         the constant if. //
-    ///////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////
+    // Step 2: Build a new preheader for |loop_|, use the old one
+    //         for the constant if.
+    ////////////////////////////////////////////////////////////////////////////
 
-    ir::BasicBlock* if_block = nullptr;
+    ir::BasicBlock* if_block = loop_->GetPreHeaderBlock();
     // If this preheader is the parent loop header,
     // we need to create a dedicated block for the if.
-    if (loop_->GetPreHeaderBlock()->IsLoopHeader()) {
-      ir::BasicBlock* parent_loop_header = loop_->GetPreHeaderBlock();
-      if_block = CreateBasicBlock(++FindBasicBlockPosition(if_block));
-      parent_loop_header->tail()->SetInOperand(0, {if_block->id()});
-      // FIXME: CFG update.
-      loop_->GetHeaderBlock()->ForEachPhiInst(
-          [parent_loop_header, if_block](ir::Instruction* phi) {
-            phi->ForEachInId([parent_loop_header, if_block](uint32_t* id) {
-              if (*id == parent_loop_header->id()) {
-                *id = if_block->id();
-              }
-            });
+    ir::BasicBlock* loop_pre_header =
+        CreateBasicBlock(++FindBasicBlockPosition(if_block));
+    opt::InstructionBuilder(context_, loop_pre_header,
+                            ir::IRContext::kAnalysisDefUse |
+                                ir::IRContext::kAnalysisInstrToBlockMapping)
+        .AddBranch(loop_->GetHeaderBlock()->id());
+
+    if_block->tail()->SetInOperand(0, {loop_pre_header->id()});
+
+    // Update the CFG.
+    cfg.RegisterBlock(loop_pre_header);
+    def_use_mgr_->AnalyzeInstDef(loop_pre_header->GetLabelInst());
+    cfg.AddEdge(if_block->id(), loop_pre_header->id());
+    cfg.RemoveNonExistingEdges(loop_->GetHeaderBlock()->id());
+
+    loop_->GetHeaderBlock()->ForEachPhiInst(
+        [loop_pre_header, if_block](ir::Instruction* phi) {
+          phi->ForEachInId([loop_pre_header, if_block](uint32_t* id) {
+            if (*id == if_block->id()) {
+              *id = loop_pre_header->id();
+            }
           });
-    } else {
-      if_block = loop_->GetPreHeaderBlock();
-      // Delete the old jump, it will be added at the end of the function..
-      if_block->tail().Erase();
-    }
+        });
+    loop_->SetPreHeaderBlock(loop_pre_header);
+
+    // Update the dominator tree.
+    DominatorTreeNode* loop_pre_header_dtn =
+        dom_tree_.GetOrInsertNode(loop_pre_header);
+    DominatorTreeNode* if_block_dtn = dom_tree_.GetTreeNode(if_block);
+    loop_pre_header_dtn->parent_ = if_block_dtn;
+    assert(if_block_dtn->children_.size() == 1 &&
+           "A loop preheader should only have the header block as child in the "
+           "dominator tree");
+    loop_pre_header_dtn->children_.push_back(if_block_dtn->children_[0]);
+    if_block_dtn->children_.clear();
+    if_block_dtn->children_.push_back(loop_pre_header_dtn);
+
+    // Make domination queries valid.
+    dom_tree_.ResetDFNumbering();
 
     //////////////////////////////////////////////////////////
     // Step 3: We have the landing pads, duplicate |loop_|. //
     //////////////////////////////////////////////////////////
 
     std::list<std::unique_ptr<ir::BasicBlock>> ordered_loop_bb;
-    ValueMapTy value_map;
-    ir::Loop* loop_false_br = CloneLoop(&ordered_loop_bb, &value_map);
+    ir::Loop* loop_false_br = CloneLoop(&ordered_loop_bb);
     cloned_loop_.push_back(loop_false_br);
+    function_->AddBasicBlocks(ordered_loop_bb.begin(), ordered_loop_bb.end(),
+                              function_->end());
 
     ///////////////////////////////////////////////////////////
     // Step 4: Connect convergent edges to the landing pads. //
@@ -203,13 +236,14 @@ class LoopUnswitch {
     for (uint32_t merge_bb_id : if_merging_blocks) {
       ir::BasicBlock* merge = context_->cfg()->block(merge_bb_id);
       // LCSSA, so we only care about phi instructions.
-      merge->ForEachPhiInst([&value_map](ir::Instruction* phi) {
+      merge->ForEachPhiInst([this](ir::Instruction* phi) {
         uint32_t num_in_operands = phi->NumInOperands();
         for (uint32_t i = 0; i < num_in_operands; i++) {
           ir::Operand new_operand = phi->GetInOperand(i);
           // not all the incoming value comes from the loop.
-          ValueMapTy::iterator new_value = value_map.find(new_operand.words[0]);
-          if (new_value != value_map.end()) {
+          ValueMapTy::iterator new_value =
+              value_map_.find(new_operand.words[0]);
+          if (new_value != value_map_.end()) {
             new_operand.words[0] = new_value->second;
           }
           phi->AddOperand(std::move(new_operand));
@@ -225,7 +259,6 @@ class LoopUnswitch {
     ir::Instruction* condition =
         def_use_mgr_->GetDef(iv_condition->GetOperand(0).words[0]);
 
-#if 0
     analysis::ConstantManager* cst_mgr = context_->get_constant_mgr();
     ir::Instruction* cst_false = cst_mgr->GetDefiningInstruction(
         cst_mgr->GetConstant(cst_mgr->GetType(iv_condition), {0}));
@@ -234,19 +267,19 @@ class LoopUnswitch {
 
     {
       std::unordered_set<uint32_t> dead_blocks;
-      SimplifyLoop(loop_false_br, iv_condition, cst_false, &dead_blocks,
-                   &ordered_loop_bb);
+      SimplifyLoop(loop_false_br, iv_condition, cst_false, &dead_blocks);
     }
     {
       std::unordered_set<uint32_t> dead_blocks;
-      SimplifyLoop(loop_, iv_condition, cst_true, &dead_blocks,
-                   &ordered_loop_bb);
+      SimplifyLoop(loop_, iv_condition, cst_true, &dead_blocks);
     }
-#endif
+
     /////////////////////////////////////
     // Finally: connect the new loops. //
     /////////////////////////////////////
 
+    // Delete the old jump
+    if_block->tail().Erase();
     opt::InstructionBuilder(context_, if_block,
                             ir::IRContext::kAnalysisDefUse |
                                 ir::IRContext::kAnalysisInstrToBlockMapping)
@@ -271,6 +304,8 @@ class LoopUnswitch {
 
   using ValueMapTy = std::unordered_map<uint32_t, uint32_t>;
   using BlockMapTy = std::unordered_map<uint32_t, ir::BasicBlock*>;
+
+  ValueMapTy value_map_;
 
   uint32_t TakeNextId() { return context_->TakeNextId(); }
 
@@ -309,10 +344,10 @@ class LoopUnswitch {
   // |killed_bb|.
   void KillBasicBlock(uint32_t killed_bb,
                       std::unordered_set<uint32_t>* dead_blocks) {
-    DominatorTreeNode* dtn = dom_tree_.GetTreeNode(killed_bb);
+    DominatorTreeNode* dtn = dom_tree_.GetTreeNode(value_map_[killed_bb]);
     for (const DominatorTreeNode* node :
          ir::make_range(dtn->begin(), dtn->end())) {
-      dead_blocks->insert(node->id());
+      dead_blocks->insert(value_map_[node->id()]);
     }
     // Leave the dominator tree valid.
     dom_tree_.RecursivelyDeleteTreeNode(dtn);
@@ -522,16 +557,14 @@ class LoopUnswitch {
   // cloned.
   // The function preserves the loop analysis.
   ir::Loop* CloneLoop(
-      std::list<std::unique_ptr<ir::BasicBlock>>* ordered_loop_bb,
-      ValueMapTy* value_map_ptr) {
-    ValueMapTy& value_map = *value_map_ptr;
+      std::list<std::unique_ptr<ir::BasicBlock>>* ordered_loop_bb) {
     std::unique_ptr<ir::Loop> new_loop = MakeUnique<ir::Loop>();
     if (loop_->HasParent()) new_loop->SetParent(loop_->GetParent());
 
     std::function<bool(uint32_t)> ignore_node_and_children;
     if (loop_->GetHeaderBlock()->GetLoopMergeInst()) {
       ignore_node_and_children = [this](uint32_t bb_id) {
-        return dom_tree_.Dominates(loop_->GetMergeBlock()->id(), bb_id);
+        return dom_tree_.StrictlyDominates(loop_->GetMergeBlock()->id(), bb_id);
       };
     } else {
       ignore_node_and_children = [this](uint32_t bb_id) {
@@ -544,7 +577,7 @@ class LoopUnswitch {
     BlockMapTy old_to_new_bb;
 
     opt::DominatorTreeNode* dtn_root =
-        dom_tree_.GetTreeNode(loop_->GetHeaderBlock());
+        dom_tree_.GetTreeNode(loop_->GetPreHeaderBlock());
     opt::DominatorTreeNode::df_iterator dom_it = dtn_root->df_begin();
 
     // Clone and place blocks in a SPIR-V compliant order (dominators first).
@@ -559,22 +592,22 @@ class LoopUnswitch {
       }
       ir::BasicBlock* old_bb = dom_it->bb_;
       ++dom_it;
-
       ir::BasicBlock* new_bb = old_bb->Clone(context_);
+      new_bb->SetParent(function_);
       new_bb->GetLabelInst()->SetResultId(TakeNextId());
       def_use_mgr_->AnalyzeInstDef(new_bb->GetLabelInst());
       ordered_loop_bb->emplace_back(new_bb);
 
       // Keep track of the new basic block, we will need it later on.
       old_to_new_bb[old_bb->id()] = new_bb;
-      value_map[old_bb->id()] = new_bb->id();
-      new_loop->AddBasicBlock(new_bb);
+      value_map_[old_bb->id()] = new_bb->id();
+      if (loop_->IsInsideLoop(old_bb)) new_loop->AddBasicBlock(new_bb);
 
       for (auto& inst : *new_bb) {
         if (inst.HasResultId()) {
           uint32_t old_result_id = inst.result_id();
           inst.SetResultId(TakeNextId());
-          value_map[old_result_id] = inst.result_id();
+          value_map_[old_result_id] = inst.result_id();
 
           // Only look at the defs for now, uses are not updated yet.
           def_use_mgr_->AnalyzeInstDef(&inst);
@@ -588,10 +621,10 @@ class LoopUnswitch {
       ir::BasicBlock* bb = bb_ref.get();
 
       for (ir::Instruction& insn : *bb) {
-        insn.ForEachInId([&value_map](uint32_t* old_id) {
+        insn.ForEachInId([this](uint32_t* old_id) {
           // If the operand is defined in the loop, remap the id.
-          ValueMapTy::iterator id_it = value_map.find(*old_id);
-          if (id_it != value_map.end()) {
+          ValueMapTy::iterator id_it = value_map_.find(*old_id);
+          if (id_it != value_map_.end()) {
             *old_id = id_it->second;
           }
         });
@@ -603,10 +636,8 @@ class LoopUnswitch {
       cfg.RegisterBlock(bb);
     }
 
-    // Set the merge block if required.
-    if (loop_->GetHeaderBlock()->GetLoopMergeInst()) {
-      new_loop->SetMergeBlock(old_to_new_bb[loop_->GetMergeBlock()->id()]);
-    }
+    new_loop->SetParent(loop_->GetParent());
+    PopulateLoopDesc(new_loop.get(), loop_, old_to_new_bb);
 
     std::unordered_map<ir::Loop*, ir::Loop*> loop_mapping;
     loop_mapping[loop_] = new_loop.get();
@@ -615,24 +646,32 @@ class LoopUnswitch {
                         opt::TreeDFIterator<ir::Loop>())) {
       std::unique_ptr<ir::Loop> cloned = MakeUnique<ir::Loop>();
       cloned->SetParent(loop_mapping[sub_loop.GetParent()]);
-      cloned->SetHeaderBlock(old_to_new_bb[sub_loop.GetHeaderBlock()->id()]);
-      if (sub_loop.GetLatchBlock())
-        cloned->SetLatchBlock(old_to_new_bb[sub_loop.GetLatchBlock()->id()]);
-      if (sub_loop.GetMergeBlock())
-        cloned->SetMergeBlock(old_to_new_bb[sub_loop.GetMergeBlock()->id()]);
-      if (sub_loop.GetPreHeaderBlock())
-        cloned->SetPreHeaderBlock(
-            old_to_new_bb[sub_loop.GetPreHeaderBlock()->id()]);
-      // Populate only the leaves, when we add a block to a loop with a
-      // registered parents they will get automatically notified.
-      if (sub_loop.begin() == sub_loop.end()) {
-        for (uint32_t bb_id : sub_loop.GetBlocks()) {
-          sub_loop.AddBasicBlock(old_to_new_bb[bb_id]);
-        }
-      }
+      PopulateLoopDesc(cloned.get(), &sub_loop, old_to_new_bb);
     }
 
     return loop_desc_.AddLoops(std::move(new_loop));
+  }
+
+  void PopulateLoopDesc(ir::Loop* new_loop, ir::Loop* old_loop,
+                        const BlockMapTy& old_to_new_bb) {
+    new_loop->SetHeaderBlock(
+        old_to_new_bb.at(old_loop->GetHeaderBlock()->id()));
+    if (old_loop->GetLatchBlock())
+      new_loop->SetLatchBlock(
+          old_to_new_bb.at(old_loop->GetLatchBlock()->id()));
+    if (old_loop->GetMergeBlock())
+      new_loop->SetMergeBlock(
+          old_to_new_bb.at(old_loop->GetMergeBlock()->id()));
+    if (old_loop->GetPreHeaderBlock())
+      new_loop->SetPreHeaderBlock(
+          old_to_new_bb.at(old_loop->GetPreHeaderBlock()->id()));
+    // Populate only the leaves, when we add a block to a loop with a
+    // registered parents they will get automatically notified.
+    if (old_loop->begin() == old_loop->end()) {
+      for (uint32_t bb_id : old_loop->GetBlocks()) {
+        new_loop->AddBasicBlock(old_to_new_bb.at(bb_id));
+      }
+    }
   }
 
   // Returns true if |insn| is constant within the loop.

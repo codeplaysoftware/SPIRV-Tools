@@ -62,6 +62,8 @@ class UptrVectorIterator
   inline UptrVectorIterator& operator--();
   inline UptrVectorIterator operator--(int);
 
+  UnderlyingIterator get() { return iterator_; }
+
   reference operator*() const { return **iterator_; }
   pointer operator->() { return (*iterator_).get(); }
   reference operator[](ptrdiff_t index) { return **(iterator_ + index); }

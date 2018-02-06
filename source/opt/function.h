@@ -61,6 +61,8 @@ class Function {
   inline void AddBasicBlock(std::unique_ptr<BasicBlock> b);
   // Appends a basic block to this function at the position |ip|.
   inline void AddBasicBlock(std::unique_ptr<BasicBlock> b, iterator ip);
+  template <typename T>
+  inline void AddBasicBlocks(T begin, T end, iterator ip);
 
   // Saves the given function end instruction.
   inline void SetFunctionEnd(std::unique_ptr<Instruction> end_inst);
@@ -131,6 +133,12 @@ inline void Function::AddBasicBlock(std::unique_ptr<BasicBlock> b) {
 inline void Function::AddBasicBlock(std::unique_ptr<BasicBlock> b,
                                     iterator ip) {
   ip.InsertBefore(std::move(b));
+}
+
+template <typename T>
+inline void Function::AddBasicBlocks(T begin, T end, iterator ip) {
+  blocks_.insert(ip.get(), std::make_move_iterator(begin),
+                 std::make_move_iterator(end));
 }
 
 inline void Function::SetFunctionEnd(std::unique_ptr<Instruction> end_inst) {

@@ -282,11 +282,14 @@ class DominatorTree {
     }
   }
 
- private:
   // Adds the basic block |bb| to the tree structure if it doesn't already
   // exist.
   DominatorTreeNode* GetOrInsertNode(ir::BasicBlock* bb);
 
+  // Recomputes the DF numbering of the tree.
+  void ResetDFNumbering();
+
+ private:
   // Wrapper function which gets the list of pairs of each BasicBlocks to its
   // immediately  dominating BasicBlock and stores the result in the the edges
   // parameter.
