@@ -171,6 +171,8 @@ class BasicBlock {
   // Returns true if this basic block exits this function or aborts execution.
   bool IsReturnOrAbort() const { return ctail()->IsReturnOrAbort(); }
 
+  void KillAllInsts(bool killLabel);
+
  private:
   // The enclosing function.
   Function* function_;
