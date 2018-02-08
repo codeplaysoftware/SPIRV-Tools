@@ -28,59 +28,60 @@ namespace ir {
 // purpose of this iterator class is to provide transparent access to those
 // std::unique_ptr managed elements in the vector, behaving like we are using
 // std::vector<|ValueType|>.
-template <typename ValueType, bool IsConst = false>
-class UptrVectorIterator
-    : public std::iterator<std::random_access_iterator_tag,
-                           typename std::conditional<IsConst, const ValueType,
-                                                     ValueType>::type> {
+template <typename ValueType,
+          template <typename...> class ContainerType = std::vector>
+class UptrContainerIterator
+    : public std::iterator<std::random_access_iterator_tag, ValueType> {
  public:
-  using super = std::iterator<
-      std::random_access_iterator_tag,
-      typename std::conditional<IsConst, const ValueType, ValueType>::type>;
+  using super = std::iterator<std::random_access_iterator_tag, ValueType>;
 
   using pointer = typename super::pointer;
   using reference = typename super::reference;
   using difference_type = typename super::difference_type;
 
   // Type aliases. We need to apply constness properly if |IsConst| is true.
-  using Uptr = std::unique_ptr<ValueType>;
-  using UptrVector = typename std::conditional<IsConst, const std::vector<Uptr>,
-                                               std::vector<Uptr>>::type;
+  using Uptr = std::unique_ptr<typename std::remove_const<ValueType>::type>;
+  using UptrContainer =
+      typename std::conditional<std::is_const<ValueType>::value,
+                                const ContainerType<Uptr>,
+                                ContainerType<Uptr>>::type;
   using UnderlyingIterator =
-      typename std::conditional<IsConst, typename UptrVector::const_iterator,
-                                typename UptrVector::iterator>::type;
+      typename std::conditional<std::is_const<ValueType>::value,
+                                typename UptrContainer::const_iterator,
+                                typename UptrContainer::iterator>::type;
 
   // Creates a new iterator from the given |container| and its raw iterator
   // |it|.
-  UptrVectorIterator(UptrVector* container, const UnderlyingIterator& it)
+  UptrContainerIterator(UptrContainer* container, const UnderlyingIterator& it)
       : container_(container), iterator_(it) {}
-  UptrVectorIterator(const UptrVectorIterator&) = default;
-  UptrVectorIterator& operator=(const UptrVectorIterator&) = default;
+  UptrContainerIterator(const UptrContainerIterator&) = default;
+  UptrContainerIterator& operator=(const UptrContainerIterator&) = default;
 
-  inline UptrVectorIterator& operator++();
-  inline UptrVectorIterator operator++(int);
-  inline UptrVectorIterator& operator--();
-  inline UptrVectorIterator operator--(int);
+  inline UptrContainerIterator& operator++();
+  inline UptrContainerIterator operator++(int);
+  inline UptrContainerIterator& operator--();
+  inline UptrContainerIterator operator--(int);
 
+  // Returns the underlying iterator.
   UnderlyingIterator get() { return iterator_; }
+  // Return a valid end iterator for the underlying container.
+  UptrContainerIterator end() {
+    return UptrContainerIterator(container_, container_->end());
+  }
 
   reference operator*() const { return **iterator_; }
   pointer operator->() { return (*iterator_).get(); }
-  reference operator[](ptrdiff_t index) { return **(iterator_ + index); }
 
-  inline bool operator==(const UptrVectorIterator& that) const;
-  inline bool operator!=(const UptrVectorIterator& that) const;
-
-  inline ptrdiff_t operator-(const UptrVectorIterator& that) const;
-  inline bool operator<(const UptrVectorIterator& that) const;
+  inline bool operator==(const UptrContainerIterator& that) const;
+  inline bool operator!=(const UptrContainerIterator& that) const;
 
   // Inserts the given |value| to the position pointed to by this iterator
   // and returns an iterator to the newly iserted |value|.
   // If the underlying vector changes capacity, all previous iterators will be
   // invalidated. Otherwise, those previous iterators pointing to after the
   // insertion point will be invalidated.
-  template <bool IsConstForMethod = IsConst>
-  inline typename std::enable_if<!IsConstForMethod, UptrVectorIterator>::type
+  template <bool IsConstForMethod = std::is_const<ValueType>::value>
+  inline typename std::enable_if<!IsConstForMethod, UptrContainerIterator>::type
   InsertBefore(Uptr value);
 
   // Inserts the given |valueVector| to the position pointed to by this iterator
@@ -88,22 +89,62 @@ class UptrVectorIterator
   // If the underlying vector changes capacity, all previous iterators will be
   // invalidated. Otherwise, those previous iterators pointing to after the
   // insertion point will be invalidated.
-  template <bool IsConstForMethod = IsConst>
-  inline typename std::enable_if<!IsConstForMethod, UptrVectorIterator>::type
-  InsertBefore(UptrVector* valueVector);
+  template <bool IsConstForMethod = std::is_const<ValueType>::value>
+  inline typename std::enable_if<!IsConstForMethod, UptrContainerIterator>::type
+  InsertBefore(UptrContainer* valueVector);
 
   // Erases the value at the position pointed to by this iterator
   // and returns an iterator to the following value.
   // If the underlying vector changes capacity, all previous iterators will be
   // invalidated. Otherwise, those previous iterators pointing to after the
   // erasure point will be invalidated.
-  template <bool IsConstForMethod = IsConst>
-  inline typename std::enable_if<!IsConstForMethod, UptrVectorIterator>::type
+  template <bool IsConstForMethod = std::is_const<ValueType>::value>
+  inline typename std::enable_if<!IsConstForMethod, UptrContainerIterator>::type
   Erase();
 
- private:
-  UptrVector* container_;        // The container we are manipulating.
+ protected:
+  UptrContainer* container_;     // The container we are manipulating.
   UnderlyingIterator iterator_;  // The raw iterator from the container.
+};
+
+// An ad hoc iterator class for std::vector<std::unique_ptr<|ValueType|>>. The
+// purpose of this iterator class is to provide transparent access to those
+// std::unique_ptr managed elements in the vector, behaving like we are using
+// std::vector<|ValueType|>.
+template <typename ValueType, bool IsConst = false>
+class UptrVectorIterator
+    : public UptrContainerIterator<
+          typename std::conditional<IsConst, const ValueType, ValueType>::type,
+          std::vector> {
+ public:
+  using super = UptrContainerIterator<
+      typename std::conditional<IsConst, const ValueType, ValueType>::type,
+      std::vector>;
+
+  using pointer = typename super::pointer;
+  using reference = typename super::reference;
+  using difference_type = typename super::difference_type;
+
+  // Type aliases. We need to apply constness properly if |IsConst| is true.
+  using Uptr = typename super::Uptr;
+  using UptrVector = typename super::UptrContainer;
+  using UnderlyingIterator = typename super::UnderlyingIterator;
+
+  // Creates a new iterator from the given |container| and its raw iterator
+  // |it|.
+  UptrVectorIterator(UptrVector* container, const UnderlyingIterator& it)
+      : super(container, it) {}
+  UptrVectorIterator(const UptrVectorIterator&) = default;
+  UptrVectorIterator& operator=(const UptrVectorIterator&) = default;
+  UptrVectorIterator(const super& it) : super(it) {}
+  UptrVectorIterator& operator=(const super& it) {
+    *static_cast<super*>(this) = it;
+    return *this;
+  }
+
+  reference operator[](ptrdiff_t index) { return **(super::iterator_ + index); }
+  inline ptrdiff_t operator-(const UptrVectorIterator& that) const;
+  inline bool operator<(const UptrVectorIterator& that) const;
 };
 
 // Handy class for a (begin, end) iterator pair.
@@ -160,90 +201,106 @@ inline IteratorRange<IteratorType> make_const_range(
           IteratorType(&container, container.cend())};
 }
 
-template <typename VT, bool IC>
-inline UptrVectorIterator<VT, IC>& UptrVectorIterator<VT, IC>::operator++() {
+// Returns a (begin, end) iterator pair for the given container.
+template <typename VT, template <typename...> class CT,
+          class IteratorType = UptrContainerIterator<VT, CT>>
+inline IteratorRange<IteratorType> make_range(
+    CT<std::unique_ptr<VT>>& container) {
+  return {IteratorType(&container, container.begin()),
+          IteratorType(&container, container.end())};
+}
+
+// Returns a const (begin, end) iterator pair for the given container.
+template <typename VT, template <typename...> class CT,
+          class IteratorType = UptrContainerIterator<const VT, CT>>
+inline IteratorRange<IteratorType> make_const_range(
+    const CT<std::unique_ptr<VT>>& container) {
+  return {IteratorType(&container, container.cbegin()),
+          IteratorType(&container, container.cend())};
+}
+
+template <typename VT, template <typename...> class CT>
+inline UptrContainerIterator<VT, CT>& UptrContainerIterator<VT, CT>::
+operator++() {
   ++iterator_;
   return *this;
 }
 
-template <typename VT, bool IC>
-inline UptrVectorIterator<VT, IC> UptrVectorIterator<VT, IC>::operator++(int) {
+template <typename VT, template <typename...> class CT>
+inline UptrContainerIterator<VT, CT> UptrContainerIterator<VT, CT>::operator++(
+    int) {
   auto it = *this;
   ++(*this);
   return it;
 }
 
-template <typename VT, bool IC>
-inline UptrVectorIterator<VT, IC>& UptrVectorIterator<VT, IC>::operator--() {
+template <typename VT, template <typename...> class CT>
+inline UptrContainerIterator<VT, CT>& UptrContainerIterator<VT, CT>::
+operator--() {
   --iterator_;
   return *this;
 }
 
-template <typename VT, bool IC>
-inline UptrVectorIterator<VT, IC> UptrVectorIterator<VT, IC>::operator--(int) {
+template <typename VT, template <typename...> class CT>
+inline UptrContainerIterator<VT, CT> UptrContainerIterator<VT, CT>::operator--(
+    int) {
   auto it = *this;
   --(*this);
   return it;
 }
 
-template <typename VT, bool IC>
-inline bool UptrVectorIterator<VT, IC>::operator==(
-    const UptrVectorIterator& that) const {
+template <typename VT, template <typename...> class CT>
+inline bool UptrContainerIterator<VT, CT>::operator==(
+    const UptrContainerIterator& that) const {
   return container_ == that.container_ && iterator_ == that.iterator_;
 }
 
-template <typename VT, bool IC>
-inline bool UptrVectorIterator<VT, IC>::operator!=(
-    const UptrVectorIterator& that) const {
+template <typename VT, template <typename...> class CT>
+inline bool UptrContainerIterator<VT, CT>::operator!=(
+    const UptrContainerIterator& that) const {
   return !(*this == that);
 }
 
 template <typename VT, bool IC>
 inline ptrdiff_t UptrVectorIterator<VT, IC>::operator-(
     const UptrVectorIterator& that) const {
-  assert(container_ == that.container_);
-  return iterator_ - that.iterator_;
+  assert(super::container_ == that.container_);
+  return super::iterator_ - that.iterator_;
 }
 
 template <typename VT, bool IC>
 inline bool UptrVectorIterator<VT, IC>::operator<(
     const UptrVectorIterator& that) const {
-  assert(container_ == that.container_);
-  return iterator_ < that.iterator_;
+  assert(super::container_ == that.container_);
+  return super::iterator_ < that.iterator_;
 }
 
-template <typename VT, bool IC>
+template <typename VT, template <typename...> class CT>
 template <bool IsConstForMethod>
-inline
-    typename std::enable_if<!IsConstForMethod, UptrVectorIterator<VT, IC>>::type
-    UptrVectorIterator<VT, IC>::InsertBefore(Uptr value) {
-  auto index = iterator_ - container_->begin();
-  container_->insert(iterator_, std::move(value));
-  return UptrVectorIterator(container_, container_->begin() + index);
+inline typename std::enable_if<!IsConstForMethod,
+                               UptrContainerIterator<VT, CT>>::type
+UptrContainerIterator<VT, CT>::InsertBefore(Uptr value) {
+  return UptrContainerIterator(container_,
+                               container_->insert(iterator_, std::move(value)));
 }
 
-template <typename VT, bool IC>
+template <typename VT, template <typename...> class CT>
 template <bool IsConstForMethod>
-inline
-    typename std::enable_if<!IsConstForMethod, UptrVectorIterator<VT, IC>>::type
-    UptrVectorIterator<VT, IC>::InsertBefore(UptrVector* values) {
-  const auto pos = iterator_ - container_->begin();
-  const auto origsz = container_->size();
-  container_->resize(origsz + values->size());
-  std::move_backward(container_->begin() + pos, container_->begin() + origsz,
-                     container_->end());
-  std::move(values->begin(), values->end(), container_->begin() + pos);
-  return UptrVectorIterator(container_, container_->begin() + pos);
+inline typename std::enable_if<!IsConstForMethod,
+                               UptrContainerIterator<VT, CT>>::type
+UptrContainerIterator<VT, CT>::InsertBefore(UptrContainer* values) {
+  return UptrContainerIterator(
+      container_,
+      container_->insert(iterator_, std::make_move_iterator(values->begin()),
+                         std::make_move_iterator(values->end())));
 }
 
-template <typename VT, bool IC>
+template <typename VT, template <typename...> class CT>
 template <bool IsConstForMethod>
-inline
-    typename std::enable_if<!IsConstForMethod, UptrVectorIterator<VT, IC>>::type
-    UptrVectorIterator<VT, IC>::Erase() {
-  auto index = iterator_ - container_->begin();
-  (void)container_->erase(iterator_);
-  return UptrVectorIterator(container_, container_->begin() + index);
+inline typename std::enable_if<!IsConstForMethod,
+                               UptrContainerIterator<VT, CT>>::type
+UptrContainerIterator<VT, CT>::Erase() {
+  return UptrContainerIterator(container_, container_->erase(iterator_));
 }
 
 }  // namespace ir
