@@ -18,6 +18,7 @@
 #include <list>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "instruction.h"
@@ -126,7 +127,17 @@ class DefUseManager {
   const ir::Instruction* GetDef(uint32_t id) const;
 
   // Replace all uses of the id |def_id| by the id |new_use|.
-  void ReplaceAllUseOf(uint32_t def_id, uint32_t new_use);
+  void ReplaceAllUseOf(uint32_t def_id, uint32_t new_use) {
+    std::unordered_set<ir::Instruction*> modifed_instructions;
+    ReplaceAllUseOf(def_id, new_use, &modifed_instructions);
+  }
+
+  // Replace all uses of the id |def_id| by the id |new_use|. All modified
+  // instructions are recorded in the |modifed_instructions| set. The set
+  // |modifed_instructions| must be empty on invocation.
+  void ReplaceAllUseOf(
+      uint32_t def_id, uint32_t new_use,
+      std::unordered_set<ir::Instruction*>* modifed_instructions);
 
   // Runs the given function |f| on each unique user instruction of |def| (or
   // |id|).

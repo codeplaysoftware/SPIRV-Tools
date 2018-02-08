@@ -622,9 +622,25 @@ bool IsFoldableType(ir::Instruction* type_inst) {
   return false;
 }
 
+ir::Instruction* FoldPhiInstruction(ir::Instruction* inst,
+                                    std::function<uint32_t(uint32_t)> id_map) {
+  if (inst->opcode() != SpvOpPhi || inst->NumInOperands() > 2) {
+    return nullptr;
+  }
+  ir::IRContext* context = inst->context();
+
+  return context->get_def_use_mgr()->GetDef(
+      id_map(inst->GetSingleWordInOperand(0)));
+}
+
 ir::Instruction* FoldInstruction(ir::Instruction* inst,
                                  std::function<uint32_t(uint32_t)> id_map) {
   ir::Instruction* folded_inst = FoldInstructionToConstant(inst, id_map);
+  if (folded_inst != nullptr) {
+    return folded_inst;
+  }
+
+  folded_inst = FoldPhiInstruction(inst, id_map);
   if (folded_inst != nullptr) {
     return folded_inst;
   }

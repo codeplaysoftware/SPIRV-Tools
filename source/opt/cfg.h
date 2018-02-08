@@ -81,11 +81,14 @@ class CFG {
   void ForgetBlock(ir::BasicBlock* blk) {
     id2block_.erase(blk->id());
     label2preds_.erase(blk->id());
-    blk->ForEachSuccessorLabel([blk, this](uint32_t succ_id) {
-      auto& preds = label2preds_.at(succ_id);
-      auto it = std::find(preds.begin(), preds.end(), blk->id());
-      if (it != preds.end()) preds.erase(it);
-    });
+    blk->ForEachSuccessorLabel(
+        [blk, this](uint32_t succ_id) { RemoveEdge(blk->id(), succ_id); });
+  }
+
+  void RemoveEdge(uint32_t pred_blk_id, uint32_t succ_blk_id) {
+    auto& preds = label2preds_.at(succ_blk_id);
+    auto it = std::find(preds.begin(), preds.end(), pred_blk_id);
+    if (it != preds.end()) preds.erase(it);
   }
 
   // Registers |blk| to all of its successors.

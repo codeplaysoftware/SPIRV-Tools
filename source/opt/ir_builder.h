@@ -152,6 +152,14 @@ class InstructionBuilder {
     return AddInstruction(std::move(construct));
   }
 
+  // Creates an unreachable instruction.
+  ir::Instruction* AddUnreachable() {
+    std::unique_ptr<ir::Instruction> select(
+        new ir::Instruction(GetContext(), SpvOpUnreachable, 0, 0,
+                            std::initializer_list<ir::Operand>{}));
+    return AddInstruction(std::move(select));
+  }
+
   // Inserts the new instruction before the insertion point.
   ir::Instruction* AddInstruction(std::unique_ptr<ir::Instruction>&& insn) {
     ir::Instruction* insn_ptr = &*insert_before_.InsertBefore(std::move(insn));

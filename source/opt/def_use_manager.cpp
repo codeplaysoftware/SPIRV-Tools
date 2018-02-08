@@ -85,19 +85,21 @@ const ir::Instruction* DefUseManager::GetDef(uint32_t id) const {
   return iter->second;
 }
 
-void DefUseManager::ReplaceAllUseOf(uint32_t def_id, uint32_t new_use) {
+void DefUseManager::ReplaceAllUseOf(
+    uint32_t def_id, uint32_t new_use,
+    std::unordered_set<ir::Instruction*>* modifed_instructions) {
+  assert(modifed_instructions->empty() && "Set not empty");
   ir::Instruction* def = GetDef(def_id);
   assert(def && "Unregistered definition");
   // We need to update the def/user mapping. Doing on the fly might invalidate
   // the iterator behind the ForEachUse. So we need it differ the update.
-  std::vector<ir::Instruction*> user_list;
-  ForEachUse(def_id,
-             [new_use, &user_list](ir::Instruction* user, uint32_t index) {
-               user->SetOperand(index, {new_use});
-               user_list.push_back(user);
-             });
+  ForEachUse(def_id, [new_use, modifed_instructions](ir::Instruction* user,
+                                                     uint32_t index) {
+    user->SetOperand(index, {new_use});
+    modifed_instructions->insert(user);
+  });
 
-  for (ir::Instruction* insn : user_list) {
+  for (ir::Instruction* insn : *modifed_instructions) {
     AnalyzeInstUse(insn);
   }
   AnalyzeInstUse(def);
