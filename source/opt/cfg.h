@@ -86,7 +86,9 @@ class CFG {
   }
 
   void RemoveEdge(uint32_t pred_blk_id, uint32_t succ_blk_id) {
-    auto& preds = label2preds_.at(succ_blk_id);
+    auto pred_it = label2preds_.find(succ_blk_id);
+    if (pred_it == label2preds_.end()) return;
+    auto& preds = pred_it->second;
     auto it = std::find(preds.begin(), preds.end(), pred_blk_id);
     if (it != preds.end()) preds.erase(it);
   }
