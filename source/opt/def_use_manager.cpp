@@ -91,8 +91,9 @@ void DefUseManager::ReplaceAllUseOf(
   assert(modifed_instructions->empty() && "Set not empty");
   ir::Instruction* def = GetDef(def_id);
   assert(def && "Unregistered definition");
-  // We need to update the def/user mapping. Doing on the fly might invalidate
-  // the iterator behind the ForEachUse. So we need it differ the update.
+  // We need to update the def/user mapping. Doing it on the fly might
+  // invalidate the iterator behind the ForEachUse. So we need to stagger the
+  // update.
   ForEachUse(def_id, [new_use, modifed_instructions](ir::Instruction* user,
                                                      uint32_t index) {
     user->SetOperand(index, {new_use});

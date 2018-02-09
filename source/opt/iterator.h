@@ -99,7 +99,7 @@ class UptrContainerIterator
 };
 
 // An ad hoc iterator class for std::vector<std::unique_ptr<|ValueType|>>. The
-// purpose of this iterator class is to provide transparent access to those
+// purpose of this iterator class is to provide transparent access to the
 // std::unique_ptr managed elements in the vector, behaving like we are using
 // std::vector<|ValueType|>.
 template <typename ValueType, bool IsConst = false>

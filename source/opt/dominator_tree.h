@@ -274,7 +274,7 @@ class DominatorTree {
     } else {
       eraser(&roots_);
     }
-    // Post order traversal: remove children first to leave the iterator valid.
+    // Post order traversal: remove children first to keep the iterator valid.
     DominatorTreeNode::post_iterator node_it = dtn->post_begin();
     DominatorTreeNode::post_iterator end_it = dtn->post_end();
     while (node_it != end_it) {
