@@ -819,7 +819,9 @@ class LoopUnswitch {
       cfg.RegisterBlock(bb);
     }
 
-    PopulateLoopDesc(new_loop.get(), loop_, {}, {});
+    std::unordered_set<uint32_t> dead_blocks;
+    std::unordered_set<uint32_t> unreachable_merges;
+    PopulateLoopDesc(new_loop.get(), loop_, dead_blocks, unreachable_merges);
 
     return new_loop;
   }
