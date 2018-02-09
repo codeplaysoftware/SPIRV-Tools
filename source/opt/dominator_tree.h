@@ -196,7 +196,9 @@ class DominatorTree {
   }
 
   // Returns true if the basic block id |a| is reachable by this tree.
-  bool ReachableFromRoots(uint32_t a) const;
+  bool ReachableFromRoots(uint32_t a) const {
+    return GetTreeNode(a) != nullptr;
+  }
 
   // Returns true if this tree is a post dominator tree.
   bool IsPostDominator() const { return postdominator_; }
