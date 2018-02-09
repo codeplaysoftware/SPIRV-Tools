@@ -413,7 +413,6 @@ class LoopUnswitch {
 
     context_->InvalidateAnalysesExceptFor(
         ir::IRContext::Analysis::kAnalysisLoopAnalysis);
-    std::cout << *function_;
   }
 
   bool WasLoopKilled() const { return loop_ == nullptr; }
@@ -449,8 +448,6 @@ class LoopUnswitch {
       const std::unordered_set<uint32_t>& unreachable_merges) {
     ir::CFG& cfg = *context_->cfg();
     while (bb_it != bb_it.end()) {
-      std::cout << bb_it->id() << " : " << dead_blocks.count(bb_it->id())
-                << " - " << unreachable_merges.count(bb_it->id()) << "\n";
       if (unreachable_merges.count(bb_it->id())) {
         if (bb_it->begin() != bb_it->tail() ||
             bb_it->terminator()->opcode() != SpvOpUnreachable) {
@@ -461,7 +458,6 @@ class LoopUnswitch {
         }
         ++bb_it;
       } else if (dead_blocks.count(bb_it->id())) {
-        std::cout << "\tDelete" << bb_it->id() << "\n";
         cfg.ForgetBlock(&*bb_it);
         // Kill this block.
         bb_it->KillAllInsts(true);
@@ -563,9 +559,6 @@ class LoopUnswitch {
     while (!work_list.empty()) {
       ir::Instruction* inst = *work_list.begin();
       ir::BasicBlock* bb = context_->get_instr_block(inst);
-      ir::BasicBlock* bb_map = new_to_old_block_mapping(bb->id());
-      std::cout << "bb (" << (bb_map ? bb_map->id() : 0) << " ): " << bb->id()
-                << " -> " << inst->result_id() << "\n";
       work_list.erase(work_list.begin());
 
       // If the basic block is known to be dead, ignore the instruction.
@@ -581,17 +574,14 @@ class LoopUnswitch {
         }
         if (!has_live_pred) {
           dead_blocks->insert(bb->id());
-          std::cout << "Kill " << bb->id() << "\n";
-          def_use_mgr->ForEachUser(
-              bb->GetLabelInst(), [&work_list](ir::Instruction* i) {
-                // Capture merge and phi instructions only.
-                if (!i->IsBranch()) {
-                  std::cout << "Push non branch use " << i->result_id() << "\n";
-                  work_list.insert(i);
-                }
-              });
+          def_use_mgr->ForEachUser(bb->GetLabelInst(),
+                                   [&work_list](ir::Instruction* i) {
+                                     // Capture merge and phi instructions only.
+                                     if (!i->IsBranch()) {
+                                       work_list.insert(i);
+                                     }
+                                   });
           bb->ForEachSuccessorLabel([&work_list, def_use_mgr](uint32_t sid) {
-            std::cout << "Push dead candidate " << sid << "\n";
             work_list.insert(def_use_mgr->GetDef(sid));
           });
         }
@@ -622,7 +612,6 @@ class LoopUnswitch {
               live_target = branch_cond ? true_label : false_label;
               uint32_t dead_target = !branch_cond ? true_label : false_label;
               cfg.RemoveEdge(bb->id(), dead_target);
-              std::cout << "Push dead candidate " << dead_target << "\n";
               work_list.insert(def_use_mgr->GetDef(dead_target));
             }
             break;
@@ -651,7 +640,6 @@ class LoopUnswitch {
               uint32_t id = inst->GetSingleWordInOperand(i);
               if (id != live_target) {
                 cfg.RemoveEdge(bb->id(), id);
-                std::cout << "Push dead candidate " << id << "\n";
                 work_list.insert(def_use_mgr->GetDef(id));
               }
             }
@@ -706,7 +694,6 @@ class LoopUnswitch {
                 // Don't step out of the ROI.
                 if (!ignore_node_and_children(
                         context_->get_instr_block(use)->id())) {
-                  std::cout << "Push Phi use " << use->result_id() << "\n";
                   work_list.insert(use);
                 }
               });

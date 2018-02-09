@@ -66,3 +66,9 @@ add_spvtools_unittest(TARGET licm_hoist_no_preheader
         hoist_without_preheader.cpp
     LIBS SPIRV-Tools-opt
 )
+
+add_spvtools_unittest(TARGET unswitch_test
+    SRCS ../function_utils.h
+        unswitch.cpp
+    LIBS SPIRV-Tools-opt
+)
