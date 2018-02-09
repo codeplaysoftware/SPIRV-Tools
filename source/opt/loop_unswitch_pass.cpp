@@ -702,12 +702,13 @@ class LoopUnswitch {
 
         if (inst->NumInOperands() == 2) {
           def_use_mgr->ForEachUse(
-              inst, [&work_list, ignore_node_and_children, this](
+              inst, [&work_list, ignore_node_and_children, inst, this](
                         ir::Instruction* use, uint32_t operand) {
-                use->SetOperand(operand, {use->result_id()});
+                use->SetOperand(operand, {inst->GetSingleWordInOperand(0)});
                 // Don't step out of the ROI.
                 if (!ignore_node_and_children(
                         context_->get_instr_block(use)->id())) {
+                  std::cout << "Push Phi use " << use->result_id() << "\n";
                   work_list.insert(use);
                 }
               });
@@ -716,15 +717,16 @@ class LoopUnswitch {
       }
 
       // General case, try to fold or forget about this use.
-      if (FoldInstruction(inst)) {
-        context_->AnalyzeUses(inst);
-        def_use_mgr->ForEachUser(inst, [&work_list, ignore_node_and_children,
-                                        this](ir::Instruction* use) {
-          if (!ignore_node_and_children(context_->get_instr_block(use)->id()))
-            work_list.insert(use);
-        });
-        context_->KillInst(inst);
-      }
+      // if (FoldInstruction(inst)) {
+      //   context_->AnalyzeUses(inst);
+      //   def_use_mgr->ForEachUser(inst, [&work_list, ignore_node_and_children,
+      //                                   this](ir::Instruction* use) {
+      //     if
+      //     (!ignore_node_and_children(context_->get_instr_block(use)->id()))
+      //       work_list.insert(use);
+      //   });
+      //   context_->KillInst(inst);
+      // }
     }
   }
 
