@@ -300,8 +300,9 @@ class LoopUnswitch {
         // We tagged dead blocks, create the loop before we invalidate any basic
         // block.
         PopulateLoopNest(dead_blocks, &unreachable_merges);
-        CleanUpCFG(ir::make_range(ordered_loop_bb).begin(), dead_blocks,
-                   unreachable_merges);
+        CleanUpCFG(ir::UptrContainerIterator<ir::BasicBlock, std::list>(
+                       &ordered_loop_bb, ordered_loop_bb.begin()),
+                   dead_blocks, unreachable_merges);
         specialisation_pair.second = cloned_loop->GetPreHeaderBlock();
 
         ///////////////////////////////////////////////////////////
