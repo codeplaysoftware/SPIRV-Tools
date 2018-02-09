@@ -136,9 +136,9 @@ inline void Function::AddBasicBlock(std::unique_ptr<BasicBlock> b,
 }
 
 template <typename T>
-inline void Function::AddBasicBlocks(T begin, T end, iterator ip) {
-  blocks_.insert(ip.get(), std::make_move_iterator(begin),
-                 std::make_move_iterator(end));
+inline void Function::AddBasicBlocks(T src_begin, T src_end, iterator ip) {
+  blocks_.insert(ip.get(), std::make_move_iterator(src_begin),
+                 std::make_move_iterator(src_end));
 }
 
 inline void Function::SetFunctionEnd(std::unique_ptr<Instruction> end_inst) {

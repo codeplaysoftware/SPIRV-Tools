@@ -1004,11 +1004,11 @@ class LoopUnswitch {
 
 }  // namespace
 
-Pass::Status LoopUnswitchPass::Process(ir::IRContext* context) {
-  InitializeProcessing(context);
+Pass::Status LoopUnswitchPass::Process(ir::IRContext* c) {
+  InitializeProcessing(c);
 
   bool modified = false;
-  ir::Module* module = context->module();
+  ir::Module* module = c->module();
 
   // Process each function in the module
   for (ir::Function& f : *module) {

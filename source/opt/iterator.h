@@ -84,15 +84,6 @@ class UptrContainerIterator
   inline typename std::enable_if<!IsConstForMethod, UptrContainerIterator>::type
   InsertBefore(Uptr value);
 
-  // Inserts the given |valueVector| to the position pointed to by this iterator
-  // and returns an iterator to the first newly inserted value.
-  // If the underlying vector changes capacity, all previous iterators will be
-  // invalidated. Otherwise, those previous iterators pointing to after the
-  // insertion point will be invalidated.
-  template <bool IsConstForMethod = std::is_const<ValueType>::value>
-  inline typename std::enable_if<!IsConstForMethod, UptrContainerIterator>::type
-  InsertBefore(UptrContainer* valueVector);
-
   // Erases the value at the position pointed to by this iterator
   // and returns an iterator to the following value.
   // If the underlying vector changes capacity, all previous iterators will be
@@ -141,6 +132,16 @@ class UptrVectorIterator
     *static_cast<super*>(this) = it;
     return *this;
   }
+
+  // Inserts the given |valueVector| to the position pointed to by this iterator
+  // and returns an iterator to the first newly inserted value.
+  // If the underlying vector changes capacity, all previous iterators will be
+  // invalidated. Otherwise, those previous iterators pointing to after the
+  // insertion point will be invalidated.
+  template <bool IsConstForMethod = std::is_const<ValueType>::value>
+  inline typename std::enable_if<!IsConstForMethod, UptrVectorIterator>::type
+  InsertBefore(UptrVector* valueVector);
+  using super::InsertBefore;
 
   reference operator[](ptrdiff_t index) { return **(super::iterator_ + index); }
   inline ptrdiff_t operator-(const UptrVectorIterator& that) const;
@@ -284,15 +285,20 @@ UptrContainerIterator<VT, CT>::InsertBefore(Uptr value) {
                                container_->insert(iterator_, std::move(value)));
 }
 
-template <typename VT, template <typename...> class CT>
+template <typename VT, bool IC>
 template <bool IsConstForMethod>
-inline typename std::enable_if<!IsConstForMethod,
-                               UptrContainerIterator<VT, CT>>::type
-UptrContainerIterator<VT, CT>::InsertBefore(UptrContainer* values) {
-  return UptrContainerIterator(
-      container_,
-      container_->insert(iterator_, std::make_move_iterator(values->begin()),
-                         std::make_move_iterator(values->end())));
+inline
+    typename std::enable_if<!IsConstForMethod, UptrVectorIterator<VT, IC>>::type
+    UptrVectorIterator<VT, IC>::InsertBefore(UptrVector* values) {
+  const auto pos = super::iterator_ - super::container_->begin();
+  const auto origsz = super::container_->size();
+  super::container_->resize(origsz + values->size());
+  std::move_backward(super::container_->begin() + pos,
+                     super::container_->begin() + origsz,
+                     super::container_->end());
+  std::move(values->begin(), values->end(), super::container_->begin() + pos);
+  return UptrVectorIterator(super::container_,
+                            super::container_->begin() + pos);
 }
 
 template <typename VT, template <typename...> class CT>
@@ -300,7 +306,7 @@ template <bool IsConstForMethod>
 inline typename std::enable_if<!IsConstForMethod,
                                UptrContainerIterator<VT, CT>>::type
 UptrContainerIterator<VT, CT>::Erase() {
-  return UptrContainerIterator(container_, container_->erase(iterator_));
+  return UptrContainerIterator{container_, container_->erase(iterator_)};
 }
 
 }  // namespace ir
