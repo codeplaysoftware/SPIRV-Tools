@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "loop_unswitch_pass.h"
-#include "dominator_tree.h"
-#include "fold.h"
-#include "ir_builder.h"
-#include "loop_descriptor.h"
+#include "opt/loop_unswitch_pass.h"
+#include "opt/dominator_tree.h"
+#include "opt/fold.h"
+#include "opt/ir_builder.h"
+#include "opt/loop_descriptor.h"
 
-#include "filter_iterator.h"
+#include "opt/filter_iterator.h"
 
 #include <type_traits>
 
@@ -78,7 +78,7 @@ class LoopUnswitch {
   ir::BasicBlock* CreateBasicBlock(ir::Function::iterator ip) {
     analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
 
-    // Create the dedicate exit basic block.
+    // Create the dedicated exit basic block.
     ir::BasicBlock* bb = &*ip.InsertBefore(std::unique_ptr<ir::BasicBlock>(
         new ir::BasicBlock(std::unique_ptr<ir::Instruction>(new ir::Instruction(
             context_, SpvOpLabel, 0, context_->TakeNextId(), {})))));
@@ -99,7 +99,7 @@ class LoopUnswitch {
     assert(CanUnswitchLoop() &&
            "Cannot unswitch if there is not constant condition");
     assert(loop_->GetPreHeaderBlock() && "This loop has no pre-header block");
-    assert(loop_->IsLCSSA() && "This loop is not in a LCSSA form");
+    assert(loop_->IsLCSSA() && "This loop is not in LCSSA form");
 
     ir::CFG& cfg = *context_->cfg();
     DominatorTree* dom_tree =
@@ -111,15 +111,15 @@ class LoopUnswitch {
     // Step 1: Create the if merge block for structured modules.
     //    To do so, the |loop_| merge block will become the if's one and we
     //    create a merge for the loop. This will limit the amount of duplicated
-    //     code the structured control flow imposes.
+    //    code the structured control flow imposes.
     //    For non structured program, the new loop will be connected to
-    //     the old loop's exit blocks.
+    //    the old loop's exit blocks.
     //////////////////////////////////////////////////////////////////////////////
 
     // Get the merge block if it exists.
     ir::BasicBlock* if_merge_block = loop_->GetMergeBlock();
-    // Merge block, it is only created if the loop has a unique exit block. We
-    // have this guaranty for structured loops, for compute loop it will
+    // The merge block is only created if the loop has a unique exit block. We
+    // have this guarantee for structured loops, for compute loop it will
     // trivially help maintain both a structured-like form and LCSAA.
     ir::BasicBlock* loop_merge_block =
         if_merge_block
@@ -145,7 +145,7 @@ class LoopUnswitch {
             for (uint32_t j = phi->NumInOperands() - 1; j > 1; j--)
               phi->RemoveInOperand(j);
           });
-      // Copy the predecessor list (will get invalidate otherwise).
+      // Copy the predecessor list (will get invalidated otherwise).
       std::vector<uint32_t> preds = cfg.preds(if_merge_block->id());
       for (uint32_t pid : preds) {
         if (pid == loop_merge_block->id()) continue;
@@ -210,9 +210,10 @@ class LoopUnswitch {
         dom_tree->GetOrInsertNode(loop_pre_header);
     DominatorTreeNode* if_block_dtn = dom_tree->GetTreeNode(if_block);
     loop_pre_header_dtn->parent_ = if_block_dtn;
-    assert(if_block_dtn->children_.size() == 1 &&
-           "A loop preheader should only have the header block as child in the "
-           "dominator tree");
+    assert(
+        if_block_dtn->children_.size() == 1 &&
+        "A loop preheader should only have the header block as a child in the "
+        "dominator tree");
     loop_pre_header_dtn->children_.push_back(if_block_dtn->children_[0]);
     if_block_dtn->children_.clear();
     if_block_dtn->children_.push_back(loop_pre_header_dtn);
@@ -284,7 +285,7 @@ class LoopUnswitch {
       std::unique_ptr<ir::Loop> cloned_loop(CloneLoop(&ordered_loop_bb));
 
       ////////////////////////////////////
-      // Step 4: Specializes the loops. //
+      // Step 4: Specialize the loops.  //
       ////////////////////////////////////
 
       {
@@ -311,7 +312,7 @@ class LoopUnswitch {
 
         for (uint32_t merge_bb_id : if_merging_blocks) {
           ir::BasicBlock* merge = context_->cfg()->block(merge_bb_id);
-          // LCSSA, so we only care about phi instructions.
+          // We are in LCSSA so we only care about phi instructions.
           merge->ForEachPhiInst([is_from_original_loop, &dead_blocks,
                                  this](ir::Instruction* phi) {
             uint32_t num_in_operands = phi->NumInOperands();
@@ -321,7 +322,7 @@ class LoopUnswitch {
                 pred = value_map_.at(pred);
                 if (!dead_blocks.count(pred)) {
                   uint32_t incoming_value_id = phi->GetSingleWordInOperand(i);
-                  // not all the incoming value comes from the loop.
+                  // Not all the incoming value are coming from the loop.
                   ValueMapTy::iterator new_value =
                       value_map_.find(incoming_value_id);
                   if (new_value != value_map_.end()) {
@@ -426,13 +427,10 @@ class LoopUnswitch {
   ir::LoopDescriptor& loop_desc_;
   ir::IRContext* context_;
 
-  // DominatorTree* dom_tree;
-  // analysis::DefUseManager* def_use_mgr;
-
   ir::BasicBlock* switch_block_;
 
   ValueMapTy value_map_;
-  // Mapping between original loop blocks to the cloned one and oposite.
+  // Mapping between original loop blocks to the cloned one and vice versa.
   BlockMapTy old_to_new_bb_;
   BlockMapTy new_to_old_bb_;
 
@@ -494,10 +492,10 @@ class LoopUnswitch {
   // Simplifies |loop| assuming the instruction |to_version_insn| takes the
   // value |cst_value|.
   // Requirements:
-  //   - |loop| must be is the LCSSA form;
+  //   - |loop| must be in the LCSSA form;
   //   - |cst_value| must be constant.
-  // The set |dead_blocks| will contains dead basic blocks, and the list
-  // |ordered_loop_bb| will contains live basic blocks in reverse post-order.
+  // The set |dead_blocks| will contain all the dead basic blocks, and the list
+  // |ordered_loop_bb| will contain the live basic blocks in reverse post-order.
   void SimplifyLoop(
       ir::Loop* loop, ir::Instruction* to_version_insn,
       ir::Instruction* cst_value,
@@ -570,7 +568,7 @@ class LoopUnswitch {
                 << " -> " << inst->result_id() << "\n";
       work_list.erase(work_list.begin());
 
-      // if the basic block is known as dead, ignore the instruction.
+      // If the basic block is known to be dead, ignore the instruction.
       if (dead_blocks->count(bb->id())) continue;
 
       if (inst->opcode() == SpvOpLabel) {
@@ -730,11 +728,10 @@ class LoopUnswitch {
     }
   }
 
-  // Clone the current loop and remap instructions. Newly created blocks will be
-  // added to the |ordered_loop_bb| list, correctly ordered to be inserted into
-  // a function. If the loop is structured, the merge construct will also be
-  // cloned.
-  // The function preserves the loop analysis.
+  // Clone the current loop and remap its instructions. Newly created blocks
+  // will be added to the |ordered_loop_bb| list, correctly ordered to be
+  // inserted into a function. If the loop is structured, the merge construct
+  // will also be cloned. The function preserves the loop analysis.
   std::unique_ptr<ir::Loop> CloneLoop(
       std::list<std::unique_ptr<ir::BasicBlock>>* ordered_loop_bb) {
     DominatorTree* dom_tree =
@@ -883,7 +880,7 @@ class LoopUnswitch {
         if (!dead_loops.count(sub_loop)) {
           if (alive_parent) {
             sub_loop->SetParent(nullptr);
-            // Register the loop as a direct child of |alive_parent|
+            // Register the loop as a direct child of |alive_parent|.
             alive_parent->AddNestedLoop(sub_loop);
           } else {
             if (sub_loop->HasParent()) {

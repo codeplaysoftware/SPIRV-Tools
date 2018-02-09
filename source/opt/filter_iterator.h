@@ -94,7 +94,7 @@ class FilterIterator {
   bool IsEnd() const { return internal_iterator_ == end_; }
 
  protected:
-  // Returns true if the iterator did not reached the end and the predicate is
+  // Returns true if the iterator did not reach the end and the predicate is
   // not satisfied.
   bool PredicateIsNotValid() {
     return !IsEnd() && !Predicate()(internal_iterator_);

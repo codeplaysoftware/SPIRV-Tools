@@ -24,16 +24,16 @@ class LoopDescriptor;
 
 namespace opt {
 
-// Implement the loop unswitch optimization.
-// The loop unswitch hoist invariant if conditions outside the loop and clone
-// the loop for each branches.
+// Implements the loop unswitch optimization.
+// The loop unswitch hoists invariant "if" statements if the conditions are
+// constant within the loop and clones the loop for each branch.
 class LoopUnswitchPass : public Pass {
  public:
   const char* name() const override { return "loop-unswitch"; }
 
   // Processes the given |module|. Returns Status::Failure if errors occur when
   // processing. Returns the corresponding Status::Success if processing is
-  // succesful to indicate whether changes are made to the module.
+  // succesful to indicate whether changes have been made to the modue.
   Pass::Status Process(ir::IRContext* context) override;
 
  private:
