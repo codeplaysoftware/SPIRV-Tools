@@ -698,11 +698,20 @@ class LoopUnswitch {
           // Update the def/use manager for this |inst|.
           def_use_mgr->AnalyzeInstUse(inst);
         }
-        // Let the general case handle the phi folding if it is not in an exit
-        // block (preserve LCSSA).
-        if (ignore_node_and_children(bb->id())) {
-          continue;
+
+        if (inst->NumInOperands() == 2) {
+          def_use_mgr->ForEachUse(
+              inst, [&work_list, ignore_node_and_children, this](
+                        ir::Instruction* use, uint32_t operand) {
+                use->SetOperand(operand, {use->result_id()});
+                // Don't step out of the ROI.
+                if (!ignore_node_and_children(
+                        context_->get_instr_block(use)->id())) {
+                  work_list.insert(use);
+                }
+              });
         }
+        continue;
       }
 
       // General case, try to fold or forget about this use.
@@ -710,7 +719,7 @@ class LoopUnswitch {
         context_->AnalyzeUses(inst);
         def_use_mgr->ForEachUser(inst, [&work_list, ignore_node_and_children,
                                         this](ir::Instruction* use) {
-          if (ignore_node_and_children(context_->get_instr_block(use)->id()))
+          if (!ignore_node_and_children(context_->get_instr_block(use)->id()))
             work_list.insert(use);
         });
         context_->KillInst(inst);
