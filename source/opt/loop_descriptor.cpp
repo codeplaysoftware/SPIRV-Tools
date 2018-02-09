@@ -95,11 +95,10 @@ bool Loop::IsBasicBlockInLoopSlow(const BasicBlock* bb) {
 
   opt::DominatorAnalysis* dom_analysis =
       context->GetDominatorAnalysis(bb->GetParent(), *context->cfg());
-  if (!dom_analysis->Dominates(GetHeaderBlock(), bb)) return false;
+  if (dom_analysis->IsReachable(bb) &&
+      !dom_analysis->Dominates(GetHeaderBlock(), bb))
+    return false;
 
-  opt::PostDominatorAnalysis* postdom_analysis =
-      context->GetPostDominatorAnalysis(bb->GetParent(), *context->cfg());
-  if (!postdom_analysis->Dominates(GetMergeBlock(), bb)) return false;
   return true;
 }
 
@@ -360,6 +359,17 @@ void LoopDescriptor::PopulateList(const Function* f) {
        ir::make_range(dom_tree.post_begin(), dom_tree.post_end())) {
     Instruction* merge_inst = node.bb_->GetLoopMergeInst();
     if (merge_inst) {
+      bool all_backedge_unreachable = true;
+      for (uint32_t pid : context->cfg()->preds(node.bb_->id())) {
+        if (dom_analysis->IsReachable(pid) &&
+            dom_analysis->Dominates(node.bb_->id(), pid)) {
+          all_backedge_unreachable = false;
+          break;
+        }
+      }
+      if (all_backedge_unreachable)
+        continue;  // ignore this one, we actually never branch back.
+
       // The id of the merge basic block of this loop.
       uint32_t merge_bb_id = merge_inst->GetSingleWordOperand(0);
 
@@ -430,6 +440,13 @@ ir::Loop* LoopDescriptor::AddLoops(std::unique_ptr<ir::Loop> new_loop) {
   }
 
   return loop;
+}
+
+void LoopDescriptor::RemoveLoop(ir::Loop* loop) {
+  LoopContainerType::iterator it = std::find_if(
+      loops_.begin(), loops_.end(),
+      [loop](const std::unique_ptr<ir::Loop>& l) { return l.get() == loop; });
+  if (it != loops_.end()) loops_.erase(it);
 }
 
 }  // namespace ir

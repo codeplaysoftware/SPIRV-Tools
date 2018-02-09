@@ -201,6 +201,13 @@ class Loop {
     }
   }
 
+  // Removes the Basic Block id |bb_id| from this loop and its parents.
+  void RemoveBasicBlock(uint32_t bb_id) {
+    for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
+      loop_basic_blocks_.erase(bb_id);
+    }
+  }
+
   // Checks if the loop contains any instruction that will prevent it from being
   // cloned. If the loop is structured, the merge construct is also considered.
   bool IsSafeToClone() const;
@@ -304,9 +311,27 @@ class LoopDescriptor {
     basic_block_to_loop_[bb_id] = loop;
   }
 
+  // Removes the basic block id |bb_id| from the block to loop mapping.
+  inline void ForgetBasicBlock(uint32_t bb_id) {
+    basic_block_to_loop_.erase(bb_id);
+  }
+
   // Adds the loop |new_loop| and all its nested loops to the descriptor set.
   // The object takes ownership of all the loops.
   ir::Loop* AddLoops(std::unique_ptr<ir::Loop> new_loop);
+
+  // Remove the loop |loop|.
+  void RemoveLoop(ir::Loop* loop);
+
+  void SetAsTopLoop(ir::Loop* loop) {
+    assert(std::find(dummy_top_loop_.begin(), dummy_top_loop_.end(), loop) ==
+               dummy_top_loop_.end() &&
+           "already registered");
+    dummy_top_loop_.nested_loops_.push_back(loop);
+  }
+
+  Loop* GetDummyRootLoop() { return &dummy_top_loop_; }
+  const Loop* GetDummyRootLoop() const { return &dummy_top_loop_; }
 
  private:
   using LoopContainerType = std::vector<std::unique_ptr<Loop>>;
