@@ -662,11 +662,11 @@ class LoopUnswitch {
             break;
         }
         if (live_target != 0) {
-          bb->tail().Erase();
+          context_->KillInst(&*bb->tail());
           // Check for the presence of the merge block.
           if (bb->begin() != bb->end() &&
               bb->tail()->opcode() == SpvOpSelectionMerge)
-            bb->tail().Erase();
+            context_->KillInst(&*bb->tail());
           opt::InstructionBuilder builder(
               context_, bb,
               ir::IRContext::kAnalysisDefUse |
@@ -760,16 +760,16 @@ class LoopUnswitch {
 
     opt::DominatorTreeNode* dtn_root =
         dom_tree->GetTreeNode(loop_->GetPreHeaderBlock());
-    opt::DominatorTreeNode::df_iterator dom_it = dtn_root->df_begin();
+    opt::DominatorTreeNode::post_iterator dom_it = dtn_root->post_begin();
 
     // Clone and place blocks in a SPIR-V compliant order (dominators first).
-    while (dom_it != dtn_root->df_end()) {
+    while (dom_it != dtn_root->post_end()) {
       // For each basic block in the loop, we clone it and register the mapping
       // between old and new ids.
       uint32_t old_bb_id = dom_it->id();
       // If we are out of our ROI, skip the node and the children.
       if (ignore_node_and_children(old_bb_id)) {
-        dom_it.SkipChildren();
+        ++dom_it;
         continue;
       }
       ir::BasicBlock* old_bb = dom_it->bb_;
@@ -779,7 +779,7 @@ class LoopUnswitch {
       new_bb->GetLabelInst()->SetResultId(TakeNextId());
       def_use_mgr->AnalyzeInstDef(new_bb->GetLabelInst());
       context_->set_instr_block(new_bb->GetLabelInst(), new_bb);
-      ordered_loop_bb->emplace_back(new_bb);
+      ordered_loop_bb->emplace_front(new_bb);
 
       // Keep track of the new basic block, we will need it later on.
       old_to_new_bb_[old_bb->id()] = new_bb;
