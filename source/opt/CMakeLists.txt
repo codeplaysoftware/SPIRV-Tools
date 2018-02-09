@@ -35,6 +35,7 @@ add_library(SPIRV-Tools-opt
   feature_manager.h
   flatten_decoration_pass.h
   fold.h
+  folding_rules.h
   fold_spec_constant_op_and_composite_pass.h
   freeze_spec_constant_value_pass.h
   function.h
@@ -44,8 +45,11 @@ add_library(SPIRV-Tools-opt
   inline_pass.h
   insert_extract_elim.h
   instruction.h
+  instruction_list.h
+  ir_builder.h
   ir_context.h
   ir_loader.h
+  licm_pass.h
   local_access_chain_convert_pass.h
   local_redundancy_elimination.h
   local_single_block_elim_pass.h
@@ -55,6 +59,7 @@ add_library(SPIRV-Tools-opt
   loop_descriptor.h
   loop_utils.h
   loop_unswitch_pass.h
+  make_unique.h
   mem_pass.h
   merge_return_pass.h
   module.h
@@ -70,6 +75,7 @@ add_library(SPIRV-Tools-opt
   replace_invalid_opc.h
   scalar_replacement_pass.h
   set_spec_constant_default_value_pass.h
+  simplification_pass.h
   strength_reduction_pass.h
   strip_debug_info_pass.h
   tree_iterator.h
@@ -102,6 +108,7 @@ add_library(SPIRV-Tools-opt
   feature_manager.cpp
   flatten_decoration_pass.cpp
   fold.cpp
+  folding_rules.cpp
   fold_spec_constant_op_and_composite_pass.cpp
   freeze_spec_constant_value_pass.cpp
   function.cpp
@@ -114,6 +121,7 @@ add_library(SPIRV-Tools-opt
   instruction_list.cpp
   ir_context.cpp
   ir_loader.cpp
+  licm_pass.cpp
   local_access_chain_convert_pass.cpp
   local_redundancy_elimination.cpp
   local_single_block_elim_pass.cpp
@@ -135,6 +143,7 @@ add_library(SPIRV-Tools-opt
   replace_invalid_opc.cpp
   scalar_replacement_pass.cpp
   set_spec_constant_default_value_pass.cpp
+  simplification_pass.cpp
   strength_reduction_pass.cpp
   strip_debug_info_pass.cpp
   type_manager.cpp

@@ -15,6 +15,8 @@
 #include "fold.h"
 
 #include "def_use_manager.h"
+#include "folding_rules.h"
+#include "ir_builder.h"
 #include "ir_context.h"
 
 #include <cassert>
@@ -178,6 +180,41 @@ uint32_t OperateWords(SpvOp opcode,
       assert(false && "Invalid number of operands");
       return 0;
   }
+}
+
+bool FoldInstructionInternal(ir::Instruction* inst) {
+  ir::IRContext* context = inst->context();
+  auto identity_map = [](uint32_t id) { return id; };
+  ir::Instruction* folded_inst = FoldInstructionToConstant(inst, identity_map);
+  if (folded_inst != nullptr) {
+    inst->SetOpcode(SpvOpCopyObject);
+    inst->SetInOperands({{SPV_OPERAND_TYPE_ID, {folded_inst->result_id()}}});
+    return true;
+  }
+
+  SpvOp opcode = inst->opcode();
+  analysis::ConstantManager* const_manger = context->get_constant_mgr();
+
+  std::vector<const analysis::Constant*> constants;
+  for (uint32_t i = 0; i < inst->NumInOperands(); i++) {
+    const ir::Operand* operand = &inst->GetInOperand(i);
+    if (operand->type != SPV_OPERAND_TYPE_ID) {
+      constants.push_back(nullptr);
+    } else {
+      uint32_t id = operand->words[0];
+      const analysis::Constant* constant =
+          const_manger->FindDeclaredConstant(id);
+      constants.push_back(constant);
+    }
+  }
+
+  static FoldingRules* rules = new FoldingRules();
+  for (FoldingRule rule : rules->GetRulesForOpcode(opcode)) {
+    if (rule(inst, constants)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace
@@ -622,32 +659,13 @@ bool IsFoldableType(ir::Instruction* type_inst) {
   return false;
 }
 
-ir::Instruction* FoldPhiInstruction(ir::Instruction* inst,
-                                    std::function<uint32_t(uint32_t)> id_map) {
-  if (inst->opcode() != SpvOpPhi || inst->NumInOperands() > 2) {
-    return nullptr;
+bool FoldInstruction(ir::Instruction* inst) {
+  bool modified = false;
+  ir::Instruction* folded_inst(inst);
+  while (FoldInstructionInternal(&*folded_inst)) {
+    modified = true;
   }
-  ir::IRContext* context = inst->context();
-
-  return context->get_def_use_mgr()->GetDef(
-      id_map(inst->GetSingleWordInOperand(0)));
-}
-
-ir::Instruction* FoldInstruction(ir::Instruction* inst,
-                                 std::function<uint32_t(uint32_t)> id_map) {
-  ir::Instruction* folded_inst = FoldInstructionToConstant(inst, id_map);
-  if (folded_inst != nullptr) {
-    return folded_inst;
-  }
-
-  folded_inst = FoldPhiInstruction(inst, id_map);
-  if (folded_inst != nullptr) {
-    return folded_inst;
-  }
-
-  // TODO: Add other folding opportunities that do not necessarily fold to a
-  // constant.
-  return nullptr;
+  return modified;
 }
 
 }  // namespace opt

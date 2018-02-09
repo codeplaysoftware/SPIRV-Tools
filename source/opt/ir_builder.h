@@ -190,6 +190,22 @@ class InstructionBuilder {
     return AddInstruction(std::move(construct));
   }
 
+  ir::Instruction* AddCompositeExtract(
+      uint32_t type, uint32_t id_of_composite,
+      const std::vector<uint32_t>& index_list) {
+    std::vector<ir::Operand> operands;
+    operands.push_back({SPV_OPERAND_TYPE_ID, {id_of_composite}});
+
+    for (uint32_t index : index_list) {
+      operands.push_back({SPV_OPERAND_TYPE_LITERAL_INTEGER, {index}});
+    }
+
+    std::unique_ptr<ir::Instruction> new_inst(
+        new ir::Instruction(GetContext(), SpvOpCompositeExtract, type,
+                            GetContext()->TakeNextId(), operands));
+    return AddInstruction(std::move(new_inst));
+  }
+
   // Creates an unreachable instruction.
   ir::Instruction* AddUnreachable() {
     std::unique_ptr<ir::Instruction> select(

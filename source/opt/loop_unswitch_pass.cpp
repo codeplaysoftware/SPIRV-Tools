@@ -267,7 +267,7 @@ class LoopUnswitch {
         return loop_->GetMergeBlock()->id() == id;
       };
     } else {
-      loop_->GetExitBlocks(context_, &if_merging_blocks);
+      loop_->GetExitBlocks(&if_merging_blocks);
       is_from_original_loop = [this](uint32_t id) {
         return loop_->IsInsideLoop(id);
       };
@@ -706,21 +706,13 @@ class LoopUnswitch {
       }
 
       // General case, try to fold or forget about this use.
-      ir::Instruction* folded = opt::FoldInstruction(inst);
-      assert(!folded || &*bb->tail() != inst && "Terminator was folded");
-      if (folded) {
-        std::unordered_set<ir::Instruction*> modifed_instructions;
-        def_use_mgr->ReplaceAllUseOf(inst->result_id(), folded->result_id(),
-                                     &modifed_instructions);
-        std::cout << "Remap " << inst->result_id() << " into "
-                  << folded->result_id() << "\n";
-        work_list.insert(modifed_instructions.begin(),
-                         modifed_instructions.end());
-        std::for_each(modifed_instructions.begin(), modifed_instructions.end(),
-                      [&, this](ir::Instruction* i) {
-                        std::cout << "\t" << i->result_id() << " in "
-                                  << context_->get_instr_block(i)->id() << "\n";
-                      });
+      if (FoldInstruction(inst)) {
+        context_->AnalyzeUses(inst);
+        def_use_mgr->ForEachUser(inst, [&work_list, ignore_node_and_children,
+                                        this](ir::Instruction* use) {
+          if (ignore_node_and_children(context_->get_instr_block(use)->id()))
+            work_list.insert(use);
+        });
         context_->KillInst(inst);
       }
     }

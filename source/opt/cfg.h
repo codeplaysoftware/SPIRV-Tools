@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <list>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace spvtools {
 namespace ir {
@@ -69,6 +70,12 @@ class CFG {
   void ComputeStructuredOrder(ir::Function* func, ir::BasicBlock* root,
                               std::list<ir::BasicBlock*>* order);
 
+  // Applies |f| to the basic block in reverse post order starting with |bb|.
+  // Note that basic blocks that cannot be reached from |bb| node will not be
+  // processed.
+  void ForEachBlockInReversePostOrder(
+      BasicBlock* bb, const std::function<void(BasicBlock*)>& f);
+
   // Registers |blk| as a basic block in the cfg, this also updates the
   // predecessor lists of each successor of |blk|.
   void RegisterBlock(ir::BasicBlock* blk) {
@@ -94,14 +101,7 @@ class CFG {
   }
 
   // Registers |blk| to all of its successors.
-  void AddEdges(ir::BasicBlock* blk) {
-    uint32_t blk_id = blk->id();
-    // Force the creation of an entry, not all basic block have predecessors
-    // (such as the entry blocks and some unreachables).
-    label2preds_[blk_id];
-    blk->ForEachSuccessorLabel(
-        [blk_id, this](uint32_t succ_id) { AddEdge(blk_id, succ_id); });
-  }
+  void AddEdges(ir::BasicBlock* blk);
 
   // Registers the basic block id |pred_blk_id| as being a predecessor of the
   // basic block id |succ_blk_id|.
@@ -124,6 +124,13 @@ class CFG {
   // vector contain duplicates of the merge or continue blocks, they are safely
   // ignored by DFS.
   void ComputeStructuredSuccessors(ir::Function* func);
+
+  // Computes the post-order traversal of the cfg starting at |bb| skipping
+  // nodes in |seen|.  The order of the traversal is appended to |order|, and
+  // all nodes in the traversal are added to |seen|.
+  void ComputePostOrderTraversal(BasicBlock* bb,
+                                 std::vector<BasicBlock*>* order,
+                                 std::unordered_set<BasicBlock*>* seen);
 
   // Module for this CFG.
   ir::Module* module_;
