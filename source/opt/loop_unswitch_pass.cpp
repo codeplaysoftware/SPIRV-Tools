@@ -389,7 +389,7 @@ class LoopUnswitch {
     // Finally: connect the new loops. //
     /////////////////////////////////////
     // Delete the old jump
-    if_block->tail().Erase();
+    context_->KillInst(&*if_block->tail());
     opt::InstructionBuilder builder(context_, if_block);
     if (iv_opcode == SpvOpBranchConditional) {
       assert(constant_branch.size() == 1);
