@@ -292,13 +292,12 @@ static inline bool IsBasicBlockSafeToClone(IRContext* context, BasicBlock* bb) {
 }  // namespace
 
 bool Loop::IsSafeToClone() const {
-  IRContext* context = GetHeaderBlock()->GetParent()->GetParent()->context();
-  ir::CFG& cfg = *context->cfg();
+  ir::CFG& cfg = *context_->cfg();
 
   for (uint32_t bb_id : GetBlocks()) {
     BasicBlock* bb = cfg.block(bb_id);
     assert(bb);
-    if (!IsBasicBlockSafeToClone(context, bb)) return false;
+    if (!IsBasicBlockSafeToClone(context_, bb)) return false;
   }
 
   // Look at the merge construct.
@@ -309,7 +308,7 @@ bool Loop::IsSafeToClone() const {
     for (uint32_t bb_id : blocks) {
       BasicBlock* bb = cfg.block(bb_id);
       assert(bb);
-      if (!IsBasicBlockSafeToClone(context, bb)) return false;
+      if (!IsBasicBlockSafeToClone(context_, bb)) return false;
     }
   }
 

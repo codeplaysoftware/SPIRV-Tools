@@ -196,14 +196,16 @@ class Loop {
   // Adds the Basic Block |bb| this loop and its parents.
   void AddBasicBlock(const BasicBlock* bb) {
     for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
-      loop_basic_blocks_.insert(bb->id());
+      loop->loop_basic_blocks_.insert(bb->id());
     }
   }
 
   // Removes the Basic Block id |bb_id| from this loop and its parents.
+  // It the user responsibility to make sure the removed block is not a merge,
+  // header or continue block.
   void RemoveBasicBlock(uint32_t bb_id) {
     for (Loop* loop = this; loop != nullptr; loop = loop->parent_) {
-      loop_basic_blocks_.erase(bb_id);
+      loop->loop_basic_blocks_.erase(bb_id);
     }
   }
 
