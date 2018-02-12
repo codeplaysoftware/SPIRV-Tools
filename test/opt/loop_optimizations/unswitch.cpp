@@ -14,22 +14,11 @@
 
 #include <gmock/gmock.h>
 
-#include <memory>
-#include <string>
-#include <vector>
-
 #ifdef SPIRV_EFFCEE
 #include "effcee/effcee.h"
 #endif
 
-#include "../assembly_builder.h"
-#include "../function_utils.h"
 #include "../pass_fixture.h"
-
-#include "opt/build_module.h"
-#include "opt/loop_descriptor.h"
-#include "opt/loop_utils.h"
-#include "opt/pass.h"
 
 namespace {
 
@@ -163,8 +152,6 @@ TEST_F(UnswitchTest, SimpleUnswitch) {
 
   SinglePassRunAndMatch<opt::LoopUnswitchPass>(text, true);
 }
-
-#endif  // SPIRV_EFFCEE
 
 /*
 Generated from the following GLSL + --eliminate-local-multi-store
@@ -634,104 +621,178 @@ void main() {
 */
 TEST_F(UnswitchTest, UnSwitchNested) {
   const std::string text = R"(
+; CHECK: [[cst_cond:%\w+]] = OpFOrdEqual
+; CHECK-NEXT: OpSelectionMerge [[if_merge:%\w+]] None
+; CHECK-NEXT: OpBranchConditional [[cst_cond]] [[loop_t:%\w+]] [[loop_f:%\w+]]
+
+; Loop specialized for false, one loop is killed, j won't change anymore.
+; CHECK: [[loop_f]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop:%\w+]]
+; CHECK: [[loop]] = OpLabel
+; CHECK-NEXT: [[phi_i:%\w+]] = OpPhi %int %int_0 [[loop_f]] [[iv_i:%\w+]] [[continue:%\w+]]
+; CHECK-NEXT: [[phi_j:%\w+]] = OpPhi %int %int_0 [[loop_f]] [[iv_j:%\w+]] [[continue]]
+; CHECK-NEXT: OpLoopMerge [[merge:%\w+]] [[continue]] None
+; CHECK: OpReturn
+; CHECK: [[iv_i]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK-NEXT: OpBranch [[loop]]
+
+; Loop specialized for true.
+; CHECK: [[loop_t]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop:%\w+]]
+; CHECK: [[loop]] = OpLabel
+; CHECK-NEXT: [[phi_i:%\w+]] = OpPhi %int %int_0 [[loop_t]] [[iv_i:%\w+]] [[continue:%\w+]]
+; CHECK-NEXT: [[phi_j:%\w+]] = OpPhi %int %int_0 [[loop_t]] [[iv_j:%\w+]] [[continue]]
+; CHECK-NEXT: OpLoopMerge [[merge:%\w+]] [[continue]] None
+; CHECK: [[loop_exit:%\w+]] = OpSLessThan {{%\w+}} [[phi_i]] {{%\w+}}
+; CHECK-NEXT: OpBranchConditional [[loop_exit]] [[pre_loop_inner:%\w+]] [[merge]]
+
+; CHECK: [[pre_loop_inner]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop_inner:%\w+]]
+; CHECK-NEXT: [[loop_inner]] = OpLabel
+; CHECK-NEXT: [[phi2_i:%\w+]] = OpPhi %int [[phi_i]] [[pre_loop_inner]] [[iv2_i:%\w+]] [[continue2:%\w+]]
+; CHECK-NEXT: [[phi2_j:%\w+]] = OpPhi %int [[phi_j]] [[pre_loop_inner]] [[iv2_j:%\w+]] [[continue2]]
+; CHECK-NEXT: OpLoopMerge [[merge2:%\w+]] [[continue2]] None
+
+; CHECK: OpBranch [[continue2]]
+; CHECK: [[merge2]] = OpLabel
+; CHECK: OpBranch [[continue]]
+; CHECK: [[merge]] = OpLabel
+
+; Unswitched double nested loop is done. Test the single remaining one.
+
+; CHECK: [[if_merge]] = OpLabel
+; CHECK-NEXT: OpSelectionMerge [[if_merge:%\w+]] None
+; CHECK-NEXT: OpBranchConditional [[cst_cond]] [[loop_t:%\w+]] [[loop_f:%\w+]]
+
+; Loop specialized for false.
+; CHECK: [[loop_f]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop:%\w+]]
+; CHECK: [[loop]] = OpLabel
+; CHECK-NEXT: [[phi_k:%\w+]] = OpPhi %int %int_0 [[loop_f]] [[iv_k:%\w+]] [[continue:%\w+]]
+; CHECK-NEXT: OpLoopMerge [[merge:%\w+]] [[continue]] None
+; CHECK: [[loop_exit:%\w+]] = OpSLessThan {{%\w+}} [[phi_k]] {{%\w+}}
+; CHECK-NEXT: OpBranchConditional [[loop_exit]] {{%\w+}} [[merge]]
+; Check that we have k+=1
+; CHECK: [[iv_k]] = OpIAdd %int [[phi_k]] %int_1
+; CHECK: OpBranch [[loop]]
+; CHECK: [[merge]] = OpLabel
+; CHECK-NEXT: OpBranch [[if_merge]]
+
+; Loop specialized for true.
+; CHECK: [[loop_t]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop:%\w+]]
+; CHECK: [[loop]] = OpLabel
+; CHECK-NEXT: [[phi_k:%\w+]] = OpPhi %int %int_0 [[loop_t]] [[iv_k:%\w+]] [[continue:%\w+]]
+; CHECK-NEXT: OpLoopMerge [[merge:%\w+]] [[continue]] None
+; CHECK: [[loop_exit:%\w+]] = OpSLessThan {{%\w+}} [[phi_k]] {{%\w+}}
+; CHECK-NEXT: OpBranchConditional [[loop_exit]] {{%\w+}} [[merge]]
+; Check that we have k+=2.
+; CHECK: [[tmp_k:%\w+]] = OpIAdd %int [[phi_k]] %int_1
+; CHECK: [[iv_k]] = OpIAdd %int [[tmp_k]] %int_1
+; CHECK: OpBranch [[loop]]
+; CHECK: [[merge]] = OpLabel
+; CHECK-NEXT: OpBranch [[if_merge]]
+
+; CHECK: [[if_merge]] = OpLabel
+; CHECK-NEXT: OpReturn
+
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %4 "main" %18
-               OpExecutionMode %4 OriginUpperLeft
+               OpEntryPoint Fragment %main "main" %c
+               OpExecutionMode %main OriginUpperLeft
                OpSource GLSL 440
-               OpName %4 "main"
-               OpName %18 "c"
-               OpDecorate %18 Location 0
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeInt 32 1
-          %7 = OpTypePointer Function %6
-          %9 = OpConstant %6 0
-         %12 = OpTypeBool
-         %13 = OpTypePointer Function %12
-         %15 = OpTypeFloat 32
-         %16 = OpTypeVector %15 4
-         %17 = OpTypePointer Input %16
-         %18 = OpVariable %17 Input
-         %19 = OpTypeInt 32 0
-         %20 = OpConstant %19 0
-         %21 = OpTypePointer Input %15
-         %24 = OpConstant %15 0
-         %32 = OpConstant %6 10
-         %45 = OpConstant %6 1
-          %4 = OpFunction %2 None %3
+               OpName %main "main"
+               OpName %c "c"
+               OpDecorate %c Location 0
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+        %int = OpTypeInt 32 1
+%_ptr_Function_int = OpTypePointer Function %int
+      %int_0 = OpConstant %int 0
+       %bool = OpTypeBool
+%_ptr_Function_bool = OpTypePointer Function %bool
+      %float = OpTypeFloat 32
+    %v4float = OpTypeVector %float 4
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+          %c = OpVariable %_ptr_Input_v4float Input
+       %uint = OpTypeInt 32 0
+     %uint_0 = OpConstant %uint 0
+%_ptr_Input_float = OpTypePointer Input %float
+    %float_0 = OpConstant %float 0
+     %int_10 = OpConstant %int 10
+      %int_1 = OpConstant %int 1
+       %main = OpFunction %void None %3
           %5 = OpLabel
-         %22 = OpAccessChain %21 %18 %20
-         %23 = OpLoad %15 %22
-         %25 = OpFOrdEqual %12 %23 %24
+         %22 = OpAccessChain %_ptr_Input_float %c %uint_0
+         %23 = OpLoad %float %22
+         %25 = OpFOrdEqual %bool %23 %float_0
                OpBranch %26
          %26 = OpLabel
-         %68 = OpPhi %6 %9 %5 %53 %29
-         %69 = OpPhi %6 %9 %5 %71 %29
+         %67 = OpPhi %int %int_0 %5 %52 %29
+         %68 = OpPhi %int %int_0 %5 %70 %29
                OpLoopMerge %28 %29 None
                OpBranch %30
          %30 = OpLabel
-         %33 = OpSLessThan %12 %68 %32
+         %33 = OpSLessThan %bool %67 %int_10
                OpBranchConditional %33 %27 %28
          %27 = OpLabel
                OpBranch %34
          %34 = OpLabel
-         %70 = OpPhi %6 %68 %27 %72 %37
-         %71 = OpPhi %6 %69 %27 %51 %37
+         %69 = OpPhi %int %67 %27 %46 %37
+         %70 = OpPhi %int %68 %27 %50 %37
                OpLoopMerge %36 %37 None
                OpBranch %38
          %38 = OpLabel
-         %40 = OpSLessThan %12 %71 %32
+         %40 = OpSLessThan %bool %70 %int_10
                OpBranchConditional %40 %35 %36
          %35 = OpLabel
                OpSelectionMerge %43 None
                OpBranchConditional %25 %42 %47
          %42 = OpLabel
-         %46 = OpIAdd %6 %70 %45
+         %46 = OpIAdd %int %69 %int_1
                OpBranch %43
          %47 = OpLabel
-         %49 = OpIAdd %6 %71 %45
-               OpBranch %43
+               OpReturn
          %43 = OpLabel
-         %72 = OpPhi %6 %46 %42 %70 %47
-         %73 = OpPhi %6 %71 %42 %49 %47
                OpBranch %37
          %37 = OpLabel
-         %51 = OpIAdd %6 %73 %45
+         %50 = OpIAdd %int %70 %int_1
                OpBranch %34
          %36 = OpLabel
                OpBranch %29
          %29 = OpLabel
-         %53 = OpIAdd %6 %70 %45
+         %52 = OpIAdd %int %69 %int_1
                OpBranch %26
          %28 = OpLabel
-               OpBranch %54
-         %54 = OpLabel
-         %74 = OpPhi %6 %9 %28 %67 %57
-               OpLoopMerge %56 %57 None
-               OpBranch %58
-         %58 = OpLabel
-         %60 = OpSLessThan %12 %74 %32
-               OpBranchConditional %60 %55 %56
-         %55 = OpLabel
-               OpSelectionMerge %63 None
-               OpBranchConditional %25 %62 %63
-         %62 = OpLabel
-         %65 = OpIAdd %6 %74 %45
-               OpBranch %63
-         %63 = OpLabel
-         %75 = OpPhi %6 %74 %55 %65 %62
+               OpBranch %53
+         %53 = OpLabel
+         %71 = OpPhi %int %int_0 %28 %66 %56
+               OpLoopMerge %55 %56 None
                OpBranch %57
          %57 = OpLabel
-         %67 = OpIAdd %6 %75 %45
-               OpBranch %54
+         %59 = OpSLessThan %bool %71 %int_10
+               OpBranchConditional %59 %54 %55
+         %54 = OpLabel
+               OpSelectionMerge %62 None
+               OpBranchConditional %25 %61 %62
+         %61 = OpLabel
+         %64 = OpIAdd %int %71 %int_1
+               OpBranch %62
+         %62 = OpLabel
+         %72 = OpPhi %int %71 %54 %64 %61
+               OpBranch %56
          %56 = OpLabel
+         %66 = OpIAdd %int %72 %int_1
+               OpBranch %53
+         %55 = OpLabel
                OpReturn
                OpFunctionEnd
 )";
 
   SinglePassRunAndMatch<opt::LoopUnswitchPass>(text, true);
 }
+
+#endif  // SPIRV_EFFCEE
 
 }  // namespace

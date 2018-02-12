@@ -605,8 +605,14 @@ class LoopUnswitch {
                                      }
                                    });
           const ir::BasicBlock* cbb = bb;
-          cbb->ForEachSuccessorLabel([&work_list, def_use_mgr](uint32_t sid) {
-            work_list.insert(def_use_mgr->GetDef(sid));
+          cbb->ForEachSuccessorLabel(
+              [&work_list, ignore_node, def_use_mgr](uint32_t sid) {
+                if (!ignore_node(sid))
+                  work_list.insert(def_use_mgr->GetDef(sid));
+              });
+        } else {
+          bb->ForEachPhiInst([&work_list, ignore_node](ir::Instruction* phi) {
+            work_list.insert(phi);
           });
         }
         continue;
@@ -690,12 +696,16 @@ class LoopUnswitch {
         // Patch phi instructions if needed, predecessors might have been
         // removed. New phi operands for this instruction.
         std::vector<uint32_t> phi_op;
+        const std::vector<uint32_t>& preds = cfg.preds(bb->id());
         for (uint32_t i = 0; i < inst->NumInOperands(); i += 2) {
-          uint32_t def_id = inst->GetSingleWordInOperand(i);
           uint32_t incoming_id = inst->GetSingleWordInOperand(i + 1);
-          if (!dead_blocks->count(incoming_id)) {
-            phi_op.push_back(def_id);
-            phi_op.push_back(incoming_id);
+          if (std::find(preds.begin(), preds.end(), incoming_id) !=
+              preds.end()) {
+            uint32_t def_id = inst->GetSingleWordInOperand(i);
+            if (!dead_blocks->count(incoming_id)) {
+              phi_op.push_back(def_id);
+              phi_op.push_back(incoming_id);
+            }
           }
         }
         if (inst->NumInOperands() != phi_op.size()) {
