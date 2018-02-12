@@ -29,7 +29,7 @@ namespace ir {
 // std::unique_ptr managed elements in the vector, behaving like we are using
 // std::vector<|ValueType|>.
 template <typename ValueType,
-          template <typename...> class ContainerType = std::vector>
+          template <typename...> class ContainerType>
 class UptrContainerIterator
     : public std::iterator<std::random_access_iterator_tag, ValueType> {
  public:
