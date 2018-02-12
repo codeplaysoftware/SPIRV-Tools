@@ -22,9 +22,13 @@
 #include <vector>
 
 #include "cfa.h"
+#include "opt/basic_block.h"
 #include "opt/dominator_tree.h"
 #include "opt/fold.h"
+#include "opt/function.h"
+#include "opt/instruction.h"
 #include "opt/ir_builder.h"
+#include "opt/ir_context.h"
 #include "opt/loop_descriptor.h"
 #include "opt/loop_unswitch_pass.h"
 
