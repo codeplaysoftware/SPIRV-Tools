@@ -324,9 +324,7 @@ class LoopUnswitch {
         // We tagged dead blocks, create the loop before we invalidate any basic
         // block.
         PopulateLoopNest(dead_blocks, &unreachable_merges);
-        CleanUpCFG(ir::UptrContainerIterator<ir::BasicBlock, std::list>(
-                       &ordered_loop_bb, ordered_loop_bb.begin()),
-                   dead_blocks, unreachable_merges);
+        CleanUpCFG(&ordered_loop_bb, dead_blocks, unreachable_merges);
         specialisation_pair.second = cloned_loop->GetPreHeaderBlock();
 
         ///////////////////////////////////////////////////////////
@@ -406,7 +404,7 @@ class LoopUnswitch {
       // loop).
       CleanLoopNest(dead_blocks, &unreachable_merges);
 
-      CleanUpCFG(function_->begin(), dead_blocks, unreachable_merges);
+      CleanUpCFG(function_->GetBlocks(), dead_blocks, unreachable_merges);
     }
 
     /////////////////////////////////////
@@ -473,29 +471,32 @@ class LoopUnswitch {
   // Removes any block that is tagged as dead, if the block is in
   // |unreachable_merges| then all block's instructions are replaced by a
   // OpUnreachable.
-  template <template <typename...> class ContainerType>
-  void CleanUpCFG(
-      ir::UptrContainerIterator<ir::BasicBlock, ContainerType> bb_it,
-      const std::unordered_set<uint32_t>& dead_blocks,
-      const std::unordered_set<uint32_t>& unreachable_merges) {
+  template <typename Container>
+  void CleanUpCFG(Container* container,
+                  const std::unordered_set<uint32_t>& dead_blocks,
+                  const std::unordered_set<uint32_t>& unreachable_merges) {
     ir::CFG& cfg = *context_->cfg();
-    while (bb_it != bb_it.end()) {
-      if (unreachable_merges.count(bb_it->id())) {
-        if (bb_it->begin() != bb_it->tail() ||
-            bb_it->terminator()->opcode() != SpvOpUnreachable) {
+
+    typename Container::iterator bb_it = container->begin();
+    while (bb_it != container->end()) {
+      ir::BasicBlock* bb = bb_it->get();
+
+      if (unreachable_merges.count(bb->id())) {
+        if (bb->begin() != bb->tail() ||
+            bb->terminator()->opcode() != SpvOpUnreachable) {
           // Make unreachable, but leave the label.
-          bb_it->KillAllInsts(false);
-          opt::InstructionBuilder(context_, &*bb_it).AddUnreachable();
-          cfg.RemoveNonExistingEdges(bb_it->id());
+          bb->KillAllInsts(false);
+          opt::InstructionBuilder(context_, bb).AddUnreachable();
+          cfg.RemoveNonExistingEdges(bb->id());
         }
         ++bb_it;
-      } else if (dead_blocks.count(bb_it->id())) {
-        cfg.ForgetBlock(&*bb_it);
+      } else if (dead_blocks.count(bb->id())) {
+        cfg.ForgetBlock(bb);
         // Kill this block.
-        bb_it->KillAllInsts(true);
-        bb_it = bb_it.Erase();
+        bb->KillAllInsts(true);
+        bb_it = container->erase(bb_it);
       } else {
-        cfg.RemoveNonExistingEdges(bb_it->id());
+        cfg.RemoveNonExistingEdges(bb->id());
         ++bb_it;
       }
     }

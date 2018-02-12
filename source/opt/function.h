@@ -77,6 +77,14 @@ class Function {
   // Returns function's return type id
   inline uint32_t type_id() const { return def_inst_->type_id(); }
 
+  // Returns the basic block container for this function.
+  std::vector<std::unique_ptr<BasicBlock>>* GetBlocks() { return &blocks_; }
+
+  // Returns the basic block container for this function.
+  const std::vector<std::unique_ptr<BasicBlock>>* GetBlocks() const {
+    return &blocks_;
+  }
+
   // Returns the entry basic block for this function.
   const std::unique_ptr<BasicBlock>& entry() const { return blocks_.front(); }
 
@@ -137,7 +145,7 @@ inline void Function::AddBasicBlock(std::unique_ptr<BasicBlock> b,
 
 template <typename T>
 inline void Function::AddBasicBlocks(T src_begin, T src_end, iterator ip) {
-  blocks_.insert(ip.get(), std::make_move_iterator(src_begin),
+  blocks_.insert(ip.Get(), std::make_move_iterator(src_begin),
                  std::make_move_iterator(src_end));
 }
 
