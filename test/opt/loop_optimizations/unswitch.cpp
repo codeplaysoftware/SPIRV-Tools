@@ -508,7 +508,7 @@ TEST_F(UnswitchTest, UnswitchSwitch) {
   const std::string text = R"(
 ; CHECK: [[cst_cond:%\w+]] = OpConvertFToS
 ; CHECK-NEXT: OpSelectionMerge [[if_merge:%\w+]] None
-; CHECK-NEXT: OpSwitch [[cst_cond]] [[default:%\w+]] 0 [[xloop_0:%\w+]] 1 [[loop_1:%\w+]] 2 [[loop_2:%\w+]]
+; CHECK-NEXT: OpSwitch [[cst_cond]] [[default:%\w+]] 0 [[loop_0:%\w+]] 1 [[loop_1:%\w+]] 2 [[loop_2:%\w+]]
 
 ; Loop specialized for 2.
 ; CHECK: [[loop_2]] = OpLabel
