@@ -60,10 +60,45 @@ void main() {
 */
 TEST_F(UnswitchTest, SimpleUnswitch) {
   const std::string text = R"(
-; CHECK OpLoopMerge [[merge:%\w+]] %19 None
-; CHECK [[merge]] = OpLabel
-; CHECK-NEXT [[phi:%\w+]] = OpPhi {{%\w+}} %30 %20
-; CHECK-NEXT %27 = OpINotEqual {{%\w+}} [[phi]] %9
+; CHECK: [[cst_cond:%\w+]] = OpFOrdEqual
+; CHECK-NEXT: OpSelectionMerge [[if_merge:%\w+]] None
+; CHECK-NEXT: OpBranchConditional [[cst_cond]] [[loop_t:%\w+]] [[loop_f:%\w+]]
+
+; Loop specialized for false.
+; CHECK: [[loop_f]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop:%\w+]]
+; CHECK: [[loop]] = OpLabel
+; CHECK-NEXT: [[phi_i:%\w+]] = OpPhi %int %int_0 [[loop_f]] [[iv_i:%\w+]] [[continue:%\w+]]
+; CHECK-NEXT: [[phi_j:%\w+]] = OpPhi %int %int_0 [[loop_f]] [[iv_j:%\w+]] [[continue]]
+; CHECK-NEXT: OpLoopMerge [[merge:%\w+]] [[continue]] None
+; CHECK: [[loop_exit:%\w+]] = OpSLessThan {{%\w+}} [[phi_i]] {{%\w+}}
+; CHECK-NEXT: OpBranchConditional [[loop_exit]] {{%\w+}} [[merge]]
+; Check that we have i+=1 and j+=2.
+; CHECK: [[phi_j:%\w+]] = OpIAdd %int [[phi_j]] %int_1
+; CHECK: [[iv_i]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK: [[iv_j]] = OpIAdd %int [[phi_j]] %int_1
+; CHECK: [[merge]] = OpLabel
+; CHECK-NEXT: OpBranch [[if_merge]]
+
+; Loop specialized for true.
+; CHECK: [[loop_t]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop:%\w+]]
+; CHECK: [[loop]] = OpLabel
+; CHECK-NEXT: [[phi_i:%\w+]] = OpPhi %int %int_0 [[loop_t]] [[iv_i:%\w+]] [[continue:%\w+]]
+; CHECK-NEXT: [[phi_j:%\w+]] = OpPhi %int %int_0 [[loop_t]] [[iv_j:%\w+]] [[continue]]
+; CHECK-NEXT: OpLoopMerge [[merge:%\w+]] [[continue]] None
+; CHECK: [[loop_exit:%\w+]] = OpSLessThan {{%\w+}} [[phi_i]] {{%\w+}}
+; CHECK-NEXT: OpBranchConditional [[loop_exit]] {{%\w+}} [[merge]]
+; Check that we have i+=2 and j+=1.
+; CHECK: [[phi_i:%\w+]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK: [[iv_i]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK: [[iv_j]] = OpIAdd %int [[phi_j]] %int_1
+; CHECK: [[merge]] = OpLabel
+; CHECK-NEXT: OpBranch [[if_merge]]
+
+; CHECK: [[if_merge]] = OpLabel
+; CHECK-NEXT: OpReturn
+
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
@@ -151,57 +186,82 @@ void main() {
 */
 TEST_F(UnswitchTest, UnswitchExit) {
   const std::string text = R"(
+; CHECK: [[cst_cond:%\w+]] = OpFOrdEqual
+; CHECK-NEXT: OpSelectionMerge [[if_merge:%\w+]] None
+; CHECK-NEXT: OpBranchConditional [[cst_cond]] [[loop_t:%\w+]] [[loop_f:%\w+]]
+
+; Loop specialized for false.
+; CHECK: [[loop_f]] = OpLabel
+; CHECK: OpReturn
+
+; Loop specialized for true.
+; CHECK: [[loop_t]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop:%\w+]]
+; CHECK: [[loop]] = OpLabel
+; CHECK-NEXT: [[phi_i:%\w+]] = OpPhi %int %int_0 [[loop_t]] [[iv_i:%\w+]] [[continue:%\w+]]
+; CHECK-NEXT: OpLoopMerge [[merge:%\w+]] [[continue]] None
+; CHECK: [[loop_exit:%\w+]] = OpSLessThan {{%\w+}} [[phi_i]] {{%\w+}}
+; CHECK-NEXT: OpBranchConditional [[loop_exit]] {{%\w+}} [[merge]]
+; Check that we have i+=2.
+; CHECK: [[phi_i:%\w+]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK: [[iv_i]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK: [[merge]] = OpLabel
+; CHECK-NEXT: OpBranch [[if_merge]]
+
+; CHECK: [[if_merge]] = OpLabel
+; CHECK-NEXT: OpReturn
+
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %4 "main" %16
-               OpExecutionMode %4 OriginUpperLeft
+               OpEntryPoint Fragment %main "main" %c
+               OpExecutionMode %main OriginUpperLeft
                OpSource GLSL 330
-               OpName %4 "main"
-               OpName %16 "c"
-               OpDecorate %16 Location 0
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeInt 32 1
-          %7 = OpTypePointer Function %6
-          %9 = OpConstant %6 0
-         %10 = OpTypeBool
-         %11 = OpTypePointer Function %10
-         %13 = OpTypeFloat 32
-         %14 = OpTypeVector %13 4
-         %15 = OpTypePointer Input %14
-         %16 = OpVariable %15 Input
-         %17 = OpTypeInt 32 0
-         %18 = OpConstant %17 0
-         %19 = OpTypePointer Input %13
-         %22 = OpConstant %13 0
-         %30 = OpConstant %6 10
-         %36 = OpConstant %6 1
-          %4 = OpFunction %2 None %3
+               OpName %main "main"
+               OpName %c "c"
+               OpDecorate %c Location 0
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+        %int = OpTypeInt 32 1
+%_ptr_Function_int = OpTypePointer Function %int
+      %int_0 = OpConstant %int 0
+       %bool = OpTypeBool
+%_ptr_Function_bool = OpTypePointer Function %bool
+      %float = OpTypeFloat 32
+    %v4float = OpTypeVector %float 4
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+          %c = OpVariable %_ptr_Input_v4float Input
+       %uint = OpTypeInt 32 0
+     %uint_0 = OpConstant %uint 0
+%_ptr_Input_float = OpTypePointer Input %float
+    %float_0 = OpConstant %float 0
+     %int_10 = OpConstant %int 10
+      %int_1 = OpConstant %int 1
+       %main = OpFunction %void None %3
           %5 = OpLabel
-         %20 = OpAccessChain %19 %16 %18
-         %21 = OpLoad %13 %20
-         %23 = OpFOrdEqual %10 %21 %22
+         %20 = OpAccessChain %_ptr_Input_float %c %uint_0
+         %21 = OpLoad %float %20
+         %23 = OpFOrdEqual %bool %21 %float_0
                OpBranch %24
          %24 = OpLabel
-         %42 = OpPhi %6 %9 %5 %41 %27
+         %42 = OpPhi %int %int_0 %5 %41 %27
                OpLoopMerge %26 %27 None
                OpBranch %28
          %28 = OpLabel
-         %31 = OpSLessThan %10 %42 %30
+         %31 = OpSLessThan %bool %42 %int_10
                OpBranchConditional %31 %25 %26
          %25 = OpLabel
                OpSelectionMerge %34 None
                OpBranchConditional %23 %33 %38
          %33 = OpLabel
-         %37 = OpIAdd %6 %42 %36
+         %37 = OpIAdd %int %42 %int_1
                OpBranch %34
          %38 = OpLabel
                OpReturn
          %34 = OpLabel
                OpBranch %27
          %27 = OpLabel
-         %41 = OpIAdd %6 %37 %36
+         %41 = OpIAdd %int %37 %int_1
                OpBranch %24
          %26 = OpLabel
                OpReturn
@@ -231,44 +291,69 @@ void main() {
 */
 TEST_F(UnswitchTest, UnswitchExit2) {
   const std::string text = R"(
+; CHECK: [[cst_cond:%\w+]] = OpFOrdEqual
+; CHECK-NEXT: OpSelectionMerge [[if_merge:%\w+]] None
+; CHECK-NEXT: OpBranchConditional [[cst_cond]] [[loop_t:%\w+]] [[loop_f:%\w+]]
+
+; Loop specialized for false.
+; CHECK: [[loop_f]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop:%\w+]]
+; CHECK: [[loop]] = OpLabel
+; CHECK-NEXT: [[phi_i:%\w+]] = OpPhi %int %int_0 [[loop_f]] [[iv_i:%\w+]] [[continue:%\w+]]
+; CHECK-NEXT: OpLoopMerge [[merge:%\w+]] [[continue]] None
+; CHECK: [[loop_exit:%\w+]] = OpSLessThan {{%\w+}} [[phi_i]] {{%\w+}}
+; CHECK-NEXT: OpBranchConditional [[loop_exit]] {{%\w+}} [[merge]]
+; Check that we have i+=2.
+; CHECK: [[phi_i:%\w+]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK: [[iv_i]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK: [[merge]] = OpLabel
+; CHECK-NEXT: OpBranch [[if_merge]]
+
+; Loop specialized for true.
+; CHECK: [[loop_t]] = OpLabel
+; CHECK: OpReturn
+
+; CHECK: [[if_merge]] = OpLabel
+; CHECK-NEXT: OpReturn
+
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %4 "main" %16
-               OpExecutionMode %4 OriginUpperLeft
+               OpEntryPoint Fragment %main "main" %c
+               OpExecutionMode %main OriginUpperLeft
                OpSource GLSL 330
-               OpName %4 "main"
-               OpName %16 "c"
-               OpDecorate %16 Location 0
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeInt 32 1
-          %7 = OpTypePointer Function %6
-          %9 = OpConstant %6 0
-         %10 = OpTypeBool
-         %11 = OpTypePointer Function %10
-         %13 = OpTypeFloat 32
-         %14 = OpTypeVector %13 4
-         %15 = OpTypePointer Input %14
-         %16 = OpVariable %15 Input
-         %17 = OpTypeInt 32 0
-         %18 = OpConstant %17 0
-         %19 = OpTypePointer Input %13
-         %22 = OpConstant %13 0
-         %30 = OpConstant %6 10
-         %38 = OpConstant %6 1
-          %4 = OpFunction %2 None %3
+               OpName %main "main"
+               OpName %c "c"
+               OpDecorate %c Location 0
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+        %int = OpTypeInt 32 1
+%_ptr_Function_int = OpTypePointer Function %int
+      %int_0 = OpConstant %int 0
+       %bool = OpTypeBool
+%_ptr_Function_bool = OpTypePointer Function %bool
+      %float = OpTypeFloat 32
+    %v4float = OpTypeVector %float 4
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+          %c = OpVariable %_ptr_Input_v4float Input
+       %uint = OpTypeInt 32 0
+     %uint_0 = OpConstant %uint 0
+%_ptr_Input_float = OpTypePointer Input %float
+    %float_0 = OpConstant %float 0
+     %int_10 = OpConstant %int 10
+      %int_1 = OpConstant %int 1
+       %main = OpFunction %void None %3
           %5 = OpLabel
-         %20 = OpAccessChain %19 %16 %18
-         %21 = OpLoad %13 %20
-         %23 = OpFOrdEqual %10 %21 %22
+         %20 = OpAccessChain %_ptr_Input_float %c %uint_0
+         %21 = OpLoad %float %20
+         %23 = OpFOrdEqual %bool %21 %float_0
                OpBranch %24
          %24 = OpLabel
-         %42 = OpPhi %6 %9 %5 %41 %27
+         %42 = OpPhi %int %int_0 %5 %41 %27
                OpLoopMerge %26 %27 None
                OpBranch %28
          %28 = OpLabel
-         %31 = OpSLessThan %10 %42 %30
+         %31 = OpSLessThan %bool %42 %int_10
                OpBranchConditional %31 %25 %26
          %25 = OpLabel
                OpSelectionMerge %34 None
@@ -276,12 +361,12 @@ TEST_F(UnswitchTest, UnswitchExit2) {
          %33 = OpLabel
                OpReturn
          %36 = OpLabel
-         %39 = OpIAdd %6 %42 %38
+         %39 = OpIAdd %int %42 %int_1
                OpBranch %34
          %34 = OpLabel
                OpBranch %27
          %27 = OpLabel
-         %41 = OpIAdd %6 %39 %38
+         %41 = OpIAdd %int %39 %int_1
                OpBranch %24
          %26 = OpLabel
                OpReturn
@@ -311,57 +396,82 @@ void main() {
 */
 TEST_F(UnswitchTest, UnswitchKillLoop) {
   const std::string text = R"(
+; CHECK: [[cst_cond:%\w+]] = OpFOrdEqual
+; CHECK-NEXT: OpSelectionMerge [[if_merge:%\w+]] None
+; CHECK-NEXT: OpBranchConditional [[cst_cond]] [[loop_t:%\w+]] [[loop_f:%\w+]]
+
+; Loop specialized for false.
+; CHECK: [[loop_f]] = OpLabel
+; CHECK: OpBranch [[if_merge]]
+
+; Loop specialized for true.
+; CHECK: [[loop_t]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop:%\w+]]
+; CHECK: [[loop]] = OpLabel
+; CHECK-NEXT: [[phi_i:%\w+]] = OpPhi %int %int_0 [[loop_t]] [[iv_i:%\w+]] [[continue:%\w+]]
+; CHECK-NEXT: OpLoopMerge [[merge:%\w+]] [[continue]] None
+; CHECK: [[loop_exit:%\w+]] = OpSLessThan {{%\w+}} [[phi_i]] {{%\w+}}
+; CHECK-NEXT: OpBranchConditional [[loop_exit]] {{%\w+}} [[merge]]
+; Check that we have i+=2.
+; CHECK: [[phi_i:%\w+]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK: [[iv_i]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK: [[merge]] = OpLabel
+; CHECK-NEXT: OpBranch [[if_merge]]
+
+; CHECK: [[if_merge]] = OpLabel
+; CHECK-NEXT: OpReturn
+
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %4 "main" %16
-               OpExecutionMode %4 OriginUpperLeft
+               OpEntryPoint Fragment %main "main" %c
+               OpExecutionMode %main OriginUpperLeft
                OpSource GLSL 330
-               OpName %4 "main"
-               OpName %16 "c"
-               OpDecorate %16 Location 0
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeInt 32 1
-          %7 = OpTypePointer Function %6
-          %9 = OpConstant %6 0
-         %10 = OpTypeBool
-         %11 = OpTypePointer Function %10
-         %13 = OpTypeFloat 32
-         %14 = OpTypeVector %13 4
-         %15 = OpTypePointer Input %14
-         %16 = OpVariable %15 Input
-         %17 = OpTypeInt 32 0
-         %18 = OpConstant %17 0
-         %19 = OpTypePointer Input %13
-         %22 = OpConstant %13 0
-         %30 = OpConstant %6 10
-         %36 = OpConstant %6 1
-          %4 = OpFunction %2 None %3
+               OpName %main "main"
+               OpName %c "c"
+               OpDecorate %c Location 0
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+        %int = OpTypeInt 32 1
+%_ptr_Function_int = OpTypePointer Function %int
+      %int_0 = OpConstant %int 0
+       %bool = OpTypeBool
+%_ptr_Function_bool = OpTypePointer Function %bool
+      %float = OpTypeFloat 32
+    %v4float = OpTypeVector %float 4
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+          %c = OpVariable %_ptr_Input_v4float Input
+       %uint = OpTypeInt 32 0
+     %uint_0 = OpConstant %uint 0
+%_ptr_Input_float = OpTypePointer Input %float
+    %float_0 = OpConstant %float 0
+     %int_10 = OpConstant %int 10
+      %int_1 = OpConstant %int 1
+       %main = OpFunction %void None %3
           %5 = OpLabel
-         %20 = OpAccessChain %19 %16 %18
-         %21 = OpLoad %13 %20
-         %23 = OpFOrdEqual %10 %21 %22
+         %20 = OpAccessChain %_ptr_Input_float %c %uint_0
+         %21 = OpLoad %float %20
+         %23 = OpFOrdEqual %bool %21 %float_0
                OpBranch %24
          %24 = OpLabel
-         %42 = OpPhi %6 %9 %5 %41 %27
+         %42 = OpPhi %int %int_0 %5 %41 %27
                OpLoopMerge %26 %27 None
                OpBranch %28
          %28 = OpLabel
-         %31 = OpSLessThan %10 %42 %30
+         %31 = OpSLessThan %bool %42 %int_10
                OpBranchConditional %31 %25 %26
          %25 = OpLabel
                OpSelectionMerge %34 None
                OpBranchConditional %23 %33 %38
          %33 = OpLabel
-         %37 = OpIAdd %6 %42 %36
+         %37 = OpIAdd %int %42 %int_1
                OpBranch %34
          %38 = OpLabel
                OpBranch %26
          %34 = OpLabel
                OpBranch %27
          %27 = OpLabel
-         %41 = OpIAdd %6 %37 %36
+         %41 = OpIAdd %int %37 %int_1
                OpBranch %24
          %26 = OpLabel
                OpReturn
@@ -396,43 +506,81 @@ void main() {
 */
 TEST_F(UnswitchTest, UnswitchSwitch) {
   const std::string text = R"(
+; CHECK: [[cst_cond:%\w+]] = OpConvertFToS
+; CHECK-NEXT: OpSelectionMerge [[if_merge:%\w+]] None
+; CHECK-NEXT: OpSwitch [[cst_cond]] [[default:%\w+]] 0 [[xloop_0:%\w+]] 1 [[loop_1:%\w+]] 2 [[loop_2:%\w+]]
+
+; Loop specialized for 2.
+; CHECK: [[loop_2]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop:%\w+]]
+; CHECK: [[loop]] = OpLabel
+; CHECK-NEXT: [[phi_i:%\w+]] = OpPhi %int %int_0 [[loop_2]] [[iv_i:%\w+]] [[continue:%\w+]]
+; CHECK-NEXT: OpLoopMerge [[merge:%\w+]] [[continue]] None
+; CHECK: [[loop_exit:%\w+]] = OpSLessThan {{%\w+}} [[phi_i]] {{%\w+}}
+; CHECK-NEXT: OpBranchConditional [[loop_exit]] {{%\w+}} [[merge]]
+; Check that we have i+=1.
+; CHECK: [[iv_i]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK: OpBranch [[loop]]
+
+; Loop specialized for 1.
+; CHECK: [[loop_1]] = OpLabel
+; CHECK: OpKill
+
+; Loop specialized for 0.
+; CHECK: [[loop_0]] = OpLabel
+; CHECK: OpReturn
+
+; Loop specialized for the default case.
+; CHECK: [[default]] = OpLabel
+; CHECK-NEXT: OpBranch [[loop:%\w+]]
+; CHECK: [[loop]] = OpLabel
+; CHECK-NEXT: [[phi_i:%\w+]] = OpPhi %int %int_0 [[default]] [[iv_i:%\w+]] [[continue:%\w+]]
+; CHECK-NEXT: OpLoopMerge [[merge:%\w+]] [[continue]] None
+; CHECK: [[loop_exit:%\w+]] = OpSLessThan {{%\w+}} [[phi_i]] {{%\w+}}
+; CHECK-NEXT: OpBranchConditional [[loop_exit]] {{%\w+}} [[merge]]
+; Check that we have i+=1.
+; CHECK: [[phi_i:%\w+]] = OpIAdd %int [[phi_i]] %int_1
+; CHECK: OpBranch [[loop]]
+
+; CHECK: [[if_merge]] = OpLabel
+; CHECK-NEXT: OpReturn
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %4 "main" %14
-               OpExecutionMode %4 OriginUpperLeft
+               OpEntryPoint Fragment %main "main" %c
+               OpExecutionMode %main OriginUpperLeft
                OpSource GLSL 330
-               OpName %4 "main"
-               OpName %14 "c"
-               OpDecorate %14 Location 0
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeInt 32 1
-          %7 = OpTypePointer Function %6
-          %9 = OpConstant %6 0
-         %11 = OpTypeFloat 32
-         %12 = OpTypeVector %11 4
-         %13 = OpTypePointer Input %12
-         %14 = OpVariable %13 Input
-         %15 = OpTypeInt 32 0
-         %16 = OpConstant %15 0
-         %17 = OpTypePointer Input %11
-         %27 = OpConstant %6 10
-         %28 = OpTypeBool
-         %42 = OpConstant %6 1
-         %44 = OpTypePointer Function %28
-          %4 = OpFunction %2 None %3
+               OpName %main "main"
+               OpName %c "c"
+               OpDecorate %c Location 0
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+        %int = OpTypeInt 32 1
+%_ptr_Function_int = OpTypePointer Function %int
+      %int_0 = OpConstant %int 0
+      %float = OpTypeFloat 32
+    %v4float = OpTypeVector %float 4
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+          %c = OpVariable %_ptr_Input_v4float Input
+       %uint = OpTypeInt 32 0
+     %uint_0 = OpConstant %uint 0
+%_ptr_Input_float = OpTypePointer Input %float
+     %int_10 = OpConstant %int 10
+       %bool = OpTypeBool
+      %int_1 = OpConstant %int 1
+%_ptr_Function_bool = OpTypePointer Function %bool
+       %main = OpFunction %void None %3
           %5 = OpLabel
-         %18 = OpAccessChain %17 %14 %16
-         %19 = OpLoad %11 %18
-         %20 = OpConvertFToS %6 %19
+         %18 = OpAccessChain %_ptr_Input_float %c %uint_0
+         %19 = OpLoad %float %18
+         %20 = OpConvertFToS %int %19
                OpBranch %21
          %21 = OpLabel
-         %49 = OpPhi %6 %9 %5 %43 %24
+         %49 = OpPhi %int %int_0 %5 %43 %24
                OpLoopMerge %23 %24 None
                OpBranch %25
          %25 = OpLabel
-         %29 = OpSLessThan %28 %49 %27
+         %29 = OpSLessThan %bool %49 %int_10
                OpBranchConditional %29 %22 %23
          %22 = OpLabel
                OpSelectionMerge %35 None
@@ -448,7 +596,7 @@ TEST_F(UnswitchTest, UnswitchSwitch) {
          %35 = OpLabel
                OpBranch %24
          %24 = OpLabel
-         %43 = OpIAdd %6 %49 %42
+         %43 = OpIAdd %int %49 %int_1
                OpBranch %21
          %23 = OpLabel
                OpReturn
