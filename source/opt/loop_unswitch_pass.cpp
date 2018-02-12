@@ -19,7 +19,7 @@
 #include "opt/ir_builder.h"
 #include "opt/loop_descriptor.h"
 
-#include "opt/filter_iterator.h"
+#include "opt/loop_utils.h"
 
 #include <type_traits>
 
@@ -34,6 +34,10 @@ constexpr uint32_t kBranchCondFalseLabIdInIdx = 2;
 
 namespace {
 
+// This class handle the unswitch procedure for a given loop.
+// The unswitch will not happen if:
+//  - The loop has any instruction that will prevent it;
+//  - The loop invariant condition is not uniform.
 class LoopUnswitch {
  public:
   LoopUnswitch(ir::IRContext* context, ir::Function* function, ir::Loop* loop,
@@ -44,6 +48,12 @@ class LoopUnswitch {
         context_(context),
         switch_block_(nullptr) {}
 
+  // Returns true if the loop can be unswitched.
+  // Can be unswitch if:
+  //  - The loop has no instructions that prevents it (such as barrier);
+  //  - The loop has one conditional branch or switch that do not depends on the
+  //  loop;
+  //  - The loop invariant condition is uniform;
   bool CanUnswitchLoop() {
     if (switch_block_) return true;
     if (loop_->IsSafeToClone()) return false;
@@ -86,11 +96,6 @@ class LoopUnswitch {
     bb->SetParent(function_);
     def_use_mgr->AnalyzeInstDef(bb->GetLabelInst());
     context_->set_instr_block(bb->GetLabelInst(), bb);
-
-    if (ir::Loop* loop = loop_desc_[&*ip]) {
-      loop_->AddBasicBlock(bb);
-      loop_desc_.SetBasicBlockToLoop(bb->id(), loop);
-    }
 
     return bb;
   }
@@ -158,6 +163,12 @@ class LoopUnswitch {
         cfg.AddEdge(pid, loop_merge_block->id());
       }
       cfg.RemoveNonExistingEdges(if_merge_block->id());
+      // Update loop descriptor.
+      if (ir::Loop* ploop = loop_->GetParent()) {
+        ploop->AddBasicBlock(loop_merge_block);
+        loop_desc_.SetBasicBlockToLoop(loop_merge_block->id(), ploop);
+      }
+
       // Update the dominator tree.
       DominatorTreeNode* loop_merge_dtn =
           dom_tree->GetOrInsertNode(loop_merge_block);
@@ -175,7 +186,7 @@ class LoopUnswitch {
 
     ////////////////////////////////////////////////////////////////////////////
     // Step 2: Build a new preheader for |loop_|, use the old one
-    //         for the constant if.
+    //         for the constant branch.
     ////////////////////////////////////////////////////////////////////////////
 
     ir::BasicBlock* if_block = loop_->GetPreHeaderBlock();
@@ -189,6 +200,12 @@ class LoopUnswitch {
         .AddBranch(loop_->GetHeaderBlock()->id());
 
     if_block->tail()->SetInOperand(0, {loop_pre_header->id()});
+
+    // Update loop descriptor.
+    if (ir::Loop* ploop = loop_desc_[if_block]) {
+      ploop->AddBasicBlock(loop_pre_header);
+      loop_desc_.SetBasicBlockToLoop(loop_pre_header->id(), ploop);
+    }
 
     // Update the CFG.
     cfg.RegisterBlock(loop_pre_header);
@@ -241,6 +258,8 @@ class LoopUnswitch {
     const analysis::Type* cond_type =
         context_->get_type_mgr()->GetType(condition->type_id());
 
+    // Build the list of value for which we need to clone and specialize the
+    // loop.
     std::vector<std::pair<ir::Instruction*, ir::BasicBlock*>> constant_branch;
     // Special case for the original loop
     ir::Instruction* original_loop_constant_value;
@@ -282,14 +301,14 @@ class LoopUnswitch {
       ClearMappingState();
       ir::Instruction* specialisation_value = specialisation_pair.first;
       //////////////////////////////////////////////////////////
-      // Step 3: We have the landing pads, duplicate |loop_|. //
+      // Step 3: Suplicate |loop_|.
       //////////////////////////////////////////////////////////
 
       std::list<std::unique_ptr<ir::BasicBlock>> ordered_loop_bb;
       std::unique_ptr<ir::Loop> cloned_loop(CloneLoop(&ordered_loop_bb));
 
       ////////////////////////////////////
-      // Step 4: Specialize the loops.  //
+      // Step 4: Specialize the loop.   //
       ////////////////////////////////////
 
       {
@@ -393,6 +412,7 @@ class LoopUnswitch {
     /////////////////////////////////////
     // Finally: connect the new loops. //
     /////////////////////////////////////
+
     // Delete the old jump
     context_->KillInst(&*if_block->tail());
     opt::InstructionBuilder builder(context_, if_block);
@@ -419,6 +439,7 @@ class LoopUnswitch {
         ir::IRContext::Analysis::kAnalysisLoopAnalysis);
   }
 
+  // Returns true if the unswitch killed the original |loop_|.
   bool WasLoopKilled() const { return loop_ == nullptr; }
 
  private:
@@ -439,14 +460,19 @@ class LoopUnswitch {
   BlockMapTy old_to_new_bb_;
   BlockMapTy new_to_old_bb_;
 
+  // Cleans up mapping stats between |loop_| and a cloned loop.
   void ClearMappingState() {
     value_map_.clear();
     old_to_new_bb_.clear();
     new_to_old_bb_.clear();
   }
 
+  // Returns the next usable id for the context.
   uint32_t TakeNextId() { return context_->TakeNextId(); }
 
+  // Removes any block that is tagged as dead, if the block is in
+  // |unreachable_merges| then all block's instructions are replaced by a
+  // OpUnreachable.
   template <template <typename...> class ContainerType>
   void CleanUpCFG(
       ir::UptrContainerIterator<ir::BasicBlock, ContainerType> bb_it,
@@ -475,20 +501,22 @@ class LoopUnswitch {
     }
   }
 
-  bool GetConstCondition(const ir::Instruction* cInst, bool* condVal) {
-    bool condIsConst;
-    switch (cInst->opcode()) {
+  // Return true if |c_inst| is a Boolean constant and set |cond_val| with the
+  // value that |c_inst|
+  bool GetConstCondition(const ir::Instruction* c_inst, bool* cond_val) {
+    bool cond_is_const;
+    switch (c_inst->opcode()) {
       case SpvOpConstantFalse: {
-        *condVal = false;
-        condIsConst = true;
+        *cond_val = false;
+        cond_is_const = true;
       } break;
       case SpvOpConstantTrue: {
-        *condVal = true;
-        condIsConst = true;
+        *cond_val = true;
+        cond_is_const = true;
       } break;
-      default: { condIsConst = false; } break;
+      default: { cond_is_const = false; } break;
     }
-    return condIsConst;
+    return cond_is_const;
   }
 
   // Simplifies |loop| assuming the instruction |to_version_insn| takes the
@@ -742,6 +770,8 @@ class LoopUnswitch {
   }
 
   // Create the list of the loop's basic block in structured order.
+  // The generated list is used by CloneLoop to clone the loop's basic block in
+  // the appropriate order.
   void ComputeLoopStructuredOrder() {
     ir::CFG& cfg = *context_->cfg();
     DominatorTree* dom_tree =
@@ -807,7 +837,8 @@ class LoopUnswitch {
   // Clone the current loop and remap its instructions. Newly created blocks
   // will be added to the |ordered_loop_bb| list, correctly ordered to be
   // inserted into a function. If the loop is structured, the merge construct
-  // will also be cloned. The function preserves the loop analysis.
+  // will also be cloned. The function preserves the def/use, cfg and instr to
+  // block analyses.
   std::unique_ptr<ir::Loop> CloneLoop(
       std::list<std::unique_ptr<ir::BasicBlock>>* ordered_loop_bb) {
     analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
@@ -874,6 +905,8 @@ class LoopUnswitch {
     return new_loop;
   }
 
+  // Returns true if the header is not reachable or tagged as dead or if we
+  // never loop back.
   bool IsLoopDead(ir::BasicBlock* header, ir::BasicBlock* latch,
                   const std::unordered_set<uint32_t>& dead_blocks) {
     if (!header || dead_blocks.count(header->id())) return true;
@@ -890,6 +923,8 @@ class LoopUnswitch {
   // Cleans the loop nest under |loop_| and reflect changes to the loop
   // descriptor. This will kill all descriptors for that represent dead loops.
   // If |loop_| is killed, it will be set to nullptr.
+  // Any merge blocks that become unreachable will be added to
+  // |unreachable_merges|.
   void CleanLoopNest(const std::unordered_set<uint32_t>& dead_blocks,
                      std::unordered_set<uint32_t>* unreachable_merges) {
     // This represent the pair of dead loop and nearest alive parent (nullptr if
@@ -979,6 +1014,8 @@ class LoopUnswitch {
   // Populates the loop nest according to the original loop nest.
   // Any killed loop in the cloned loop will not appear and OpLoopMerge inst
   // will be killed.
+  // |dead_blocks| contains the set of blocks that are no longer reachable.
+  // |unreachable_merges| will contains dead merge blocks for live loops.
   void PopulateLoopNest(const std::unordered_set<uint32_t>& dead_blocks,
                         std::unordered_set<uint32_t>* unreachable_merges) {
     std::unordered_map<ir::Loop*, ir::Loop*> loop_mapping;
@@ -1090,6 +1127,9 @@ bool LoopUnswitchPass::ProcessFunction(ir::Function* f) {
 
       LoopUnswitch unswitcher(context(), f, &loop, &loop_descriptor);
       while (!unswitcher.WasLoopKilled() && unswitcher.CanUnswitchLoop()) {
+        if (loop.IsLCSSA()) {
+          LoopUtils(context(), &loop).MakeLoopClosedSSA();
+        }
         modified = true;
         change = true;
         unswitcher.PerformUnswitch();
