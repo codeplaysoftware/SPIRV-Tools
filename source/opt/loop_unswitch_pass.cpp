@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "opt/loop_unswitch_pass.h"
+#include "cfa.h"
 #include "opt/dominator_tree.h"
 #include "opt/fold.h"
 #include "opt/ir_builder.h"
@@ -221,6 +222,9 @@ class LoopUnswitch {
     // Make domination queries valid.
     dom_tree->ResetDFNumbering();
 
+    // Compute an ordered list of basic to clone.
+    ComputeLoopStructuredOrder();
+
     /////////////////////////////
     // Do the actual unswitch: //
     //   - Clone the loop      //
@@ -427,6 +431,8 @@ class LoopUnswitch {
   ir::IRContext* context_;
 
   ir::BasicBlock* switch_block_;
+  // The loop basic blocks in structured order
+  std::list<ir::BasicBlock*> order_loop_blocks_;
 
   ValueMapTy value_map_;
   // Mapping between original loop blocks to the cloned one and vice versa.
@@ -687,47 +693,63 @@ class LoopUnswitch {
         }
 
         if (inst->NumInOperands() == 2) {
+          std::unordered_set<ir::Instruction*> to_update;
           def_use_mgr->ForEachUse(
-              inst, [&work_list, ignore_node_and_children, inst, this](
-                        ir::Instruction* use, uint32_t operand) {
+              inst, [&work_list, ignore_node_and_children, inst, &to_update,
+                     this](ir::Instruction* use, uint32_t operand) {
                 use->SetOperand(operand, {inst->GetSingleWordInOperand(0)});
+                to_update.insert(use);
                 // Don't step out of the ROI.
                 if (!ignore_node_and_children(
                         context_->get_instr_block(use)->id())) {
                   work_list.insert(use);
                 }
               });
+          context_->KillInst(inst);
+          for (ir::Instruction* use : to_update)
+            def_use_mgr->AnalyzeInstUse(use);
         }
         continue;
       }
 
       // General case, try to fold or forget about this use.
-      // if (FoldInstruction(inst)) {
-      //   context_->AnalyzeUses(inst);
-      //   def_use_mgr->ForEachUser(inst, [&work_list, ignore_node_and_children,
-      //                                   this](ir::Instruction* use) {
-      //     if
-      //     (!ignore_node_and_children(context_->get_instr_block(use)->id()))
-      //       work_list.insert(use);
-      //   });
-      //   context_->KillInst(inst);
-      // }
+      if (FoldInstruction(inst)) {
+        context_->AnalyzeUses(inst);
+        def_use_mgr->ForEachUser(inst, [&work_list, ignore_node_and_children,
+                                        this](ir::Instruction* use) {
+          if (!ignore_node_and_children(context_->get_instr_block(use)->id()))
+            work_list.insert(use);
+        });
+        if (inst->opcode() == SpvOpCopyObject) {
+          std::unordered_set<ir::Instruction*> to_update;
+          def_use_mgr->ForEachUse(
+              inst, [&work_list, ignore_node_and_children, inst, &to_update,
+                     this](ir::Instruction* use, uint32_t operand) {
+                use->SetOperand(operand, {inst->GetSingleWordInOperand(0)});
+                to_update.insert(use);
+                // Don't step out of the ROI.
+                if (!ignore_node_and_children(
+                        context_->get_instr_block(use)->id())) {
+                  work_list.insert(use);
+                }
+              });
+          context_->KillInst(inst);
+          for (ir::Instruction* use : to_update)
+            def_use_mgr->AnalyzeInstUse(use);
+        }
+      }
     }
   }
 
-  // Clone the current loop and remap its instructions. Newly created blocks
-  // will be added to the |ordered_loop_bb| list, correctly ordered to be
-  // inserted into a function. If the loop is structured, the merge construct
-  // will also be cloned. The function preserves the loop analysis.
-  std::unique_ptr<ir::Loop> CloneLoop(
-      std::list<std::unique_ptr<ir::BasicBlock>>* ordered_loop_bb) {
+  // Create the list of the loop's basic block in structured order.
+  void ComputeLoopStructuredOrder() {
+    ir::CFG& cfg = *context_->cfg();
     DominatorTree* dom_tree =
         &context_->GetDominatorAnalysis(function_, *context_->cfg())
              ->GetDomTree();
-    analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
 
-    std::unique_ptr<ir::Loop> new_loop = MakeUnique<ir::Loop>();
-    if (loop_->HasParent()) new_loop->SetParent(loop_->GetParent());
+    std::unordered_map<const ir::BasicBlock*, std::vector<ir::BasicBlock*>>
+        block2structured_succs;
 
     std::function<bool(uint32_t)> ignore_node_and_children;
     if (loop_->GetHeaderBlock()->GetLoopMergeInst()) {
@@ -740,32 +762,72 @@ class LoopUnswitch {
       };
     }
 
+    loop_->GetPreHeaderBlock()->ForEachSuccessorLabel(
+        [&cfg, &block2structured_succs, ignore_node_and_children,
+         this](const uint32_t sbid) {
+          if (!ignore_node_and_children(sbid))
+            block2structured_succs[loop_->GetPreHeaderBlock()].push_back(
+                cfg.block(sbid));
+        });
+    for (uint32_t blk_id : loop_->GetBlocks()) {
+      const ir::BasicBlock* blk = cfg.block(blk_id);
+      // If header, make merge block first successor.
+      uint32_t mbid = blk->MergeBlockIdIfAny();
+      if (mbid != 0) {
+        block2structured_succs[blk].push_back(cfg.block(mbid));
+        uint32_t cbid = blk->ContinueBlockIdIfAny();
+        if (cbid != 0) {
+          block2structured_succs[blk].push_back(cfg.block(cbid));
+        }
+      }
+
+      blk->ForEachSuccessorLabel(
+          [blk, &cfg, &block2structured_succs,
+           ignore_node_and_children](const uint32_t sbid) {
+            if (!ignore_node_and_children(sbid))
+              block2structured_succs[blk].push_back(cfg.block(sbid));
+          });
+    }
+
+    auto ignore_block = [](const ir::BasicBlock*) {};
+    auto ignore_edge = [](const ir::BasicBlock*, const ir::BasicBlock*) {};
+    auto get_structured_successors =
+        [&block2structured_succs](const ir::BasicBlock* block) {
+          return &(block2structured_succs[block]);
+        };
+    auto post_order = [this](const ir::BasicBlock* b) {
+      order_loop_blocks_.push_front(const_cast<ir::BasicBlock*>(b));
+    };
+
+    spvtools::CFA<ir::BasicBlock>::DepthFirstTraversal(
+        loop_->GetPreHeaderBlock(), get_structured_successors, ignore_block,
+        post_order, ignore_edge);
+  }
+
+  // Clone the current loop and remap its instructions. Newly created blocks
+  // will be added to the |ordered_loop_bb| list, correctly ordered to be
+  // inserted into a function. If the loop is structured, the merge construct
+  // will also be cloned. The function preserves the loop analysis.
+  std::unique_ptr<ir::Loop> CloneLoop(
+      std::list<std::unique_ptr<ir::BasicBlock>>* ordered_loop_bb) {
+    analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
+
+    std::unique_ptr<ir::Loop> new_loop = MakeUnique<ir::Loop>();
+    if (loop_->HasParent()) new_loop->SetParent(loop_->GetParent());
+
     ir::CFG& cfg = *context_->cfg();
 
-    opt::DominatorTreeNode* dtn_root =
-        dom_tree->GetTreeNode(loop_->GetPreHeaderBlock());
-    opt::DominatorTreeNode::post_iterator dom_it = dtn_root->post_begin();
-
     // Clone and place blocks in a SPIR-V compliant order (dominators first).
-    while (dom_it != dtn_root->post_end()) {
+    for (ir::BasicBlock* old_bb : order_loop_blocks_) {
       // For each basic block in the loop, we clone it and register the mapping
       // between old and new ids.
-      uint32_t old_bb_id = dom_it->id();
-      // If we are out of our ROI, skip the node and the children.
-      if (ignore_node_and_children(old_bb_id)) {
-        ++dom_it;
-        continue;
-      }
-      ir::BasicBlock* old_bb = dom_it->bb_;
-      ++dom_it;
       ir::BasicBlock* new_bb = old_bb->Clone(context_);
       new_bb->SetParent(function_);
       new_bb->GetLabelInst()->SetResultId(TakeNextId());
       def_use_mgr->AnalyzeInstDef(new_bb->GetLabelInst());
       context_->set_instr_block(new_bb->GetLabelInst(), new_bb);
-      ordered_loop_bb->emplace_front(new_bb);
+      ordered_loop_bb->emplace_back(new_bb);
 
-      // Keep track of the new basic block, we will need it later on.
       old_to_new_bb_[old_bb->id()] = new_bb;
       new_to_old_bb_[new_bb->id()] = old_bb;
       value_map_[old_bb->id()] = new_bb->id();
