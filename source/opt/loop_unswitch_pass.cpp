@@ -447,6 +447,13 @@ class LoopUnswitch {
 
   uint32_t TakeNextId() { return context_->TakeNextId(); }
 
+  struct to_ptr {
+    static ir::BasicBlock* get(ir::BasicBlock& in) { return &in; }
+    static ir::BasicBlock* get(std::unique_ptr<ir::BasicBlock>& in) {
+      return in.get();
+    }
+  };
+
   template <template <typename...> class ContainerType>
   void CleanUpCFG(
       ir::UptrContainerIterator<ir::BasicBlock, ContainerType> bb_it,
@@ -454,22 +461,23 @@ class LoopUnswitch {
       const std::unordered_set<uint32_t>& unreachable_merges) {
     ir::CFG& cfg = *context_->cfg();
     while (bb_it != bb_it.end()) {
-      if (unreachable_merges.count(bb_it->id())) {
+      if (unreachable_merges.count(to_ptr::get(*bb_it)->id())) {
         if (bb_it->begin() != bb_it->tail() ||
             bb_it->terminator()->opcode() != SpvOpUnreachable) {
           // Make unreachable, but leave the label.
           bb_it->KillAllInsts(false);
-          opt::InstructionBuilder(context_, &*bb_it).AddUnreachable();
-          cfg.RemoveNonExistingEdges(bb_it->id());
+          opt::InstructionBuilder(context_, to_ptr::get(*bb_it))
+              .AddUnreachable();
+          cfg.RemoveNonExistingEdges(to_ptr::get(*bb_it)->id());
         }
         ++bb_it;
-      } else if (dead_blocks.count(bb_it->id())) {
-        cfg.ForgetBlock(&*bb_it);
+      } else if (dead_blocks.count(to_ptr::get(*bb_it)->id())) {
+        cfg.ForgetBlock(to_ptr::get(*bb_it));
         // Kill this block.
         bb_it->KillAllInsts(true);
         bb_it = bb_it.Erase();
       } else {
-        cfg.RemoveNonExistingEdges(bb_it->id());
+        cfg.RemoveNonExistingEdges(to_ptr::get(*bb_it)->id());
         ++bb_it;
       }
     }
