@@ -606,4 +606,132 @@ TEST_F(UnswitchTest, UnswitchSwitch) {
   SinglePassRunAndMatch<opt::LoopUnswitchPass>(text, true);
 }
 
+/*
+Generated from the following GLSL + --eliminate-local-multi-store
+
+#version 440 core
+layout(location = 0)in vec4 c;
+void main() {
+  int i = 0;
+  int j = 0;
+  int k = 0;
+  bool cond = c[0] == 0;
+  for (; i < 10; i++) {
+    for (; j < 10; j++) {
+      if (cond) {
+        i++;
+      } else {
+        j++;
+      }
+    }
+  }
+  for (; k < 10; k++) {
+    if (cond) {
+      k++;
+    }
+  }
+}
+*/
+TEST_F(UnswitchTest, UnSwitchNested) {
+  const std::string text = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %4 "main" %18
+               OpExecutionMode %4 OriginUpperLeft
+               OpSource GLSL 440
+               OpName %4 "main"
+               OpName %18 "c"
+               OpDecorate %18 Location 0
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeInt 32 1
+          %7 = OpTypePointer Function %6
+          %9 = OpConstant %6 0
+         %12 = OpTypeBool
+         %13 = OpTypePointer Function %12
+         %15 = OpTypeFloat 32
+         %16 = OpTypeVector %15 4
+         %17 = OpTypePointer Input %16
+         %18 = OpVariable %17 Input
+         %19 = OpTypeInt 32 0
+         %20 = OpConstant %19 0
+         %21 = OpTypePointer Input %15
+         %24 = OpConstant %15 0
+         %32 = OpConstant %6 10
+         %45 = OpConstant %6 1
+          %4 = OpFunction %2 None %3
+          %5 = OpLabel
+         %22 = OpAccessChain %21 %18 %20
+         %23 = OpLoad %15 %22
+         %25 = OpFOrdEqual %12 %23 %24
+               OpBranch %26
+         %26 = OpLabel
+         %68 = OpPhi %6 %9 %5 %53 %29
+         %69 = OpPhi %6 %9 %5 %71 %29
+               OpLoopMerge %28 %29 None
+               OpBranch %30
+         %30 = OpLabel
+         %33 = OpSLessThan %12 %68 %32
+               OpBranchConditional %33 %27 %28
+         %27 = OpLabel
+               OpBranch %34
+         %34 = OpLabel
+         %70 = OpPhi %6 %68 %27 %72 %37
+         %71 = OpPhi %6 %69 %27 %51 %37
+               OpLoopMerge %36 %37 None
+               OpBranch %38
+         %38 = OpLabel
+         %40 = OpSLessThan %12 %71 %32
+               OpBranchConditional %40 %35 %36
+         %35 = OpLabel
+               OpSelectionMerge %43 None
+               OpBranchConditional %25 %42 %47
+         %42 = OpLabel
+         %46 = OpIAdd %6 %70 %45
+               OpBranch %43
+         %47 = OpLabel
+         %49 = OpIAdd %6 %71 %45
+               OpBranch %43
+         %43 = OpLabel
+         %72 = OpPhi %6 %46 %42 %70 %47
+         %73 = OpPhi %6 %71 %42 %49 %47
+               OpBranch %37
+         %37 = OpLabel
+         %51 = OpIAdd %6 %73 %45
+               OpBranch %34
+         %36 = OpLabel
+               OpBranch %29
+         %29 = OpLabel
+         %53 = OpIAdd %6 %70 %45
+               OpBranch %26
+         %28 = OpLabel
+               OpBranch %54
+         %54 = OpLabel
+         %74 = OpPhi %6 %9 %28 %67 %57
+               OpLoopMerge %56 %57 None
+               OpBranch %58
+         %58 = OpLabel
+         %60 = OpSLessThan %12 %74 %32
+               OpBranchConditional %60 %55 %56
+         %55 = OpLabel
+               OpSelectionMerge %63 None
+               OpBranchConditional %25 %62 %63
+         %62 = OpLabel
+         %65 = OpIAdd %6 %74 %45
+               OpBranch %63
+         %63 = OpLabel
+         %75 = OpPhi %6 %74 %55 %65 %62
+               OpBranch %57
+         %57 = OpLabel
+         %67 = OpIAdd %6 %75 %45
+               OpBranch %54
+         %56 = OpLabel
+               OpReturn
+               OpFunctionEnd
+)";
+
+  SinglePassRunAndMatch<opt::LoopUnswitchPass>(text, true);
+}
+
 }  // namespace
