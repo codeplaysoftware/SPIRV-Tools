@@ -38,8 +38,8 @@ namespace spvtools {
 namespace opt {
 namespace {
 
-constexpr uint32_t kBranchCondTrueLabIdInIdx = 1;
-constexpr uint32_t kBranchCondFalseLabIdInIdx = 2;
+static const uint32_t kBranchCondTrueLabIdInIdx = 1;
+static const uint32_t kBranchCondFalseLabIdInIdx = 2;
 
 }  // anonymous namespace
 
