@@ -166,7 +166,7 @@ class LoopUnswitch {
       std::vector<uint32_t> preds = cfg.preds(if_merge_block->id());
       for (uint32_t pid : preds) {
         if (pid == loop_merge_block->id()) continue;
-        const ir::BasicBlock* p_bb = cfg.block(pid);
+        ir::BasicBlock* p_bb = cfg.block(pid);
         p_bb->ForEachSuccessorLabel(
             [if_merge_block, loop_merge_block](uint32_t* id) {
               if (*id == if_merge_block->id()) *id = loop_merge_block->id();
