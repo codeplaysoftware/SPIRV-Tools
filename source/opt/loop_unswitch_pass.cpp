@@ -12,16 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "opt/loop_unswitch_pass.h"
+#include <functional>
+#include <list>
+#include <memory>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "cfa.h"
 #include "opt/dominator_tree.h"
 #include "opt/fold.h"
 #include "opt/ir_builder.h"
 #include "opt/loop_descriptor.h"
+#include "opt/loop_unswitch_pass.h"
 
 #include "opt/loop_utils.h"
-
-#include <type_traits>
 
 namespace spvtools {
 namespace opt {
