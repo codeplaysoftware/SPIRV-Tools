@@ -443,6 +443,7 @@ class LoopUnswitch {
     }
 
     switch_block_ = nullptr;
+    order_loop_blocks_.clear();
 
     context_->InvalidateAnalysesExceptFor(
         ir::IRContext::Analysis::kAnalysisLoopAnalysis);
@@ -964,9 +965,32 @@ class LoopUnswitch {
                      dead_blocks)) {
         dead_loops[&sub_loop] = get_parent(&sub_loop);
         continue;
+      } else {
+        // The loop is alive, check if its merge block is dead, if it is, tag it
+        // as required.
+        if (sub_loop.GetMergeBlock()) {
+          uint32_t merge_id = sub_loop.GetMergeBlock()->id();
+          if (dead_blocks.count(merge_id)) {
+            unreachable_merges->insert(sub_loop.GetMergeBlock()->id());
+          }
+        }
       }
     }
     if (!is_main_loop_dead) dead_loops.erase(loop_);
+
+    // Recompute the basic block to loop mapping.
+    for (uint32_t bb_id : loop_->GetBlocks()) {
+      ir::Loop* l = loop_desc_[bb_id];
+      std::unordered_map<ir::Loop*, ir::Loop*>::iterator dead_it =
+          dead_loops.find(l);
+      if (dead_it != dead_loops.end()) {
+        if (dead_it->second) {
+          loop_desc_.SetBasicBlockToLoop(bb_id, dead_it->second);
+        } else {
+          loop_desc_.ForgetBasicBlock(bb_id);
+        }
+      }
+    }
 
     // Reassign all live loops to their new parents.
     for (auto& pair : dead_loops) {
@@ -988,30 +1012,13 @@ class LoopUnswitch {
       }
     }
 
-    // Recompute the basic block to loop mapping, check for any unreachable
-    // merges in the process.
-    for (uint32_t bb_id : loop_->GetBlocks()) {
-      ir::Loop* l = loop_desc_[bb_id];
-      std::unordered_map<ir::Loop*, ir::Loop*>::iterator dead_it =
-          dead_loops.find(l);
-      if (dead_it != dead_loops.end()) {
-        if (dead_it->second) {
-          loop_desc_.SetBasicBlockToLoop(bb_id, dead_it->second);
-        } else {
-          loop_desc_.ForgetBasicBlock(bb_id);
-        }
-      } else {
-        // The block is dead, but the loop it belongs to is not, check if this
-        // is an unreachable merge.
-        if (l->GetMergeBlock()->id() == bb_id)
-          unreachable_merges->insert(bb_id);
-      }
-    }
-
     // Remove dead blocks from live loops.
     for (uint32_t bb_id : dead_blocks) {
       ir::Loop* l = loop_desc_[bb_id];
-      if (l) l->RemoveBasicBlock(bb_id);
+      if (l) {
+        l->RemoveBasicBlock(bb_id);
+        loop_desc_.ForgetBasicBlock(bb_id);
+      }
     }
 
     std::for_each(
@@ -1127,9 +1134,9 @@ bool LoopUnswitchPass::ProcessFunction(ir::Function* f) {
   std::list<ir::Loop*> work_list;
   for (ir::Loop& loop : loop_descriptor) work_list.push_back(&loop);
 
-  bool change = true;
-  while (change) {
-    change = false;
+  bool loop_changed = true;
+  while (loop_changed) {
+    loop_changed = false;
     for (ir::Loop& loop :
          ir::make_range(++opt::TreeDFIterator<ir::Loop>(
                             loop_descriptor.GetDummyRootLoop()),
@@ -1139,13 +1146,14 @@ bool LoopUnswitchPass::ProcessFunction(ir::Function* f) {
 
       LoopUnswitch unswitcher(context(), f, &loop, &loop_descriptor);
       while (!unswitcher.WasLoopKilled() && unswitcher.CanUnswitchLoop()) {
-        if (loop.IsLCSSA()) {
+        if (!loop.IsLCSSA()) {
           LoopUtils(context(), &loop).MakeLoopClosedSSA();
         }
         modified = true;
-        change = true;
+        loop_changed = true;
         unswitcher.PerformUnswitch();
       }
+      if (loop_changed) break;
     }
   }
 
