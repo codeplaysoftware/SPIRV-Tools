@@ -166,7 +166,7 @@ class LoopUnswitch {
       std::vector<uint32_t> preds = cfg.preds(if_merge_block->id());
       for (uint32_t pid : preds) {
         if (pid == loop_merge_block->id()) continue;
-        ir::BasicBlock* p_bb = cfg.block(pid);
+        const ir::BasicBlock* p_bb = cfg.block(pid);
         p_bb->ForEachSuccessorLabel(
             [if_merge_block, loop_merge_block](uint32_t* id) {
               if (*id == if_merge_block->id()) *id = loop_merge_block->id();
@@ -299,7 +299,7 @@ class LoopUnswitch {
     if (loop_->GetHeaderBlock()->GetLoopMergeInst()) {
       if_merging_blocks.insert(if_merge_block->id());
       is_from_original_loop = [this](uint32_t id) {
-        return loop_->GetMergeBlock()->id() == id;
+        return loop_->IsInsideLoop(id) || loop_->GetMergeBlock()->id() == id;
       };
     } else {
       loop_->GetExitBlocks(&if_merging_blocks);
@@ -326,10 +326,6 @@ class LoopUnswitch {
         std::unordered_set<uint32_t> dead_blocks;
         std::unordered_set<uint32_t> unreachable_merges;
         SimplifyLoop(cloned_loop.get(), condition, specialisation_value,
-                     [this](uint32_t id) {
-                       BlockMapTy::iterator it = new_to_old_bb_.find(id);
-                       return it != new_to_old_bb_.end() ? it->second : nullptr;
-                     },
                      &dead_blocks);
 
         // We tagged dead blocks, create the loop before we invalidate any basic
@@ -377,7 +373,7 @@ class LoopUnswitch {
       std::unordered_set<uint32_t> dead_blocks;
       std::unordered_set<uint32_t> unreachable_merges;
       SimplifyLoop(loop_, condition, original_loop_constant_value,
-                   [&cfg](uint32_t id) { return cfg.block(id); }, &dead_blocks);
+                   &dead_blocks);
 
       for (uint32_t merge_bb_id : if_merging_blocks) {
         ir::BasicBlock* merge = context_->cfg()->block(merge_bb_id);
@@ -539,11 +535,9 @@ class LoopUnswitch {
   //   - |cst_value| must be constant.
   // The set |dead_blocks| will contain all the dead basic blocks, and the list
   // |ordered_loop_bb| will contain the live basic blocks in reverse post-order.
-  void SimplifyLoop(
-      ir::Loop* loop, ir::Instruction* to_version_insn,
-      ir::Instruction* cst_value,
-      const std::function<ir::BasicBlock*(uint32_t)>& new_to_old_block_mapping,
-      std::unordered_set<uint32_t>* dead_blocks) {
+  void SimplifyLoop(ir::Loop* loop, ir::Instruction* to_version_insn,
+                    ir::Instruction* cst_value,
+                    std::unordered_set<uint32_t>* dead_blocks) {
     // Version the |loop| body.
     // Do a DFS that takes into account the specialized value of
     // to_version_insn. As we go we:
@@ -551,27 +545,10 @@ class LoopUnswitch {
     //  - Hoist any loop invariant;
     //  - Only keep reachable basic block.
     ir::CFG& cfg = *context_->cfg();
-    DominatorTree* dom_tree =
-        &context_->GetDominatorAnalysis(function_, *context_->cfg())
-             ->GetDomTree();
     analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
 
-    opt::DominatorTreeNode* merge_dtn = dom_tree->GetTreeNode(
-        new_to_old_block_mapping(loop->GetMergeBlock()->id()));
-    std::function<bool(uint32_t)> ignore_node_and_children;
-    if (loop_->GetHeaderBlock()->GetLoopMergeInst()) {
-      ignore_node_and_children = [merge_dtn, new_to_old_block_mapping,
-                                  dom_tree](uint32_t bb_id) {
-        ir::BasicBlock* bb = new_to_old_block_mapping(bb_id);
-        if (!bb) return true;
-        opt::DominatorTreeNode* dtn = dom_tree->GetTreeNode(bb);
-        return dom_tree->Dominates(merge_dtn, dtn);
-      };
-    } else {
-      ignore_node_and_children = [loop](uint32_t bb_id) {
-        return !loop->IsInsideLoop(bb_id);
-      };
-    }
+    std::function<bool(uint32_t)> ignore_node;
+    ignore_node = [loop](uint32_t bb_id) { return !loop->IsInsideLoop(bb_id); };
 
     std::unordered_set<ir::Instruction*> work_list;
     std::unordered_set<uint32_t> visited;
@@ -582,21 +559,20 @@ class LoopUnswitch {
       uint32_t cst_value_id = cst_value->result_id();
 
       def_use_mgr->ForEachUse(
-          to_version_insn, [cst_value_id, &work_list, &ignore_node_and_children,
-                            this](ir::Instruction* i, uint32_t operand_index) {
+          to_version_insn, [cst_value_id, &work_list, &ignore_node, this](
+                               ir::Instruction* i, uint32_t operand_index) {
             ir::BasicBlock* bb = context_->get_instr_block(i);
-            if (!ignore_node_and_children(bb->id())) {
+            if (!ignore_node(bb->id())) {
               i->SetOperand(operand_index, {cst_value_id});
               work_list.insert(i);
             }
           });
     } else {
       def_use_mgr->ForEachUse(
-          to_version_insn, [&work_list, &ignore_node_and_children, this](
+          to_version_insn, [&work_list, &ignore_node, this](
                                ir::Instruction* i, uint32_t operand_index) {
             ir::BasicBlock* bb = context_->get_instr_block(i);
-            if (!ignore_node_and_children(bb->id()) &&
-                i->opcode() == SpvOpSwitch) {
+            if (!ignore_node(bb->id()) && i->opcode() == SpvOpSwitch) {
               i->SetOperand(operand_index, {0});
               work_list.insert(i);
             }
@@ -628,7 +604,8 @@ class LoopUnswitch {
                                        work_list.insert(i);
                                      }
                                    });
-          bb->ForEachSuccessorLabel([&work_list, def_use_mgr](uint32_t sid) {
+          const ir::BasicBlock* cbb = bb;
+          cbb->ForEachSuccessorLabel([&work_list, def_use_mgr](uint32_t sid) {
             work_list.insert(def_use_mgr->GetDef(sid));
           });
         }
@@ -736,13 +713,12 @@ class LoopUnswitch {
         if (inst->NumInOperands() == 2) {
           std::unordered_set<ir::Instruction*> to_update;
           def_use_mgr->ForEachUse(
-              inst, [&work_list, ignore_node_and_children, inst, &to_update,
-                     this](ir::Instruction* use, uint32_t operand) {
+              inst, [&work_list, ignore_node, inst, &to_update, this](
+                        ir::Instruction* use, uint32_t operand) {
                 use->SetOperand(operand, {inst->GetSingleWordInOperand(0)});
                 to_update.insert(use);
                 // Don't step out of the ROI.
-                if (!ignore_node_and_children(
-                        context_->get_instr_block(use)->id())) {
+                if (!ignore_node(context_->get_instr_block(use)->id())) {
                   work_list.insert(use);
                 }
               });
@@ -756,21 +732,20 @@ class LoopUnswitch {
       // General case, try to fold or forget about this use.
       if (FoldInstruction(inst)) {
         context_->AnalyzeUses(inst);
-        def_use_mgr->ForEachUser(inst, [&work_list, ignore_node_and_children,
-                                        this](ir::Instruction* use) {
-          if (!ignore_node_and_children(context_->get_instr_block(use)->id()))
-            work_list.insert(use);
-        });
+        def_use_mgr->ForEachUser(
+            inst, [&work_list, ignore_node, this](ir::Instruction* use) {
+              if (!ignore_node(context_->get_instr_block(use)->id()))
+                work_list.insert(use);
+            });
         if (inst->opcode() == SpvOpCopyObject) {
           std::unordered_set<ir::Instruction*> to_update;
           def_use_mgr->ForEachUse(
-              inst, [&work_list, ignore_node_and_children, inst, &to_update,
-                     this](ir::Instruction* use, uint32_t operand) {
+              inst, [&work_list, ignore_node, inst, &to_update, this](
+                        ir::Instruction* use, uint32_t operand) {
                 use->SetOperand(operand, {inst->GetSingleWordInOperand(0)});
                 to_update.insert(use);
                 // Don't step out of the ROI.
-                if (!ignore_node_and_children(
-                        context_->get_instr_block(use)->id())) {
+                if (!ignore_node(context_->get_instr_block(use)->id())) {
                   work_list.insert(use);
                 }
               });
@@ -787,31 +762,29 @@ class LoopUnswitch {
   // the appropriate order.
   void ComputeLoopStructuredOrder() {
     ir::CFG& cfg = *context_->cfg();
-    DominatorTree* dom_tree =
-        &context_->GetDominatorAnalysis(function_, *context_->cfg())
-             ->GetDomTree();
 
     std::unordered_map<const ir::BasicBlock*, std::vector<ir::BasicBlock*>>
         block2structured_succs;
 
-    std::function<bool(uint32_t)> ignore_node_and_children;
+    std::function<bool(uint32_t)> ignore_node;
     if (loop_->GetHeaderBlock()->GetLoopMergeInst()) {
-      ignore_node_and_children = [dom_tree, this](uint32_t bb_id) {
-        return dom_tree->StrictlyDominates(loop_->GetMergeBlock()->id(), bb_id);
+      ignore_node = [this](uint32_t bb_id) {
+        return !loop_->IsInsideLoop(bb_id) &&
+               loop_->GetMergeBlock()->id() != bb_id;
       };
     } else {
-      ignore_node_and_children = [this](uint32_t bb_id) {
+      ignore_node = [this](uint32_t bb_id) {
         return !loop_->IsInsideLoop(bb_id);
       };
     }
 
-    loop_->GetPreHeaderBlock()->ForEachSuccessorLabel(
-        [&cfg, &block2structured_succs, ignore_node_and_children,
-         this](const uint32_t sbid) {
-          if (!ignore_node_and_children(sbid))
-            block2structured_succs[loop_->GetPreHeaderBlock()].push_back(
-                cfg.block(sbid));
-        });
+    const auto* pre_header = loop_->GetPreHeaderBlock();
+    pre_header->ForEachSuccessorLabel([&cfg, &block2structured_succs,
+                                       ignore_node, this](const uint32_t sbid) {
+      if (!ignore_node(sbid))
+        block2structured_succs[loop_->GetPreHeaderBlock()].push_back(
+            cfg.block(sbid));
+    });
     for (uint32_t blk_id : loop_->GetBlocks()) {
       const ir::BasicBlock* blk = cfg.block(blk_id);
       // If header, make merge block first successor.
@@ -824,12 +797,11 @@ class LoopUnswitch {
         }
       }
 
-      blk->ForEachSuccessorLabel(
-          [blk, &cfg, &block2structured_succs,
-           ignore_node_and_children](const uint32_t sbid) {
-            if (!ignore_node_and_children(sbid))
-              block2structured_succs[blk].push_back(cfg.block(sbid));
-          });
+      blk->ForEachSuccessorLabel([blk, &cfg, &block2structured_succs,
+                                  ignore_node](const uint32_t sbid) {
+        if (!ignore_node(sbid))
+          block2structured_succs[blk].push_back(cfg.block(sbid));
+      });
     }
 
     auto ignore_block = [](const ir::BasicBlock*) {};
@@ -955,7 +927,7 @@ class LoopUnswitch {
     if (is_main_loop_dead)
       dead_loops[loop_] = loop_->GetParent();
     else
-      dead_loops[loop_] = loop_->GetParent();
+      dead_loops[loop_] = loop_;
     // For each loop, check if we killed it. If we did, find a suitable parent
     // for its children.
     for (ir::Loop& sub_loop :
@@ -964,7 +936,6 @@ class LoopUnswitch {
       if (IsLoopDead(sub_loop.GetHeaderBlock(), sub_loop.GetLatchBlock(),
                      dead_blocks)) {
         dead_loops[&sub_loop] = get_parent(&sub_loop);
-        continue;
       } else {
         // The loop is alive, check if its merge block is dead, if it is, tag it
         // as required.
@@ -977,6 +948,15 @@ class LoopUnswitch {
       }
     }
     if (!is_main_loop_dead) dead_loops.erase(loop_);
+
+    // Remove dead blocks from live loops.
+    for (uint32_t bb_id : dead_blocks) {
+      ir::Loop* l = loop_desc_[bb_id];
+      if (l) {
+        l->RemoveBasicBlock(bb_id);
+        loop_desc_.ForgetBasicBlock(bb_id);
+      }
+    }
 
     // Recompute the basic block to loop mapping.
     for (uint32_t bb_id : loop_->GetBlocks()) {
@@ -1009,15 +989,6 @@ class LoopUnswitch {
             }
           }
         }
-      }
-    }
-
-    // Remove dead blocks from live loops.
-    for (uint32_t bb_id : dead_blocks) {
-      ir::Loop* l = loop_desc_[bb_id];
-      if (l) {
-        l->RemoveBasicBlock(bb_id);
-        loop_desc_.ForgetBasicBlock(bb_id);
       }
     }
 
@@ -1076,7 +1047,9 @@ class LoopUnswitch {
                         std::unordered_set<uint32_t>* unreachable_merges) {
     for (uint32_t bb_id : old_loop->GetBlocks()) {
       ir::BasicBlock* bb = old_to_new_bb_.at(bb_id);
-      if (!dead_blocks.count(bb->id())) new_loop->AddBasicBlock(bb);
+      if (!dead_blocks.count(bb->id())) {
+        new_loop->AddBasicBlock(bb);
+      }
     }
     new_loop->SetHeaderBlock(
         old_to_new_bb_.at(old_loop->GetHeaderBlock()->id()));
