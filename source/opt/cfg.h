@@ -85,7 +85,7 @@ class CFG {
   }
 
   // Removes from the CFG any mapping for the basic block id |blk_id|.
-  void ForgetBlock(ir::BasicBlock* blk) {
+  void ForgetBlock(const ir::BasicBlock* blk) {
     id2block_.erase(blk->id());
     label2preds_.erase(blk->id());
     blk->ForEachSuccessorLabel(
