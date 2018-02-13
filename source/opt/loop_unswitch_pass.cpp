@@ -458,6 +458,8 @@ class LoopUnswitch {
   ir::IRContext* context_;
 
   ir::BasicBlock* switch_block_;
+  // Map between instructions and if they are dynamically uniform.
+  std::unordered_map<uint32_t, bool> dynamically_uniform_;
   // The loop basic blocks in structured order
   std::list<ir::BasicBlock*> order_loop_blocks_;
 
@@ -1080,7 +1082,33 @@ class LoopUnswitch {
           old_to_new_bb_.at(old_loop->GetPreHeaderBlock()->id()));
   }
 
-  // Returns true if |insn| is constant within the loop.
+  // Returns true if |condition| is dynamically uniform.
+  // Note: this is currently approximated as uniform.
+  bool IsDynamicallyUniform(ir::Instruction* condition,
+                            const ir::BasicBlock* entry,
+                            const DominatorTree& post_dom_tree) {
+    assert(post_dom_tree.IsPostDominator());
+
+    auto it = dynamically_uniform_.find(condition->result_id());
+
+    if (it != dynamically_uniform_.end()) return it->second;
+
+    ir::BasicBlock* parent = context_->get_instr_block(condition);
+    if (!parent) {
+      return dynamically_uniform_[condition->result_id()] = true;
+    }
+    if (!post_dom_tree.Dominates(parent->id(), entry->id())) {
+      return dynamically_uniform_[condition->result_id()] = false;
+    }
+    bool uniform = condition->WhileEachInId(
+        [entry, &post_dom_tree, this](const uint32_t* id) {
+          return IsDynamicallyUniform(context_->get_def_use_mgr()->GetDef(*id),
+                                      entry, post_dom_tree);
+        });
+    return dynamically_uniform_[condition->result_id()] = uniform;
+  }
+
+  // Returns true if |insn| is constant and dynamically uniform within the loop.
   bool IsConditionLoopIV(ir::Instruction* insn) {
     assert(insn->IsBranch());
     assert(insn->opcode() != SpvOpBranch);
@@ -1088,7 +1116,11 @@ class LoopUnswitch {
 
     ir::Instruction* condition =
         def_use_mgr->GetDef(insn->GetOperand(0).words[0]);
-    return !loop_->IsInsideLoop(condition);
+    return !loop_->IsInsideLoop(condition) &&
+           IsDynamicallyUniform(
+               condition, function_->entry().get(),
+               context_->GetPostDominatorAnalysis(function_, *context_->cfg())
+                   ->GetDomTree());
   }
 };
 

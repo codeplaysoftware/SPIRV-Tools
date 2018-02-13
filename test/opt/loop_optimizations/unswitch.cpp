@@ -688,6 +688,111 @@ TEST_F(UnswitchTest, UnSwitchNested) {
   SinglePassRunAndMatch<opt::LoopUnswitchPass>(text, true);
 }
 
+/*
+Generated from the following GLSL + --eliminate-local-multi-store
+
+#version 330 core
+in vec4 c;
+void main() {
+  bool cond = false;
+  if (c[0] == 0) {
+     cond = c[1] == 0;
+  } else {
+     cond = c[2] == 0;
+  }
+  for (int i = 0; i < 10; i++) {
+    if (cond) {
+      i++;
+    }
+  }
+}
+*/
+TEST_F(UnswitchTest, UnswitchNotUniform) {
+  // Check that the unswitch is not triggered (condition loop invariant but not
+  // uniform)
+  const std::string text = R"(
+; CHECK: {{%\w+}} = OpFOrdEqual
+; CHECK: [[cst_cond1:%\w+]] = OpFOrdEqual
+; CHECK: [[cst_cond2:%\w+]] = OpFOrdEqual
+; CHECK: [[cst_cond:%\w+]] = OpPhi %bool [[cst_cond1]] {{%\w+}} [[cst_cond2]] {{%\w+}}
+; CHECK: OpLoopMerge
+; CHECK: OpBranchConditional [[cst_cond]] {{%\w+}} {{%\w+}}
+
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %main "main" %c
+               OpExecutionMode %main OriginUpperLeft
+               OpSource GLSL 330
+               OpName %main "main"
+               OpName %c "c"
+               OpDecorate %c Location 0
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+       %bool = OpTypeBool
+%_ptr_Function_bool = OpTypePointer Function %bool
+      %float = OpTypeFloat 32
+    %v4float = OpTypeVector %float 4
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+          %c = OpVariable %_ptr_Input_v4float Input
+       %uint = OpTypeInt 32 0
+     %uint_0 = OpConstant %uint 0
+%_ptr_Input_float = OpTypePointer Input %float
+    %float_0 = OpConstant %float 0
+     %uint_1 = OpConstant %uint 1
+     %uint_2 = OpConstant %uint 2
+        %int = OpTypeInt 32 1
+%_ptr_Function_int = OpTypePointer Function %int
+      %int_0 = OpConstant %int 0
+     %int_10 = OpConstant %int 10
+      %int_1 = OpConstant %int 1
+       %main = OpFunction %void None %3
+          %5 = OpLabel
+         %17 = OpAccessChain %_ptr_Input_float %c %uint_0
+         %18 = OpLoad %float %17
+         %20 = OpFOrdEqual %bool %18 %float_0
+               OpSelectionMerge %22 None
+               OpBranchConditional %20 %21 %27
+         %21 = OpLabel
+         %24 = OpAccessChain %_ptr_Input_float %c %uint_1
+         %25 = OpLoad %float %24
+         %26 = OpFOrdEqual %bool %25 %float_0
+               OpBranch %22
+         %27 = OpLabel
+         %29 = OpAccessChain %_ptr_Input_float %c %uint_2
+         %30 = OpLoad %float %29
+         %31 = OpFOrdEqual %bool %30 %float_0
+               OpBranch %22
+         %22 = OpLabel
+         %52 = OpPhi %bool %26 %21 %31 %27
+               OpBranch %36
+         %36 = OpLabel
+         %53 = OpPhi %int %int_0 %22 %51 %39
+               OpLoopMerge %38 %39 None
+               OpBranch %40
+         %40 = OpLabel
+         %43 = OpSLessThan %bool %53 %int_10
+               OpBranchConditional %43 %37 %38
+         %37 = OpLabel
+               OpSelectionMerge %46 None
+               OpBranchConditional %52 %45 %46
+         %45 = OpLabel
+         %49 = OpIAdd %int %53 %int_1
+               OpBranch %46
+         %46 = OpLabel
+         %54 = OpPhi %int %53 %37 %49 %45
+               OpBranch %39
+         %39 = OpLabel
+         %51 = OpIAdd %int %54 %int_1
+               OpBranch %36
+         %38 = OpLabel
+               OpReturn
+               OpFunctionEnd
+  )";
+
+  SinglePassRunAndMatch<opt::LoopUnswitchPass>(text, true);
+}
+
 #endif  // SPIRV_EFFCEE
 
 }  // namespace
