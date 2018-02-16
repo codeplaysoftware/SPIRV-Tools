@@ -1,13 +1,51 @@
 Revision history for SPIRV-Tools
 
-v2018.0-dev 2018-01-12
- - Start v2018.0-dev
+v2018.1-dev 2018-02-02
+ - General:
+   - Support Visual Studio 2013 again. (Continue support for VS 2015 and VS 2017.)
  - Optimizer:
-   - Aggressive dead code elimination now removes OpSwitch constructs
+   - Improve folding
+   - Aggressive dead code elimination: Understands capability hierarchy when finding
+     instructions it can eliminate (combinators). (PR #1268)
+ - Validator:
+   - Validate barrier instructions.
+ - Fixes:
+   - #1265: Optimizer: Fix use-after free bug in if-conversion. (Fix object lifecycle bug
+     in type manager.)
+
+
+v2018.0 2018-02-02
+ - General
+   - VisualStudio 2013 is no longer supported.  VisualStudio 2015 is supported.
+   - Use "include/unified1" directory from SPIRV-Headers.  Requires recent SPIRV-Headers source.
+ - Disassembler: spirv-dis adds --color option to force color disassembly.
+ - Optimizer:
+   - Add pass to eliminate dead insertions.
+   - Aggressive dead code elimination now removes OpSwitch constructs.
+   - Block merging occurs in more cases.
+   - Add driver workaround transform: replace OpUnreachable with harmless branch to merge.
+   - Improve instruction folding framework.
+   - Add loop analysis.
+   - Add scalar replacement of aggregates to size-optimization recipe.
+   - Add pass to replace instructions invalid for a shader stage, with a harmless value.
+     This changes the semantics of the program!  Not for general use!
+   - Rearragne and add passes to performance-optimization recipe, to produce better results.
+ - Validator:
+   - Validate OpenCL extended instructions.
+   - Shaders can't perform atomics on floats.
+   - Validate memory semantics values in atomics.
+   - Validate instruction-adjacency constraints, e.g. OpPhi predecessors, merge instructions
+     immediately precede branches.
  - Fixes:
    - PR 1198: Optimizer: Fix CCP in presence of matrix constants.
    - #1199: Optimizer: Fix CCP: don't propagate spec constants.
    - #1203: Optimizer: Fix common uniform elim bug introduced by refactoring.
+   - #1210: Optimizer: Aggressive dead code elimination: Fix 'break' identification.
+   - #1212: Optimizer: Aggressive dead code elimination: Was skipping too many instructions.
+   - #1214: Optimizer: Aggressive dead code elimination: Fix infinite loop.
+   - #1228: Optimizer: Fix CCP: Handling of varying Phi nodes; was resulting in infinite loop.
+   - #1245: Optimizer: Dead branch elimination: Avoid a null pointer dereference.
+   - #1250: Optimizer: Dead branch elimination: Avoid spuriously reporting a change.
 
 v2017.3 2018-01-12
  - General:

@@ -118,6 +118,10 @@ Options (in lexicographical order):
   --eliminate-dead-functions
                Deletes functions that cannot be reached from entry points or
                exported functions.
+  --eliminate-dead-insert
+               Deletes unreferenced inserts into composites, most notably
+               unused stores to vector components, that are not removed by
+               aggressive dead code elimination.
   --eliminate-dead-variables
                Deletes module scope variables that are not referenced.
   --eliminate-insert-extract
@@ -148,6 +152,8 @@ Options (in lexicographical order):
   --freeze-spec-const
                Freeze the values of specialization constants to their default
                values.
+  --if-conversion
+               Convert if-then-else like assignments into OpSelect.
   --inline-entry-points-exhaustive
                Exhaustively inline all function calls in entry point call tree
                functions. Currently does not inline calls to functions with
@@ -234,6 +240,10 @@ Options (in lexicographical order):
                Allow store from one struct type to a different type with
                compatible layout and members. This option is forwarded to the
                validator.
+  --replace-invalid-opcode
+               Replaces instructions whose opcode is valid for shader modules,
+               but not for the current shader stage.  To have an effect, all
+               entry points must have the same execution model.
   --scalar-replacement
                Replace aggregate function scope variables that are only accessed
                via their elements with new function variables representing each
@@ -245,6 +255,9 @@ Options (in lexicographical order):
                blank spaces, and in each pair, spec id and default value must
                be separated with colon ':' without any blank spaces in between.
                e.g.: --set-spec-const-default-value "1:100 2:400"
+  --simplify-instructions
+               Will simplfy all instructions in the function as much as
+               possible.
   --skip-validation
                Will not validate the SPIR-V before optimizing.  If the SPIR-V
                is invalid, the optimizer may fail or generate incorrect code.
@@ -391,6 +404,8 @@ OptStatus ParseFlags(int argc, const char** argv, Optimizer* optimizer,
               "error: Expected a string of <spec id>:<default value> pairs.");
           return {OPT_STOP, 1};
         }
+      } else if (0 == strcmp(cur_arg, "--if-conversion")) {
+        optimizer->RegisterPass(CreateIfConversionPass());
       } else if (0 == strcmp(cur_arg, "--freeze-spec-const")) {
         optimizer->RegisterPass(CreateFreezeSpecConstantValuePass());
       } else if (0 == strcmp(cur_arg, "--inline-entry-points-exhaustive")) {
@@ -421,6 +436,8 @@ OptStatus ParseFlags(int argc, const char** argv, Optimizer* optimizer,
         optimizer->RegisterPass(CreateCommonUniformElimPass());
       } else if (0 == strcmp(cur_arg, "--eliminate-dead-const")) {
         optimizer->RegisterPass(CreateEliminateDeadConstantPass());
+      } else if (0 == strcmp(cur_arg, "--eliminate-dead-inserts")) {
+        optimizer->RegisterPass(CreateDeadInsertElimPass());
       } else if (0 == strcmp(cur_arg, "--eliminate-dead-variables")) {
         optimizer->RegisterPass(CreateDeadVariableEliminationPass());
       } else if (0 == strcmp(cur_arg, "--fold-spec-const-op-composite")) {
@@ -439,6 +456,8 @@ OptStatus ParseFlags(int argc, const char** argv, Optimizer* optimizer,
         optimizer->RegisterPass(CreateCFGCleanupPass());
       } else if (0 == strcmp(cur_arg, "--local-redundancy-elimination")) {
         optimizer->RegisterPass(CreateLocalRedundancyEliminationPass());
+      } else if (0 == strcmp(cur_arg, "--loop-invariant-code-motion")) {
+        optimizer->RegisterPass(CreateLoopInvariantCodeMotionPass());
       } else if (0 == strcmp(cur_arg, "--redundancy-elimination")) {
         optimizer->RegisterPass(CreateRedundancyEliminationPass());
       } else if (0 == strcmp(cur_arg, "--private-to-local")) {
@@ -449,6 +468,12 @@ OptStatus ParseFlags(int argc, const char** argv, Optimizer* optimizer,
         optimizer->RegisterPass(CreateWorkaround1209Pass());
       } else if (0 == strcmp(cur_arg, "--relax-struct-store")) {
         options->relax_struct_store = true;
+      } else if (0 == strcmp(cur_arg, "--replace-invalid-opcode")) {
+        optimizer->RegisterPass(CreateReplaceInvalidOpcodePass());
+      } else if (0 == strcmp(cur_arg, "--simplify-instructions")) {
+        optimizer->RegisterPass(CreateSimplificationPass());
+      } else if (0 == strcmp(cur_arg, "--loop-unroll")) {
+        optimizer->RegisterPass(CreateLoopFullyUnrollPass());
       } else if (0 == strcmp(cur_arg, "--skip-validation")) {
         *skip_validator = true;
       } else if (0 == strcmp(cur_arg, "-O")) {

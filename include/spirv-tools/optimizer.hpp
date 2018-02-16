@@ -370,6 +370,21 @@ Optimizer::PassToken CreateLocalSingleStoreElimPass();
 // converted to inserts and extracts and local loads and stores are eliminated.
 Optimizer::PassToken CreateInsertExtractElimPass();
 
+// Creates a dead insert elimination pass.
+// This pass processes each entry point function in the module, searching for
+// unreferenced inserts into composite types. These are most often unused
+// stores to vector components. They are unused because they are never
+// referenced, or because there is another insert to the same component between
+// the insert and the reference. After removing the inserts, dead code
+// elimination is attempted on the inserted values.
+//
+// This pass performs best after access chains are converted to inserts and
+// extracts and local loads and stores are eliminated. While executing this
+// pass can be advantageous on its own, it is also advantageous to execute
+// this pass after CreateInsertExtractPass() as it will remove any unused
+// inserts created by that pass.
+Optimizer::PassToken CreateDeadInsertElimPass();
+
 // Creates a pass to consolidate uniform references.
 // For each entry point function in the module, first change all constant index
 // access chain loads into equivalent composite extracts. Then consolidate
@@ -448,6 +463,11 @@ Optimizer::PassToken CreateMergeReturnPass();
 // same value, and remove the redundant ones.
 Optimizer::PassToken CreateLocalRedundancyEliminationPass();
 
+// Create LICM pass.
+// This pass will look for invariant instructions inside loops and hoist them to
+// the loops preheader.
+Optimizer::PassToken CreateLoopInvariantCodeMotionPass();
+
 // Create global value numbering pass.
 // This pass will look for instructions where the same value is computed on all
 // paths leading to the instruction.  Those instructions are deleted.
@@ -481,6 +501,24 @@ Optimizer::PassToken CreateCCPPass();
 //
 // Current workaround: Avoid OpUnreachable instructions in loops.
 Optimizer::PassToken CreateWorkaround1209Pass();
+
+// Creates a pass that converts if-then-else like assignments into OpSelect.
+Optimizer::PassToken CreateIfConversionPass();
+
+// Creates a pass that will replace instructions that are not valid for the
+// current shader stage by constants.  Has no effect on non-shader modules.
+Optimizer::PassToken CreateReplaceInvalidOpcodePass();
+
+// Creates a pass that simplifies instructions using the instruction folder.
+Optimizer::PassToken CreateSimplificationPass();
+
+// Create loop unroller pass.
+// Creates a pass to fully unroll loops which have the "Unroll" loop control
+// mask set. The loops must meet a specific criteria in order to be unrolled
+// safely this criteria is checked before doing the unroll by the
+// LoopUtils::CanPerformUnroll method. Any loop that does not meet the criteria
+// won't be unrolled. See CanPerformUnroll LoopUtils.h for more information.
+Optimizer::PassToken CreateLoopFullyUnrollPass();
 
 }  // namespace spvtools
 

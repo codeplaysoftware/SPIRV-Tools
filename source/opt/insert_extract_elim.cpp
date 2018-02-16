@@ -16,9 +16,10 @@
 
 #include "insert_extract_elim.h"
 
+#include "composite.h"
 #include "ir_context.h"
 #include "iterator.h"
-#include "spirv/1.2/GLSL.std.450.h"
+#include "latest_version_glsl_std_450_header.h"
 
 #include <vector>
 
@@ -27,10 +28,10 @@ namespace opt {
 
 namespace {
 
+const uint32_t kConstantValueInIdx = 0;
 const uint32_t kExtractCompositeIdInIdx = 0;
 const uint32_t kInsertObjectIdInIdx = 0;
 const uint32_t kInsertCompositeIdInIdx = 1;
-const uint32_t kConstantValueInIdx = 0;
 const uint32_t kVectorShuffleVec1IdInIdx = 0;
 const uint32_t kVectorShuffleVec2IdInIdx = 1;
 const uint32_t kVectorShuffleCompsInIdx = 2;
@@ -44,36 +45,6 @@ const uint32_t kFMixYIdInIdx = 3;
 const uint32_t kFMixAIdInIdx = 4;
 
 }  // anonymous namespace
-
-bool InsertExtractElimPass::ExtInsMatch(const std::vector<uint32_t>& extIndices,
-                                        const ir::Instruction* insInst,
-                                        const uint32_t extOffset) const {
-  uint32_t numIndices = static_cast<uint32_t>(extIndices.size()) - extOffset;
-  if (numIndices != insInst->NumInOperands() - 2) return false;
-  for (uint32_t i = 0; i < numIndices; ++i)
-    if (extIndices[i + extOffset] != insInst->GetSingleWordInOperand(i + 2))
-      return false;
-  return true;
-}
-
-bool InsertExtractElimPass::ExtInsConflict(
-    const std::vector<uint32_t>& extIndices, const ir::Instruction* insInst,
-    const uint32_t extOffset) const {
-  if (extIndices.size() - extOffset == insInst->NumInOperands() - 2)
-    return false;
-  uint32_t extNumIndices = static_cast<uint32_t>(extIndices.size()) - extOffset;
-  uint32_t insNumIndices = insInst->NumInOperands() - 2;
-  uint32_t numIndices = std::min(extNumIndices, insNumIndices);
-  for (uint32_t i = 0; i < numIndices; ++i)
-    if (extIndices[i + extOffset] != insInst->GetSingleWordInOperand(i + 2))
-      return false;
-  return true;
-}
-
-bool InsertExtractElimPass::IsVectorType(uint32_t typeId) {
-  ir::Instruction* typeInst = get_def_use_mgr()->GetDef(typeId);
-  return typeInst->opcode() == SpvOpTypeVector;
-}
 
 uint32_t InsertExtractElimPass::DoExtract(ir::Instruction* compInst,
                                           std::vector<uint32_t>* pExtIndices,

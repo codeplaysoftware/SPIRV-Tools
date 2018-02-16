@@ -17,7 +17,6 @@
 #include "log.h"
 #include "mem_pass.h"
 #include "reflect.h"
-#include "spirv/1.0/GLSL.std.450.h"
 
 #include <cstring>
 
@@ -39,6 +38,12 @@ void IRContext::BuildInvalidAnalyses(IRContext::Analysis set) {
   }
   if (set & kAnalysisDominatorAnalysis) {
     ResetDominatorAnalysis();
+  }
+  if (set & kAnalysisLoopAnalysis) {
+    ResetLoopAnalysis();
+  }
+  if (set & kAnalysisNameMap) {
+    BuildIdToNameMap();
   }
 }
 
@@ -67,6 +72,9 @@ void IRContext::InvalidateAnalyses(IRContext::Analysis analyses_to_invalidate) {
   if (analyses_to_invalidate & kAnalysisDominatorAnalysis) {
     dominator_trees_.clear();
     post_dominator_trees_.clear();
+  }
+  if (analyses_to_invalidate & kAnalysisNameMap) {
+    id_to_name_.reset(nullptr);
   }
 
   valid_analyses_ = Analysis(valid_analyses_ & ~analyses_to_invalidate);
@@ -97,6 +105,8 @@ Instruction* IRContext::KillInst(ir::Instruction* inst) {
   if (type_mgr_ && ir::IsTypeInst(inst->opcode())) {
     type_mgr_->RemoveId(inst->result_id());
   }
+
+  RemoveFromIdToName(inst);
 
   Instruction* next_instruction = nullptr;
   if (inst->IsInAList()) {
@@ -204,6 +214,7 @@ void spvtools::ir::IRContext::ForgetUses(Instruction* inst) {
       get_decoration_mgr()->RemoveDecoration(inst);
     }
   }
+  RemoveFromIdToName(inst);
 }
 
 void IRContext::AnalyzeUses(Instruction* inst) {
@@ -215,6 +226,10 @@ void IRContext::AnalyzeUses(Instruction* inst) {
       get_decoration_mgr()->AddDecoration(inst);
     }
   }
+  if (id_to_name_ &&
+      (inst->opcode() == SpvOpName || inst->opcode() == SpvOpMemberName)) {
+    id_to_name_->insert({inst->GetSingleWordInOperand(0), inst});
+  }
 }
 
 void IRContext::KillNamesAndDecorates(uint32_t id) {
@@ -225,19 +240,12 @@ void IRContext::KillNamesAndDecorates(uint32_t id) {
     KillInst(inst);
   }
 
-  Instruction* debug_inst = &*debug2_begin();
-  while (debug_inst) {
-    bool killed_inst = false;
-    if (debug_inst->opcode() == SpvOpMemberName ||
-        debug_inst->opcode() == SpvOpName) {
-      if (debug_inst->GetSingleWordInOperand(0) == id) {
-        debug_inst = KillInst(debug_inst);
-        killed_inst = true;
-      }
-    }
-    if (!killed_inst) {
-      debug_inst = debug_inst->NextNode();
-    }
+  std::vector<ir::Instruction*> name_to_kill;
+  for (auto name : GetNames(id)) {
+    name_to_kill.push_back(name.second);
+  }
+  for (ir::Instruction* name_inst : name_to_kill) {
+    KillInst(name_inst);
   }
 }
 
@@ -472,15 +480,42 @@ void IRContext::AddCombinatorsForExtension(ir::Instruction* extension) {
 }
 
 void IRContext::InitializeCombinators() {
-  for (auto& capability : module()->capabilities()) {
-    AddCombinatorsForCapability(capability.GetSingleWordInOperand(0));
-  }
+  get_feature_mgr()->GetCapabilities()->ForEach(
+      [this](SpvCapability cap) { AddCombinatorsForCapability(cap); });
 
   for (auto& extension : module()->ext_inst_imports()) {
     AddCombinatorsForExtension(&extension);
   }
 
   valid_analyses_ |= kAnalysisCombinators;
+}
+
+void IRContext::RemoveFromIdToName(const Instruction* inst) {
+  if (id_to_name_ &&
+      (inst->opcode() == SpvOpName || inst->opcode() == SpvOpMemberName)) {
+    auto range = id_to_name_->equal_range(inst->GetSingleWordInOperand(0));
+    for (auto it = range.first; it != range.second; ++it) {
+      if (it->second == inst) {
+        id_to_name_->erase(it);
+        break;
+      }
+    }
+  }
+}
+
+ir::LoopDescriptor* IRContext::GetLoopDescriptor(const ir::Function* f) {
+  if (!AreAnalysesValid(kAnalysisLoopAnalysis)) {
+    ResetLoopAnalysis();
+  }
+
+  std::unordered_map<const ir::Function*, ir::LoopDescriptor>::iterator it =
+      loop_descriptors_.find(f);
+  if (it == loop_descriptors_.end()) {
+    return &loop_descriptors_.emplace(std::make_pair(f, ir::LoopDescriptor(f)))
+                .first->second;
+  }
+
+  return &it->second;
 }
 
 // Gets the dominator analysis for function |f|.

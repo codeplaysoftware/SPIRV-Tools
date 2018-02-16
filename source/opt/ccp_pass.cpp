@@ -62,7 +62,11 @@ SSAPropagator::PropStatus CCPPass::VisitPhi(ir::Instruction* phi) {
     if (it != values_.end()) {
       // We found an argument with a constant value.  Apply the meet operation
       // with the previous arguments.
-      if (meet_val_id == 0) {
+      if (it->second == kVaryingSSAId) {
+        // The "constant" value is actually a placeholder for varying. Return
+        // varying for this phi.
+        return MarkInstructionVarying(phi);
+      } else if (meet_val_id == 0) {
         // This is the first argument we find.  Initialize the result to its
         // constant value id.
         meet_val_id = it->second;
@@ -269,10 +273,12 @@ void CCPPass::Initialize(ir::IRContext* c) {
   // Populate the constant table with values from constant declarations in the
   // module.  The values of each OpConstant declaration is the identity
   // assignment (i.e., each constant is its own value).
-  for (const auto& inst : context()->module()->GetConstants()) {
-    // Skip specialization constants.
-    if (inst->IsConstant()) {
-      values_[inst->result_id()] = inst->result_id();
+  for (const auto& inst : get_module()->types_values()) {
+    // Skip specialization constants. Treat undef as varying.
+    if (inst.IsConstant()) {
+      values_[inst.result_id()] = inst.result_id();
+    } else if (inst.opcode() == SpvOpUndef) {
+      values_[inst.result_id()] = kVaryingSSAId;
     }
   }
 }

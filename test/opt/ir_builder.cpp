@@ -121,7 +121,7 @@ TEST_F(IRBuilderTest, TestInsnAddition) {
     context->get_def_use_mgr();
     context->get_instr_block(nullptr);
 
-    opt::InstructionBuilder<> builder(context.get(), &*bb->begin());
+    opt::InstructionBuilder builder(context.get(), &*bb->begin());
     ir::Instruction* phi1 = builder.AddPhi(7, {9, 14});
     ir::Instruction* phi2 = builder.AddPhi(10, {16, 14});
 
@@ -143,9 +143,10 @@ TEST_F(IRBuilderTest, TestInsnAddition) {
     context->get_instr_block(nullptr);
 
     ir::BasicBlock* bb = context->cfg()->block(18);
-    opt::InstructionBuilder<ir::IRContext::kAnalysisDefUse |
-                            ir::IRContext::kAnalysisInstrToBlockMapping>
-        builder(context.get(), &*bb->begin());
+    opt::InstructionBuilder builder(
+        context.get(), &*bb->begin(),
+        ir::IRContext::kAnalysisDefUse |
+            ir::IRContext::kAnalysisInstrToBlockMapping);
     ir::Instruction* phi1 = builder.AddPhi(7, {9, 14});
     ir::Instruction* phi2 = builder.AddPhi(10, {16, 14});
 
@@ -208,7 +209,7 @@ TEST_F(IRBuilderTest, TestCondBranchAddition) {
             context.get(), SpvOpLabel, 0, context->TakeNextId(), {})))));
     ir::BasicBlock& bb_true = *fn.begin();
     {
-      opt::InstructionBuilder<> builder(context.get(), &*bb_true.begin());
+      opt::InstructionBuilder builder(context.get(), &*bb_true.begin());
       builder.AddBranch(bb_merge.id());
     }
 
@@ -217,13 +218,82 @@ TEST_F(IRBuilderTest, TestCondBranchAddition) {
             context.get(), SpvOpLabel, 0, context->TakeNextId(), {})))));
     ir::BasicBlock& bb_cond = *fn.begin();
 
-    opt::InstructionBuilder<> builder(context.get(), &bb_cond);
+    opt::InstructionBuilder builder(context.get(), &bb_cond);
     // This also test consecutive instruction insertion: merge selection +
     // branch.
     builder.AddConditionalBranch(9, bb_true.id(), bb_merge.id(), bb_merge.id());
 
     Match(text, context.get());
   }
+}
+
+TEST_F(IRBuilderTest, AddSelect) {
+  const std::string text = R"(
+; CHECK: [[bool:%\w+]] = OpTypeBool
+; CHECK: [[uint:%\w+]] = OpTypeInt 32 0
+; CHECK: [[true:%\w+]] = OpConstantTrue [[bool]]
+; CHECK: [[u0:%\w+]] = OpConstant [[uint]] 0
+; CHECK: [[u1:%\w+]] = OpConstant [[uint]] 1
+; CHECK: OpSelect [[uint]] [[true]] [[u0]] [[u1]]
+OpCapability Kernel
+OpCapability Linkage
+OpMemoryModel Logical OpenCL
+%1 = OpTypeVoid
+%2 = OpTypeBool
+%3 = OpTypeInt 32 0
+%4 = OpConstantTrue %2
+%5 = OpConstant %3 0
+%6 = OpConstant %3 1
+%7 = OpTypeFunction %1
+%8 = OpFunction %1 None %7
+%9 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_2, nullptr, text);
+  EXPECT_NE(nullptr, context);
+
+  opt::InstructionBuilder builder(
+      context.get(), &*context->module()->begin()->begin()->begin());
+  EXPECT_NE(nullptr, builder.AddSelect(3u, 4u, 5u, 6u));
+
+  Match(text, context.get());
+}
+
+TEST_F(IRBuilderTest, AddCompositeConstruct) {
+  const std::string text = R"(
+; CHECK: [[uint:%\w+]] = OpTypeInt
+; CHECK: [[u0:%\w+]] = OpConstant [[uint]] 0
+; CHECK: [[u1:%\w+]] = OpConstant [[uint]] 1
+; CHECK: [[struct:%\w+]] = OpTypeStruct [[uint]] [[uint]] [[uint]] [[uint]]
+; CHECK: OpCompositeConstruct [[struct]] [[u0]] [[u1]] [[u1]] [[u0]]
+OpCapability Kernel
+OpCapability Linkage
+OpMemoryModel Logical OpenCL
+%1 = OpTypeVoid
+%2 = OpTypeInt 32 0
+%3 = OpConstant %2 0
+%4 = OpConstant %2 1
+%5 = OpTypeStruct %2 %2 %2 %2
+%6 = OpTypeFunction %1
+%7 = OpFunction %1 None %6
+%8 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_2, nullptr, text);
+  EXPECT_NE(nullptr, context);
+
+  opt::InstructionBuilder builder(
+      context.get(), &*context->module()->begin()->begin()->begin());
+  std::vector<uint32_t> ids = {3u, 4u, 4u, 3u};
+  EXPECT_NE(nullptr, builder.AddCompositeConstruct(5u, ids));
+
+  Match(text, context.get());
 }
 
 #endif  // SPIRV_EFFCEE

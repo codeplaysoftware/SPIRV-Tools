@@ -16,43 +16,41 @@
 #define LIBSPIRV_OPT_IR_BUILDER_H_
 
 #include "opt/basic_block.h"
+#include "opt/constants.h"
 #include "opt/instruction.h"
 #include "opt/ir_context.h"
-
 namespace spvtools {
 namespace opt {
 
 // In SPIR-V, ids are encoded as uint16_t, this id is guaranteed to be always
 // invalid.
-constexpr uint32_t kInvalidId = std::numeric_limits<uint32_t>::max();
+const uint32_t kInvalidId = std::numeric_limits<uint32_t>::max();
 
 // Helper class to abstract instruction construction and insertion.
-// |AnalysesToPreserve| asks the InstructionBuilder to preserve requested
-// analyses.
-// Supported analyses:
+// The instruction builder can preserve the following analyses (specified via
+// the constructors):
 //   - Def-use analysis
 //   - Instruction to block analysis
-template <ir::IRContext::Analysis AnalysesToPreserve =
-              ir::IRContext::kAnalysisNone>
 class InstructionBuilder {
-  static_assert(!(AnalysesToPreserve &
-                  ~(ir::IRContext::kAnalysisDefUse |
-                    ir::IRContext::kAnalysisInstrToBlockMapping)),
-                "There some unsupported analyses");
-
  public:
   using InsertionPointTy = spvtools::ir::BasicBlock::iterator;
 
   // Creates an InstructionBuilder, all new instructions will be inserted before
   // the instruction |insert_before|.
-  InstructionBuilder(ir::IRContext* context, ir::Instruction* insert_before)
+  InstructionBuilder(
+      ir::IRContext* context, ir::Instruction* insert_before,
+      ir::IRContext::Analysis preserved_analyses = ir::IRContext::kAnalysisNone)
       : InstructionBuilder(context, context->get_instr_block(insert_before),
-                           InsertionPointTy(insert_before)) {}
+                           InsertionPointTy(insert_before),
+                           preserved_analyses) {}
 
   // Creates an InstructionBuilder, all new instructions will be inserted at the
   // end of the basic block |parent_block|.
-  InstructionBuilder(ir::IRContext* context, ir::BasicBlock* parent_block)
-      : InstructionBuilder(context, parent_block, parent_block->end()) {}
+  InstructionBuilder(
+      ir::IRContext* context, ir::BasicBlock* parent_block,
+      ir::IRContext::Analysis preserved_analyses = ir::IRContext::kAnalysisNone)
+      : InstructionBuilder(context, parent_block, parent_block->end(),
+                           preserved_analyses) {}
 
   // Creates a new selection merge instruction.
   // The id |merge_id| is the merge basic block id.
@@ -123,6 +121,91 @@ class InstructionBuilder {
     return AddInstruction(std::move(phi_inst));
   }
 
+  // Creates a select instruction.
+  // |type| must match the types of |true_value| and |false_value|. It is up to
+  // the caller to ensure that |cond| is a correct type (bool or vector of
+  // bool) for |type|.
+  ir::Instruction* AddSelect(uint32_t type, uint32_t cond, uint32_t true_value,
+                             uint32_t false_value) {
+    std::unique_ptr<ir::Instruction> select(new ir::Instruction(
+        GetContext(), SpvOpSelect, type, GetContext()->TakeNextId(),
+        std::initializer_list<ir::Operand>{
+            {SPV_OPERAND_TYPE_ID, {cond}},
+            {SPV_OPERAND_TYPE_ID, {true_value}},
+            {SPV_OPERAND_TYPE_ID, {false_value}}}));
+    return AddInstruction(std::move(select));
+  }
+
+  // Adds a signed int32 constant to the binary.
+  // The |value| parameter is the constant value to be added.
+  ir::Instruction* Add32BitSignedIntegerConstant(int32_t value) {
+    return Add32BitConstantInteger<int32_t>(value, true);
+  }
+
+  // Create a composite construct.
+  // |type| should be a composite type and the number of elements it has should
+  // match the size od |ids|.
+  ir::Instruction* AddCompositeConstruct(uint32_t type,
+                                         const std::vector<uint32_t>& ids) {
+    std::vector<ir::Operand> ops;
+    for (auto id : ids) {
+      ops.emplace_back(SPV_OPERAND_TYPE_ID,
+                       std::initializer_list<uint32_t>{id});
+    }
+    std::unique_ptr<ir::Instruction> construct(
+        new ir::Instruction(GetContext(), SpvOpCompositeConstruct, type,
+                            GetContext()->TakeNextId(), ops));
+    return AddInstruction(std::move(construct));
+  }
+  // Adds an unsigned int32 constant to the binary.
+  // The |value| parameter is the constant value to be added.
+  ir::Instruction* Add32BitUnsignedIntegerConstant(uint32_t value) {
+    return Add32BitConstantInteger<uint32_t>(value, false);
+  }
+
+  // Adds either a signed or unsigned 32 bit integer constant to the binary
+  // depedning on the |sign|. If |sign| is true then the value is added as a
+  // signed constant otherwise as an unsigned constant. If |sign| is false the
+  // value must not be a negative number.
+  template <typename T>
+  ir::Instruction* Add32BitConstantInteger(T value, bool sign) {
+    // Assert that we are not trying to store a negative number in an unsigned
+    // type.
+    if (!sign)
+      assert(value > 0 &&
+             "Trying to add a signed integer with an unsigned type!");
+
+    // Get or create the integer type.
+    analysis::Integer int_type(32, sign);
+
+    // Even if the value is negative we need to pass the bit pattern as a
+    // uint32_t to GetConstant.
+    uint32_t word = value;
+
+    // Create the constant value.
+    const opt::analysis::Constant* constant =
+        GetContext()->get_constant_mgr()->GetConstant(&int_type, {word});
+
+    // Create the OpConstant instruction using the type and the value.
+    return GetContext()->get_constant_mgr()->GetDefiningInstruction(constant);
+  }
+
+  ir::Instruction* AddCompositeExtract(
+      uint32_t type, uint32_t id_of_composite,
+      const std::vector<uint32_t>& index_list) {
+    std::vector<ir::Operand> operands;
+    operands.push_back({SPV_OPERAND_TYPE_ID, {id_of_composite}});
+
+    for (uint32_t index : index_list) {
+      operands.push_back({SPV_OPERAND_TYPE_LITERAL_INTEGER, {index}});
+    }
+
+    std::unique_ptr<ir::Instruction> new_inst(
+        new ir::Instruction(GetContext(), SpvOpCompositeExtract, type,
+                            GetContext()->TakeNextId(), operands));
+    return AddInstruction(std::move(new_inst));
+  }
+
   // Inserts the new instruction before the insertion point.
   ir::Instruction* AddInstruction(std::unique_ptr<ir::Instruction>&& insn) {
     ir::Instruction* insn_ptr = &*insert_before_.InsertBefore(std::move(insn));
@@ -134,23 +217,45 @@ class InstructionBuilder {
   // Returns the insertion point iterator.
   InsertionPointTy GetInsertPoint() { return insert_before_; }
 
+  // Change the insertion point to insert before the instruction
+  // |insert_before|.
+  void SetInsertPoint(ir::Instruction* insert_before) {
+    parent_ = context_->get_instr_block(insert_before);
+    insert_before_ = InsertionPointTy(insert_before);
+  }
+
+  // Change the insertion point to insert at the end of the basic block
+  // |parent_block|.
+  void SetInsertPoint(ir::BasicBlock* parent_block) {
+    parent_ = parent_block;
+    insert_before_ = parent_block->end();
+  }
+
   // Returns the context which instructions are constructed for.
   ir::IRContext* GetContext() const { return context_; }
 
   // Returns the set of preserved analyses.
-  inline static constexpr ir::IRContext::Analysis GetPreservedAnalysis() {
-    return AnalysesToPreserve;
+  inline ir::IRContext::Analysis GetPreservedAnalysis() const {
+    return preserved_analyses_;
   }
 
  private:
   InstructionBuilder(ir::IRContext* context, ir::BasicBlock* parent,
-                     InsertionPointTy insert_before)
-      : context_(context), parent_(parent), insert_before_(insert_before) {}
+                     InsertionPointTy insert_before,
+                     ir::IRContext::Analysis preserved_analyses)
+      : context_(context),
+        parent_(parent),
+        insert_before_(insert_before),
+        preserved_analyses_(preserved_analyses) {
+    assert(!(preserved_analyses_ &
+             ~(ir::IRContext::kAnalysisDefUse |
+               ir::IRContext::kAnalysisInstrToBlockMapping)));
+  }
 
   // Returns true if the users requested to update |analysis|.
-  inline static constexpr bool IsAnalysisUpdateRequested(
-      ir::IRContext::Analysis analysis) {
-    return AnalysesToPreserve & analysis;
+  inline bool IsAnalysisUpdateRequested(
+      ir::IRContext::Analysis analysis) const {
+    return preserved_analyses_ & analysis;
   }
 
   // Updates the def/use manager if the user requested it. If he did not request
@@ -172,6 +277,7 @@ class InstructionBuilder {
   ir::IRContext* context_;
   ir::BasicBlock* parent_;
   InsertionPointTy insert_before_;
+  const ir::IRContext::Analysis preserved_analyses_;
 };
 
 }  // namespace opt

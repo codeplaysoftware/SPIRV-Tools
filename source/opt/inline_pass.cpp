@@ -150,9 +150,8 @@ uint32_t InlinePass::CreateReturnVar(
     std::vector<std::unique_ptr<ir::Instruction>>* new_vars) {
   uint32_t returnVarId = 0;
   const uint32_t calleeTypeId = calleeFn->type_id();
-  const ir::Instruction* calleeType =
-      get_def_use_mgr()->id_to_defs().find(calleeTypeId)->second;
-  if (calleeType->opcode() != SpvOpTypeVoid) {
+  analysis::Type* calleeType = context()->get_type_mgr()->GetType(calleeTypeId);
+  if (calleeType->AsVoid() == nullptr) {
     // Find or create ptr to callee return type.
     uint32_t returnVarTypeId = context()->get_type_mgr()->FindPointerToType(
         calleeTypeId, SpvStorageClassFunction);
@@ -523,14 +522,16 @@ void InlinePass::UpdateSucceedingPhis(
   const auto lastBlk = new_blocks.end() - 1;
   const uint32_t firstId = (*firstBlk)->id();
   const uint32_t lastId = (*lastBlk)->id();
-  (*lastBlk)->ForEachSuccessorLabel([&firstId, &lastId, this](uint32_t succ) {
-    ir::BasicBlock* sbp = this->id2block_[succ];
-    sbp->ForEachPhiInst([&firstId, &lastId](ir::Instruction* phi) {
-      phi->ForEachInId([&firstId, &lastId](uint32_t* id) {
-        if (*id == firstId) *id = lastId;
+  const ir::BasicBlock& const_last_block = *lastBlk->get();
+  const_last_block.ForEachSuccessorLabel(
+      [&firstId, &lastId, this](const uint32_t succ) {
+        ir::BasicBlock* sbp = this->id2block_[succ];
+        sbp->ForEachPhiInst([&firstId, &lastId](ir::Instruction* phi) {
+          phi->ForEachInId([&firstId, &lastId](uint32_t* id) {
+            if (*id == firstId) *id = lastId;
+          });
+        });
       });
-    });
-  });
 }
 
 bool InlinePass::HasMultipleReturns(ir::Function* func) {
@@ -560,7 +561,8 @@ void InlinePass::ComputeStructuredSuccessors(ir::Function* func) {
     }
 
     // Add true successors.
-    blk.ForEachSuccessorLabel([&blk, this](uint32_t sbid) {
+    const auto& const_blk = blk;
+    const_blk.ForEachSuccessorLabel([&blk, this](const uint32_t sbid) {
       block2structured_succs_[&blk].push_back(id2block_[sbid]);
     });
   }

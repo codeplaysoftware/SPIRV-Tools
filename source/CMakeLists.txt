@@ -66,7 +66,7 @@ macro(spvtools_vimsyntax VERSION CLVERSION)
   add_custom_command(OUTPUT ${VIMSYNTAX_FILE}
       COMMAND ${PYTHON_EXECUTABLE} ${VIMSYNTAX_PROCESSING_SCRIPT}
       --spirv-core-grammar=${GRAMMAR_JSON_FILE}
-      --exinst-debuginfo-grammar=${DEBUGINFO_GRAMMAR_JSON_FILE}
+      --extinst-debuginfo-grammar=${DEBUGINFO_GRAMMAR_JSON_FILE}
       --extinst-glsl-grammar=${GLSL_GRAMMAR_JSON_FILE}
       --extinst-opencl-grammar=${OPENCL_GRAMMAR_JSON_FILE}
       >${VIMSYNTAX_FILE}
@@ -281,8 +281,10 @@ set(SPIRV_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/text.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/text_handler.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/validate_adjacency.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_arithmetics.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_atomics.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/validate_barriers.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_bitwise.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_capability.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_cfg.cpp
@@ -332,8 +334,23 @@ target_include_directories(${SPIRV_TOOLS}
 set_property(TARGET ${SPIRV_TOOLS} PROPERTY FOLDER "SPIRV-Tools libraries")
 spvtools_check_symbol_exports(${SPIRV_TOOLS})
 
+add_library(${SPIRV_TOOLS}-shared SHARED ${SPIRV_SOURCES})
+spvtools_default_compile_options(${SPIRV_TOOLS}-shared)
+target_include_directories(${SPIRV_TOOLS}-shared
+  PUBLIC ${spirv-tools_SOURCE_DIR}/include
+  PRIVATE ${spirv-tools_BINARY_DIR}
+  PRIVATE ${SPIRV_HEADER_INCLUDE_DIR}
+  )
+set_target_properties(${SPIRV_TOOLS}-shared PROPERTIES CXX_VISIBILITY_PRESET hidden)
+set_property(TARGET ${SPIRV_TOOLS}-shared PROPERTY FOLDER "SPIRV-Tools libraries")
+spvtools_check_symbol_exports(${SPIRV_TOOLS}-shared)
+target_compile_definitions(${SPIRV_TOOLS}-shared
+  PRIVATE SPIRV_TOOLS_IMPLEMENTATION
+  PUBLIC SPIRV_TOOLS_SHAREDLIB
+)
+
 if(ENABLE_SPIRV_TOOLS_INSTALL)
-  install(TARGETS ${SPIRV_TOOLS}
+  install(TARGETS ${SPIRV_TOOLS} ${SPIRV_TOOLS}-shared
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})

@@ -33,8 +33,10 @@ SPVTOOLS_SRC_FILES := \
 		source/val/instruction.cpp \
 		source/val/validation_state.cpp \
 		source/validate.cpp \
+		source/validate_adjacency.cpp \
 		source/validate_arithmetics.cpp \
 		source/validate_atomics.cpp \
+		source/validate_barriers.cpp \
 		source/validate_bitwise.cpp \
 		source/validate_capability.cpp \
 		source/validate_cfg.cpp \
@@ -61,22 +63,28 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/cfg.cpp \
 		source/opt/cfg_cleanup_pass.cpp \
 		source/opt/ccp_pass.cpp \
-		source/opt/compact_ids_pass.cpp \
 		source/opt/common_uniform_elim_pass.cpp \
+		source/opt/compact_ids_pass.cpp \
+		source/opt/composite.cpp \
+		source/opt/const_folding_rules.cpp \
 		source/opt/constants.cpp \
 		source/opt/dead_branch_elim_pass.cpp \
+		source/opt/dead_insert_elim_pass.cpp \
 		source/opt/dead_variable_elimination.cpp \
 		source/opt/decoration_manager.cpp \
 		source/opt/def_use_manager.cpp \
+		source/opt/dominator_analysis.cpp \
 		source/opt/dominator_tree.cpp \
 		source/opt/eliminate_dead_constant_pass.cpp \
 		source/opt/eliminate_dead_functions_pass.cpp \
 		source/opt/feature_manager.cpp \
 		source/opt/flatten_decoration_pass.cpp \
 		source/opt/fold.cpp \
+		source/opt/folding_rules.cpp \
 		source/opt/fold_spec_constant_op_and_composite_pass.cpp \
 		source/opt/freeze_spec_constant_value_pass.cpp \
 		source/opt/function.cpp \
+		source/opt/if_conversion.cpp \
 		source/opt/inline_pass.cpp \
 		source/opt/inline_exhaustive_pass.cpp \
 		source/opt/inline_opaque_pass.cpp \
@@ -85,12 +93,14 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/instruction_list.cpp \
 		source/opt/ir_context.cpp \
 		source/opt/ir_loader.cpp \
+		source/opt/licm_pass.cpp \
 		source/opt/local_access_chain_convert_pass.cpp \
 		source/opt/local_redundancy_elimination.cpp \
 		source/opt/local_single_block_elim_pass.cpp \
 		source/opt/local_single_store_elim_pass.cpp \
 		source/opt/local_ssa_elim_pass.cpp \
 		source/opt/loop_descriptor.cpp \
+		source/opt/loop_unroller.cpp \
 		source/opt/mem_pass.cpp \
 		source/opt/merge_return_pass.cpp \
 		source/opt/module.cpp \
@@ -101,8 +111,10 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/propagator.cpp \
 		source/opt/redundancy_elimination.cpp \
 		source/opt/remove_duplicates_pass.cpp \
+		source/opt/replace_invalid_opc.cpp \
 		source/opt/scalar_replacement_pass.cpp \
 		source/opt/set_spec_constant_default_value_pass.cpp \
+		source/opt/simplification_pass.cpp \
 		source/opt/strength_reduction_pass.cpp \
 		source/opt/strip_debug_info_pass.cpp \
 		source/opt/type_manager.cpp \

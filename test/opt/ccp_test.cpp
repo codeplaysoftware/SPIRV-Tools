@@ -581,6 +581,104 @@ TEST_F(CCPTest, SkipSpecConstantInstrucitons) {
   auto res = SinglePassRunToBinary<opt::CCPPass>(spv_asm, true);
   EXPECT_EQ(std::get<1>(res), opt::Pass::Status::SuccessWithoutChange);
 }
+
+TEST_F(CCPTest, UpdateSubsequentPhisToVarying) {
+  const std::string text = R"(
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %func "func" %in
+%void = OpTypeVoid
+%bool = OpTypeBool
+%int = OpTypeInt 32 1
+%false = OpConstantFalse %bool
+%int0 = OpConstant %int 0
+%int1 = OpConstant %int 1
+%int6 = OpConstant %int 6
+%int_ptr_Input = OpTypePointer Input %int
+%in = OpVariable %int_ptr_Input Input
+%undef = OpUndef %int
+%functy = OpTypeFunction %void
+%func = OpFunction %void None %functy
+%1 = OpLabel
+OpBranch %2
+%2 = OpLabel
+%outer_phi = OpPhi %int %int0 %1 %outer_add %15
+%cond1 = OpSLessThanEqual %bool %outer_phi %int6
+OpLoopMerge %3 %15 None
+OpBranchConditional %cond1 %4 %3
+%4 = OpLabel
+%ld = OpLoad %int %in
+%cond2 = OpSGreaterThanEqual %bool %int1 %ld
+OpSelectionMerge %10 None
+OpBranchConditional %cond2 %8 %9
+%8 = OpLabel
+OpBranch %10
+%9 = OpLabel
+OpBranch %10
+%10 = OpLabel
+%extra_phi = OpPhi %int %outer_phi %8 %outer_phi %9
+OpBranch %11
+%11 = OpLabel
+%inner_phi = OpPhi %int %int0 %10 %inner_add %13
+%cond3 = OpSLessThanEqual %bool %inner_phi %int6
+OpLoopMerge %14 %13 None
+OpBranchConditional %cond3 %12 %14
+%12 = OpLabel
+OpBranch %13
+%13 = OpLabel
+%inner_add = OpIAdd %int %inner_phi %int1
+OpBranch %11
+%14 = OpLabel
+OpBranch %15
+%15 = OpLabel
+%outer_add = OpIAdd %int %extra_phi %int1
+OpBranch %2
+%3 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+
+  auto res = SinglePassRunToBinary<opt::CCPPass>(text, true);
+  EXPECT_EQ(std::get<1>(res), opt::Pass::Status::SuccessWithoutChange);
+}
+
+TEST_F(CCPTest, UndefInPhi) {
+  const std::string text = R"(
+; CHECK: [[uint1:%\w+]] = OpConstant {{%\w+}} 1
+; CHECK: [[phi:%\w+]] = OpPhi
+; CHECK: OpIAdd {{%\w+}} [[phi]] [[uint1]]
+               OpCapability Kernel
+               OpCapability Linkage
+               OpMemoryModel Logical OpenCL
+               OpDecorate %1 LinkageAttributes "func" Export
+       %void = OpTypeVoid
+       %bool = OpTypeBool
+       %uint = OpTypeInt 32 0
+     %uint_0 = OpConstant %uint 0
+     %uint_1 = OpConstant %uint 1
+          %7 = OpUndef %uint
+          %8 = OpTypeFunction %void %bool
+          %1 = OpFunction %void None %8
+          %9 = OpFunctionParameter %bool
+         %10 = OpLabel
+               OpBranchConditional %9 %11 %12
+         %11 = OpLabel
+               OpBranch %13
+         %12 = OpLabel
+               OpBranch %14
+         %14 = OpLabel
+               OpBranchConditional %9 %13 %15
+         %15 = OpLabel
+               OpBranch %13
+         %13 = OpLabel
+         %16 = OpPhi %uint %uint_0 %11 %7 %14 %uint_1 %15
+         %17 = OpIAdd %uint %16 %uint_1
+               OpReturn
+               OpFunctionEnd
+)";
+
+  SinglePassRunAndMatch<opt::CCPPass>(text, true);
+}
 #endif
 
 }  // namespace
