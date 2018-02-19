@@ -458,14 +458,15 @@ TEST_F(CCPTest, SSAWebCycles) {
          %22 = OpIAdd %int %29 %30
                OpBranch %14
          %14 = OpLabel
-; CHECK: OpPhi %int %int_0 {{%\d+}} %int_0 {{%\d+}}
-         %25 = OpPhi %int %int_0 %5 %30 %14
+; CHECK: OpPhi %int %int_0 {{%\d+}}
+         %25 = OpPhi %int %30 %12
                OpBranch %11
          %13 = OpLabel
                OpReturn
                OpFunctionEnd
   )";
 
+  SetAssembleOptions(SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
   SinglePassRunAndMatch<opt::CCPPass>(spv_asm, true);
 }
 
@@ -678,6 +679,59 @@ TEST_F(CCPTest, UndefInPhi) {
 )";
 
   SinglePassRunAndMatch<opt::CCPPass>(text, true);
+}
+
+// Just test to make sure the constant fold rules are being used.  Will rely on
+// the folding test for specific testing of specific rules.
+TEST_F(CCPTest, UseConstantFoldingRules) {
+  const std::string text = R"(
+; CHECK: [[float1:%\w+]] = OpConstant {{%\w+}} 1
+; CHECK: OpReturnValue [[float1]]
+               OpCapability Shader
+               OpCapability Linkage
+               OpMemoryModel Logical GLSL450
+               OpDecorate %1 LinkageAttributes "func" Export
+       %void = OpTypeVoid
+       %bool = OpTypeBool
+      %float = OpTypeFloat 32
+    %float_0 = OpConstant %float 0
+    %float_1 = OpConstant %float 1
+          %8 = OpTypeFunction %float
+          %1 = OpFunction %float None %8
+         %10 = OpLabel
+         %17 = OpFAdd %float %float_0 %float_1
+               OpReturnValue %17
+               OpFunctionEnd
+)";
+
+  SinglePassRunAndMatch<opt::CCPPass>(text, true);
+}
+
+// Test for #1300. Previously value for %5 would not settle during simulation.
+TEST_F(CCPTest, SettlePhiLatticeValue) {
+  const std::string text = R"(
+OpCapability Kernel
+OpCapability Linkage
+OpMemoryModel Logical OpenCL
+OpDecorate %func LinkageAttributes "func" Export
+%void = OpTypeVoid
+%bool = OpTypeBool
+%true = OpConstantTrue %bool
+%false = OpConstantFalse %bool
+%functy = OpTypeFunction %void
+%func = OpFunction %void None %functy
+%1 = OpLabel
+OpBranchConditional %true %2 %3
+%3 = OpLabel
+OpBranch %2
+%2 = OpLabel
+%5 = OpPhi %bool %true %1 %false %3
+OpReturn
+OpFunctionEnd
+)";
+
+  SetAssembleOptions(SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  SinglePassRunToBinary<opt::CCPPass>(text, true);
 }
 #endif
 
