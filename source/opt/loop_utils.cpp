@@ -598,5 +598,24 @@ void LoopUtils::PopulateLoopDesc(
   }
 }
 
+// Class to gather some metrics about a ROI.
+void CodeMetrics::Analyze(ir::IRContext* ctx, const ir::Loop& loop) {
+  ir::CFG& cfg = *ctx->cfg();
+
+  roi_size_ = 0;
+  block_sizes_.clear();
+
+  for (uint32_t id : loop.GetBlocks()) {
+    const ir::BasicBlock* bb = cfg.block(id);
+    size_t bb_size = 0;
+    bb->ForEachInst([&bb_size](const ir::Instruction* insn) {
+      if (insn->opcode() == SpvOpLabel) return;
+      bb_size++;
+    });
+    block_sizes_[bb->id()] = bb_size;
+    roi_size_ += bb_size;
+  }
+}
+
 }  // namespace opt
 }  // namespace spvtools
