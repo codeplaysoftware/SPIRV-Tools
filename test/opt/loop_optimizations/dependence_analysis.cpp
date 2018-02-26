@@ -109,8 +109,94 @@ TEST_F(PassClassTest, BasicDependenceTest) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  opt::LoopDependenceAnalysis analysis {ld.GetLoopByIndex(0)};
+  opt::LoopDependenceAnalysis analysis {context.get(), ld.GetLoopByIndex(0)};
   analysis.DumpIterationSpaceAsDot(std::cout);
+}
+
+/*
+Generated from the following GLSL + --eliminate-local-multi-store
+
+#version 410 core
+layout (location = 1) out float array[10];
+void main() {
+  for (int i = 0; i < 10; ++i) {
+    array[5] = array[6];
+  }
+}
+*/
+TEST_F(PassClassTest, BasicZIV) {
+  const std::string text = R"(OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %2 "main" %3
+               OpExecutionMode %2 OriginUpperLeft
+               OpSource GLSL 430
+               OpName %2 "main"
+               OpName %3 "array"
+               OpDecorate %3 Location 1
+          %4 = OpTypeVoid
+          %5 = OpTypeFunction %4
+          %6 = OpTypeInt 32 1
+          %7 = OpTypePointer Function %6
+          %8 = OpConstant %6 0
+          %9 = OpConstant %6 10
+         %10 = OpTypeBool
+         %11 = OpTypeFloat 32
+         %12 = OpTypeInt 32 0
+         %13 = OpConstant %12 10
+         %14 = OpTypeArray %11 %13
+         %15 = OpTypePointer Output %14
+          %3 = OpVariable %15 Output
+         %16 = OpConstant %6 5
+         %17 = OpConstant %6 6
+         %18 = OpTypePointer Output %11
+         %19 = OpConstant %6 1
+          %2 = OpFunction %4 None %5
+         %20 = OpLabel
+               OpBranch %21
+         %21 = OpLabel
+         %22 = OpPhi %6 %8 %20 %23 %24
+               OpLoopMerge %25 %24 None
+               OpBranch %26
+         %26 = OpLabel
+         %27 = OpSLessThan %10 %22 %9
+               OpBranchConditional %27 %28 %25
+         %28 = OpLabel
+         %29 = OpAccessChain %18 %3 %17
+         %30 = OpLoad %11 %29
+         %31 = OpAccessChain %18 %3 %16
+               OpStore %31 %30
+               OpBranch %24
+         %24 = OpLabel
+         %23 = OpIAdd %6 %22 %19
+               OpBranch %21
+         %25 = OpLabel
+               OpReturn
+               OpFunctionEnd
+    )";
+  // clang-format on
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 2);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  opt::LoopDependenceAnalysis analysis {context.get(), ld.GetLoopByIndex(0)};
+  analysis.DumpIterationSpaceAsDot(std::cout);
+
+  const ir::Instruction* store = nullptr;
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f,28)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store = &inst;
+    }
+  }
+
+  EXPECT_TRUE(store);
+  EXPECT_FALSE(
+      analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(30)));
 }
 
 }  // namespace
