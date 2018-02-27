@@ -125,6 +125,14 @@ class LoopUtils {
   // called, otherwise the analysis should be invalidated.
   void Finalize();
 
+  // Moves the execution of the |factor| first iterations of the loop into a
+  // dedicated loop.
+  void PeelBefore(size_t factor);
+
+  // Moves the execution of the |factor| last iterations of the loop into a
+  // dedicated loop.
+  void PeelAfter(size_t factor);
+
  private:
   ir::IRContext* context_;
   ir::LoopDescriptor* loop_desc_;
