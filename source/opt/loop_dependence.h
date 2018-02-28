@@ -27,49 +27,13 @@ namespace opt {
 
 class LoopDependenceAnalysis {
  public:
-
   LoopDependenceAnalysis(ir::IRContext* context, const ir::Loop& loop)
       : context_(context), loop_(loop), scalar_evolution_(context){};
 
   bool GetDependence(const ir::Instruction* source,
-                     const ir::Instruction* destination) {
+                     const ir::Instruction* destination);
 
-
-    SENode* source_node = memory_access_to_indice_[source][0];
-    SENode* destination_node = memory_access_to_indice_[destination][0];
-/*    return ZIVTest(*source_node,
-                   *destination_node);*/
-
-    return SIVTest(source_node, destination_node);
-  }
-
-  void DumpIterationSpaceAsDot(std::ostream& out_stream) {
-    out_stream << "digraph {\n";
-
-    for (uint32_t id : loop_.GetBlocks()) {
-      ir::BasicBlock* block = context_->cfg()->block(id);
-      for (ir::Instruction& inst : *block) {
-        if (inst.opcode() == SpvOp::SpvOpStore ||
-            inst.opcode() == SpvOp::SpvOpLoad) {
-          memory_access_to_indice_[&inst] = {};
-
-          const ir::Instruction* access_chain =
-              context_->get_def_use_mgr()->GetDef(
-                  inst.GetSingleWordInOperand(0));
-
-          for (uint32_t i = 1u; i < access_chain->NumInOperands(); ++i) {
-            const ir::Instruction* index = context_->get_def_use_mgr()->GetDef(
-                access_chain->GetSingleWordInOperand(i));
-            memory_access_to_indice_[&inst].push_back(
-                scalar_evolution_.AnalyzeInstruction(index));
-          }
-        }
-      }
-    }
-
-    scalar_evolution_.DumpAsDot(out_stream);
-    out_stream << "}\n";
-  }
+  void DumpIterationSpaceAsDot(std::ostream& out_stream);
 
  private:
   ir::IRContext* context_;
@@ -82,50 +46,36 @@ class LoopDependenceAnalysis {
   std::map<const ir::Instruction*, std::vector<SENode*>>
       memory_access_to_indice_;
 
-  bool ZIVTest(const SENode& source, const SENode& destination) {
-    // If source can be proven to equal destination then we have proved
-    // dependence.
-    if (scalar_evolution_.CanProveEqual(source, destination)) {
-      return true;
-    }
+  bool ZIVTest(const SENode& source, const SENode& destination);
 
-    // If we can prove not equal then we have prove independence.
-    if (scalar_evolution_.CanProveNotEqual(source, destination)) {
-      return false;
-    }
+  bool SIVTest(SENode* source, SENode* destination);
 
-    // Otherwise, we must assume they are dependent.
-    return true;
-  }
+  // Takes the form a*i + c1, a*i + c2
+  // When c1 and c2 are loop invariant and a is constant
+  // distance = (c1 - c2)/a
+  //              < if distance > 0
+  // direction =  = if distance = 0
+  //              > if distance < 0
+  bool StrongSIVTest(SENode* source, SENode* destination);
 
-  bool SIVTest(SENode* source, SENode* destination) {
-    return StrongSIVTest(source, destination);
-  }
+  // Takes the form a1*i + c1, a2*i + c2
+  // Where a1 and a2 are constant and different
+  bool WeakSIVTest();
 
-  bool StrongSIVTest(SENode* source, SENode* destination) {
-    SENode* new_negation = scalar_evolution_.CreateNegation(destination);
-    //SENode* new_add = 
-    SENode* distance = scalar_evolution_.CreateAddNode(source, new_negation);
+  // Takes the form a1*i + c1, a2*i + c2
+  // when a1 = 0
+  // i = (c2 - c1) / a2
+  bool WeakZeroSourceSIVTest();
 
-    int64_t value = 0;
-    distance->FoldToSingleValue(&value);
+  // Takes the form a1*i + c1, a2*i + c2
+  // when a2 = 0
+  // i = (c2 - c1) / a1
+  bool WeakZeroDestinationSIVTest();
 
-    std::cout << value << std::endl;
-
-    return true;
-  }
-
-
-  /*  bool WeakSIVTest(const Evolution& source, const Evolution& destination,
-    Dependence* out) const;
-    bool StrongSIVTest(const Evolution& source, const Evolution& destination,
-    Dependence* out) const;
-    bool MIVTest(const Evolution& source, const Evolution& destination,
-    Dependence* out) const;
-
-    // Maybe not needed.
-    bool DeltaTest(const Evolution& source, const Evolution& destination,
-    Dependence* out) const;*/
+  // Takes the form a1*i + c1, a2*i + c2
+  // When a1 = -a2
+  // i = (c2 - c1) / 2*a1
+  bool WeakCrossingSIVTest();
 };
 
 }  // namespace ir
