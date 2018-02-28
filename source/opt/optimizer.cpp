@@ -356,6 +356,11 @@ Optimizer::PassToken CreateLoopInvariantCodeMotionPass() {
   return MakeUnique<Optimizer::PassToken::Impl>(MakeUnique<opt::LICMPass>());
 }
 
+Optimizer::PassToken CreateLoopUnswitchPass() {
+  return MakeUnique<Optimizer::PassToken::Impl>(
+      MakeUnique<opt::LoopUnswitchPass>());
+}
+
 Optimizer::PassToken CreateRedundancyEliminationPass() {
   return MakeUnique<Optimizer::PassToken::Impl>(
       MakeUnique<opt::RedundancyEliminationPass>());
@@ -400,8 +405,8 @@ Optimizer::PassToken CreateSimplificationPass() {
       MakeUnique<opt::SimplificationPass>());
 }
 
-Optimizer::PassToken CreateLoopFullyUnrollPass() {
+Optimizer::PassToken CreateLoopUnrollPass(bool fully_unroll, int factor) {
   return MakeUnique<Optimizer::PassToken::Impl>(
-      MakeUnique<opt::LoopUnroller>());
+      MakeUnique<opt::LoopUnroller>(fully_unroll, factor));
 }
 }  // namespace spvtools

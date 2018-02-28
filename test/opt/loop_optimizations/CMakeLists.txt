@@ -78,6 +78,13 @@ add_spvtools_unittest(TARGET loop_unroll_assumtion_checks
         unroll_assumptions.cpp
     LIBS SPIRV-Tools-opt
 )
+
+add_spvtools_unittest(TARGET unswitch_test
+    SRCS ../function_utils.h
+        unswitch.cpp
+    LIBS SPIRV-Tools-opt
+)
+
 add_spvtools_unittest(TARGET loop_dependence_analysis
     SRCS ../function_utils.h
         dependence_analysis.cpp

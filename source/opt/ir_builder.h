@@ -105,6 +105,44 @@ class InstructionBuilder {
     return AddInstruction(std::move(new_branch));
   }
 
+  // Creates a new switch instruction and the associated selection merge
+  // instruction if requested.
+  // The id |selector_id| is the id of the selector instruction, must be of
+  // type int.
+  // The id |default_id| is the id of the default basic block to branch to.
+  // The vector |targets| is the pair of literal/branch id.
+  // The id |merge_id| is the id of the merge basic block for the selection
+  // merge instruction. If |merge_id| equals kInvalidId then no selection merge
+  // instruction will be created.
+  // The value |selection_control| is the selection control flag for the
+  // selection merge instruction.
+  // Note that the user must make sure the final basic block is
+  // well formed.
+  ir::Instruction* AddSwitch(
+      uint32_t selector_id, uint32_t default_id,
+      const std::vector<std::pair<std::vector<uint32_t>, uint32_t>>& targets,
+      uint32_t merge_id = kInvalidId,
+      uint32_t selection_control = SpvSelectionControlMaskNone) {
+    if (merge_id != kInvalidId) {
+      AddSelectionMerge(merge_id, selection_control);
+    }
+    std::vector<ir::Operand> operands;
+    operands.emplace_back(
+        ir::Operand{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {selector_id}});
+    operands.emplace_back(
+        ir::Operand{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {default_id}});
+    for (auto& target : targets) {
+      operands.emplace_back(
+          ir::Operand{spv_operand_type_t::SPV_OPERAND_TYPE_TYPED_LITERAL_NUMBER,
+                      target.first});
+      operands.emplace_back(ir::Operand{spv_operand_type_t::SPV_OPERAND_TYPE_ID,
+                                        {target.second}});
+    }
+    std::unique_ptr<ir::Instruction> new_switch(
+        new ir::Instruction(GetContext(), SpvOpSwitch, 0, 0, operands));
+    return AddInstruction(std::move(new_switch));
+  }
+
   // Creates a phi instruction.
   // The id |type| must be the id of the phi instruction's type.
   // The vector |incomings| must be a sequence of pairs of <definition id,
@@ -172,11 +210,20 @@ class InstructionBuilder {
     // Assert that we are not trying to store a negative number in an unsigned
     // type.
     if (!sign)
-      assert(value > 0 &&
+      assert(value >= 0 &&
              "Trying to add a signed integer with an unsigned type!");
 
-    // Get or create the integer type.
-    analysis::Integer int_type(32, sign);
+    analysis::Integer int_type{32, sign};
+
+    // Get or create the integer type. This rebuilds the type and manages the
+    // memory for the rebuilt type.
+    uint32_t type_id =
+        GetContext()->get_type_mgr()->GetTypeInstruction(&int_type);
+
+    // Get the memory managed type so that it is safe to be stored by
+    // GetConstant.
+    analysis::Type* rebuilt_type =
+        GetContext()->get_type_mgr()->GetType(type_id);
 
     // Even if the value is negative we need to pass the bit pattern as a
     // uint32_t to GetConstant.
@@ -184,7 +231,7 @@ class InstructionBuilder {
 
     // Create the constant value.
     const opt::analysis::Constant* constant =
-        GetContext()->get_constant_mgr()->GetConstant(&int_type, {word});
+        GetContext()->get_constant_mgr()->GetConstant(rebuilt_type, {word});
 
     // Create the OpConstant instruction using the type and the value.
     return GetContext()->get_constant_mgr()->GetDefiningInstruction(constant);
@@ -204,6 +251,14 @@ class InstructionBuilder {
         new ir::Instruction(GetContext(), SpvOpCompositeExtract, type,
                             GetContext()->TakeNextId(), operands));
     return AddInstruction(std::move(new_inst));
+  }
+
+  // Creates an unreachable instruction.
+  ir::Instruction* AddUnreachable() {
+    std::unique_ptr<ir::Instruction> select(
+        new ir::Instruction(GetContext(), SpvOpUnreachable, 0, 0,
+                            std::initializer_list<ir::Operand>{}));
+    return AddInstruction(std::move(select));
   }
 
   // Inserts the new instruction before the insertion point.
