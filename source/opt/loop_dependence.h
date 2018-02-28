@@ -33,20 +33,24 @@ namespace opt {
 // ScalarEvolution
 class SENode {
  public:
-  enum SENodeType { Constant, Phi, Add, AccessChain };
+  enum SENodeType { Constant, Phi, Add, Negative, Unknown };
 
   explicit SENode(const ir::Instruction* inst)
-      : instruction_(inst), parent_(nullptr) {}
-  SENode(const ir::Instruction* inst, SENode* parent)
-      : instruction_(inst), parent_(parent) {}
+      : result_id_(inst->result_id()), unique_id_(inst->unique_id()), parent_(nullptr), is_unknown_(false) {}
+
+  explicit SENode(uint32_t unique_id)
+    : result_id_(0), unique_id_(unique_id), parent_(nullptr), is_unknown_(false) {}
 
   virtual SENodeType GetType() const = 0;
 
   virtual ~SENode() {}
 
-  inline void AddChild(SENode* child) { children_.push_back(child); }
+  inline void AddChild(SENode* child) {
+    children_.push_back(child);
+    child->SetParent(this);
+  }
 
-  inline void SetParent(SENode* parent) { parent_ = parent; }
+  inline virtual void SetParent(SENode* parent) { parent_ = parent; }
 
   inline void MarkAsNonConstant() {
     is_constant = false;
@@ -54,8 +58,8 @@ class SENode {
   }
 
 
-  inline uint32_t UniqueID() const { return instruction_->unique_id(); }
-  inline uint32_t ResultID() const { return instruction_->result_id(); }
+  inline uint32_t UniqueID() const { return unique_id_; }
+  inline uint32_t ResultID() const { return result_id_; }
 
 
   std::string AsString() const {
@@ -66,8 +70,10 @@ class SENode {
         return "Phi";
       case Add:
         return "Add";
-      case AccessChain:
-        return "AccessChain";
+      case Negative:
+        return "Negative";
+      case Unknown:
+        return "Unknown";
     }
     return "NULL";
   }
@@ -76,24 +82,32 @@ class SENode {
     out << UniqueID() << " [label=\"" << AsString() << " " << ResultID()
         << "\"]\n";
     for (const SENode* child : children_) {
-      out << child->UniqueID() << " [label=\"" << child->AsString() << " "
-          << child->ResultID() << "\"]\n";
       out << UniqueID() << " -> " << child->UniqueID() << " \n";
     }
   }
 
+  virtual bool FoldToSingleValue(int64_t*) const { return false; }
 
-  virtual bool FoldToSingleValue(int64_t *) const {
-    return false;
+  virtual bool IsUnknown() const { return false; }
+
+  bool ContainsUnknown() const { return is_unknown_; }
+
+  inline void MarkAsUnknown() {
+    is_unknown_ = true;
+    if (parent_) parent_->MarkAsUnknown();
   }
+
  protected:
-  const ir::Instruction* instruction_;
+
+  uint32_t result_id_;
+  uint32_t unique_id_;
+
   SENode* parent_;
   std::vector<SENode*> children_;
-
   // Are all child nodes constant. Defualts to true and should be set to false
   // when a child node is added which is not constant.
   bool is_constant;
+  bool is_unknown_;
 };
 
 class SEConstantNode : public SENode {
@@ -117,36 +131,32 @@ class SEPhiNode : public SENode {
   SENodeType GetType() const final { return Phi; }
 
   inline void AddChild(SENode* child, uint32_t index) {
+    // Add the block that value came from.
+    incoming_blocks_[index] = children_.size();
     // Add the value.
     SENode::AddChild(child);
-    // Add the block that value came from.
-    incoming_blocks_.push_back(index);
   }
+
+  SENode* GetValueFromEdge(uint32_t edge) const {
+    auto itr = incoming_blocks_.find(edge);
+    if (itr == incoming_blocks_.end()) return nullptr;
+
+    return children_[itr->second];
+  }
+
+  bool FoldToSingleValue(int64_t* val) const final { *val = 0; return true; }
 
  private:
   // Each child node of this node will be the value parameters to the phi. This
-  // vector maintains a list of the blocks the values came from.
-  std::vector<uint32_t> incoming_blocks_;
-};
-
-class SEAccessChainRoot : public SENode {
- public:
-  SEAccessChainRoot(const ir::Instruction* inst, SENode* parent)
-      : SENode(inst, parent) {}
-
-  explicit SEAccessChainRoot(const ir::Instruction* inst) : SENode(inst) {}
-  SENodeType GetType() const final { return AccessChain; }
+  // map maintains a list of the blocks the values came from to their child index.
+  std::map<uint32_t, size_t> incoming_blocks_;
 };
 
 class SEAddNode : public SENode {
  public:
-  SEAddNode(const ir::Instruction* inst, SENode* parent)
-      : SENode(inst, parent) {}
-
   explicit SEAddNode(const ir::Instruction* inst) : SENode(inst) {}
+  explicit SEAddNode(uint32_t unique_id): SENode(unique_id) {}
   SENodeType GetType() const final { return Add; }
-
-
 
   bool FoldToSingleValue(int64_t *value_to_return) const override {
     int64_t val = 0;
@@ -162,9 +172,46 @@ class SEAddNode : public SENode {
     *value_to_return = val;
     return true;
   }
+};
+
+
+class SENegative : public SENode {
+  public:
+
+  explicit SENegative(uint32_t unique_id):
+      SENode(unique_id) {}
+
+  bool FoldToSingleValue(int64_t *value_to_return) const override {
+    int64_t val = 0;
+
+    SENode* child = children_[0];
+
+    if(!child->FoldToSingleValue(&val)) {
+        return false;
+    }
+    *value_to_return = -val;
+    return true;
+  }
+
+  SENodeType GetType() const final { return Negative; }
 
 };
 
+
+class SEUnknown : public SENode {
+  public:
+
+  explicit SEUnknown(const ir::Instruction* inst)
+      : SENode(inst) {}
+
+  void SetParent(SENode* parent_) final {
+    SENode::SetParent(parent_);
+    parent_->MarkAsUnknown();
+  }
+
+  bool IsUnknown() const final { return true; }
+  SENodeType GetType() const final { return Unknown; }
+};
 
 
 
@@ -172,10 +219,6 @@ class SEAddNode : public SENode {
 class ScalarEvolutionAnalysis {
  public:
   ScalarEvolutionAnalysis(ir::IRContext* context) : context_(context) {}
-  /*const Evolution& GetEvolution(const ir::Instruction* instruction) {
-    // Calculate.
-    return &scalar_evolutions_[induction];
-  }*/
 
   ~ScalarEvolutionAnalysis() {
     for (auto& pair : scalar_evolutions_) {
@@ -189,9 +232,27 @@ class ScalarEvolutionAnalysis {
     }
   }
 
+  SENode* CreateNegation(SENode* operand) {
+    SENode* negation_node { new SENegative(context_->TakeNextUniqueId())};
+
+    scalar_evolutions_[negation_node->UniqueID()] = negation_node;
+    negation_node->AddChild(operand);
+    return negation_node;
+  }
+
+  SENode* CreateAddNode(SENode* operand_1, SENode* operand_2) {
+    SENode* add_node{new SEAddNode(context_->TakeNextUniqueId())};
+    scalar_evolutions_[add_node->UniqueID()] = add_node;
+
+    add_node->AddChild(operand_1);
+    add_node->AddChild(operand_2);
+
+    return add_node;
+  }
+
   SENode* AnalyzeInstruction(const ir::Instruction* inst) {
-    if (scalar_evolutions_.find(inst) != scalar_evolutions_.end())
-      return scalar_evolutions_[inst];
+    if (scalar_evolutions_.find(inst->unique_id()) != scalar_evolutions_.end())
+      return scalar_evolutions_[inst->unique_id()];
 
     SENode* output = nullptr;
     switch (inst->opcode()) {
@@ -207,10 +268,12 @@ class ScalarEvolutionAnalysis {
         output = AnalyzeAddOp(inst);
         break;
       }
-      default:
-        return nullptr;
+      default: {
+        output = new SEUnknown(inst);
+        scalar_evolutions_[inst->unique_id()] = output;
+        break;
+      }
     };
-
     return output;
   }
 
@@ -232,14 +295,14 @@ class ScalarEvolutionAnalysis {
     }
 
     SENode* constant_node{new SEConstantNode(inst, value)};
-    scalar_evolutions_[inst] = constant_node;
+    scalar_evolutions_[inst->unique_id()] = constant_node;
     return constant_node;
   }
 
   SENode* AnalyzeAddOp(const ir::Instruction* add) {
     opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
     SENode* add_node{new SEAddNode(add)};
-    scalar_evolutions_[add] = add_node;
+    scalar_evolutions_[add->unique_id()] = add_node;
 
     add_node->AddChild(
         AnalyzeInstruction(def_use->GetDef(add->GetSingleWordInOperand(0))));
@@ -250,7 +313,7 @@ class ScalarEvolutionAnalysis {
 
   SENode* AnalyzePhiInstruction(const ir::Instruction* phi) {
     SEPhiNode* phi_node{new SEPhiNode(phi)};
-    scalar_evolutions_[phi] = phi_node;
+    scalar_evolutions_[phi->unique_id()] = phi_node;
 
     opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
 
@@ -268,7 +331,6 @@ class ScalarEvolutionAnalysis {
   }
 
   bool CanProveEqual(const SENode& source, const SENode& destination) {
-
     int64_t source_value = 0;
     if (!source.FoldToSingleValue(&source_value)) {
       return false;
@@ -298,7 +360,7 @@ class ScalarEvolutionAnalysis {
 
  private:
   ir::IRContext* context_;
-  std::map<const ir::Instruction*, SENode*> scalar_evolutions_;
+  std::map<uint32_t, SENode*> scalar_evolutions_;
 };
 
 class LoopDependenceAnalysis {
@@ -309,8 +371,14 @@ class LoopDependenceAnalysis {
 
   bool GetDependence(const ir::Instruction* source,
                      const ir::Instruction* destination) {
-    return ZIVTest(*memory_access_to_indice_[source][0],
-                   *memory_access_to_indice_[destination][0]);
+
+
+    SENode* source_node = memory_access_to_indice_[source][0];
+    SENode* destination_node = memory_access_to_indice_[destination][0];
+/*    return ZIVTest(*source_node,
+                   *destination_node);*/
+
+    return SIVTest(source_node, destination_node);
   }
 
   void DumpIterationSpaceAsDot(std::ostream& out_stream) {
@@ -349,8 +417,8 @@ class LoopDependenceAnalysis {
 
   ScalarEvolutionAnalysis scalar_evolution_;
 
-
-  std::map<const ir::Instruction*, std::vector<SENode*>> memory_access_to_indice_;
+  std::map<const ir::Instruction*, std::vector<SENode*>>
+      memory_access_to_indice_;
 
   bool ZIVTest(const SENode& source, const SENode& destination) {
     // If source can be proven to equal destination then we have proved
@@ -367,6 +435,25 @@ class LoopDependenceAnalysis {
     // Otherwise, we must assume they are dependent.
     return true;
   }
+
+  bool SIVTest(SENode* source, SENode* destination) {
+    return StrongSIVTest(source, destination);
+  }
+
+  bool StrongSIVTest(SENode* source, SENode* destination) {
+    SENode* new_negation = scalar_evolution_.CreateNegation(destination);
+    //SENode* new_add = 
+    SENode* distance = scalar_evolution_.CreateAddNode(source, new_negation);
+
+    int64_t value = 0;
+    distance->FoldToSingleValue(&value);
+
+    std::cout << value << std::endl;
+
+    return true;
+  }
+
+
   /*  bool WeakSIVTest(const Evolution& source, const Evolution& destination,
     Dependence* out) const;
     bool StrongSIVTest(const Evolution& source, const Evolution& destination,

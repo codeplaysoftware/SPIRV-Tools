@@ -111,6 +111,22 @@ TEST_F(PassClassTest, BasicDependenceTest) {
 
   opt::LoopDependenceAnalysis analysis {context.get(), ld.GetLoopByIndex(0)};
   analysis.DumpIterationSpaceAsDot(std::cout);
+
+  const ir::Instruction* store = nullptr;
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f,11)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store = &inst;
+    }
+  }
+
+  EXPECT_TRUE(store);
+
+
+  EXPECT_FALSE(
+      analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(31)));
+  analysis.DumpIterationSpaceAsDot(std::cout);
+
+
 }
 
 /*
@@ -195,8 +211,8 @@ TEST_F(PassClassTest, BasicZIV) {
   }
 
   EXPECT_TRUE(store);
-  EXPECT_FALSE(
-      analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(30)));
+//  EXPECT_FALSE(
+//      analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(30)));
 }
 
 }  // namespace
