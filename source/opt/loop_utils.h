@@ -133,6 +133,15 @@ class LoopUtils {
   // dedicated loop.
   void PeelAfter(size_t factor);
 
+  // Returns the context associate to |loop_|.
+  ir::IRContext* GetContext() { return context_; }
+  // Returns the loop descriptor owning |loop_|.
+  ir::LoopDescriptor* GetLoopDescriptor() { return loop_desc_; }
+  // Returns the loop on which the object operates on.
+  ir::Loop* GetLoop() { return loop_; }
+  // Returns the function that |loop_| belong to.
+  ir::Function* GetFunction() { return &function_; }
+
  private:
   ir::IRContext* context_;
   ir::LoopDescriptor* loop_desc_;
