@@ -12,26 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef LIBSPIRV_OPT_LOOP_DEPENDENCE_H_
-#define LIBSPIRV_OPT_LOOP_DEPENDENCE_H_
-
-#include <algorithm>
-#include <cstdint>
-#include <map>
-#include <vector>
-
-#include "opt/loop_descriptor.h"
-#include "opt/scalar_analysis.h"
+#include "opt/loop_dependence.h"
 namespace spvtools {
 namespace opt {
 
-class LoopDependenceAnalysis {
- public:
 
-  LoopDependenceAnalysis(ir::IRContext* context, const ir::Loop& loop)
-      : context_(context), loop_(loop), scalar_evolution_(context){};
-
-  bool GetDependence(const ir::Instruction* source,
+  bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
                      const ir::Instruction* destination) {
 
 
@@ -116,19 +102,8 @@ class LoopDependenceAnalysis {
   }
 
 
-  /*  bool WeakSIVTest(const Evolution& source, const Evolution& destination,
-    Dependence* out) const;
-    bool StrongSIVTest(const Evolution& source, const Evolution& destination,
-    Dependence* out) const;
-    bool MIVTest(const Evolution& source, const Evolution& destination,
-    Dependence* out) const;
 
-    // Maybe not needed.
-    bool DeltaTest(const Evolution& source, const Evolution& destination,
-    Dependence* out) const;*/
-};
+} // namespace opt
+} // namespace spvtools
 
-}  // namespace ir
-}  // namespace spvtools
 
-#endif  // LIBSPIRV_OPT_LOOP_DEPENDENCE_H__
