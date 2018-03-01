@@ -15,7 +15,6 @@
 #ifndef LIBSPIRV_OPT_SCALAR_ANALYSIS_H_
 #define LIBSPIRV_OPT_SCALAR_ANALYSIS_H_
 
-
 #include <algorithm>
 #include <cstdint>
 #include <map>
@@ -34,10 +33,16 @@ class SENode {
   enum SENodeType { Constant, Phi, Add, Negative, Unknown };
 
   explicit SENode(const ir::Instruction* inst)
-      : result_id_(inst->result_id()), unique_id_(inst->unique_id()), parent_(nullptr), is_unknown_(false) {}
+      : result_id_(inst->result_id()),
+        unique_id_(inst->unique_id()),
+        parent_(nullptr),
+        is_unknown_(false) {}
 
   explicit SENode(uint32_t unique_id)
-    : result_id_(0), unique_id_(unique_id), parent_(nullptr), is_unknown_(false) {}
+      : result_id_(0),
+        unique_id_(unique_id),
+        parent_(nullptr),
+        is_unknown_(false) {}
 
   virtual SENodeType GetType() const = 0;
 
@@ -55,10 +60,8 @@ class SENode {
     if (parent_) parent_->MarkAsNonConstant();
   }
 
-
   inline uint32_t UniqueID() const { return unique_id_; }
   inline uint32_t ResultID() const { return result_id_; }
-
 
   std::string AsString() const {
     switch (GetType()) {
@@ -96,7 +99,6 @@ class SENode {
   }
 
  protected:
-
   uint32_t result_id_;
   uint32_t unique_id_;
 
@@ -110,16 +112,18 @@ class SENode {
 
 class SEConstantNode : public SENode {
  public:
-  explicit SEConstantNode(const ir::Instruction* inst, int64_t value) : SENode(inst), literal_value_(value) {}
+  explicit SEConstantNode(const ir::Instruction* inst, int64_t value)
+      : SENode(inst), literal_value_(value) {}
 
   SENodeType GetType() const final { return Constant; }
 
-  bool FoldToSingleValue(int64_t *value_to_return) const override {
+  bool FoldToSingleValue(int64_t* value_to_return) const override {
     *value_to_return = literal_value_;
     return true;
   }
+
  protected:
-    int64_t literal_value_;
+  int64_t literal_value_;
 };
 
 class SEPhiNode : public SENode {
@@ -149,22 +153,23 @@ class SEPhiNode : public SENode {
 
  private:
   // Each child node of this node will be the value parameters to the phi. This
-  // map maintains a list of the blocks the values came from to their child index.
+  // map maintains a list of the blocks the values came from to their child
+  // index.
   std::map<uint32_t, size_t> incoming_blocks_;
 };
 
 class SEAddNode : public SENode {
  public:
   explicit SEAddNode(const ir::Instruction* inst) : SENode(inst) {}
-  explicit SEAddNode(uint32_t unique_id): SENode(unique_id) {}
+  explicit SEAddNode(uint32_t unique_id) : SENode(unique_id) {}
   SENodeType GetType() const final { return Add; }
 
-  bool FoldToSingleValue(int64_t *value_to_return) const override {
+  bool FoldToSingleValue(int64_t* value_to_return) const override {
     int64_t val = 0;
 
     for (SENode* child : children_) {
       int64_t child_value = 0;
-      if(!child->FoldToSingleValue(&child_value)) {
+      if (!child->FoldToSingleValue(&child_value)) {
         return false;
       }
       val += child_value;
@@ -175,35 +180,28 @@ class SEAddNode : public SENode {
   }
 };
 
-
 class SENegative : public SENode {
-  public:
+ public:
+  explicit SENegative(uint32_t unique_id) : SENode(unique_id) {}
 
-  explicit SENegative(uint32_t unique_id):
-      SENode(unique_id) {}
-
-  bool FoldToSingleValue(int64_t *value_to_return) const override {
+  bool FoldToSingleValue(int64_t* value_to_return) const override {
     int64_t val = 0;
 
     SENode* child = children_[0];
 
-    if(!child->FoldToSingleValue(&val)) {
-        return false;
+    if (!child->FoldToSingleValue(&val)) {
+      return false;
     }
     *value_to_return = -val;
     return true;
   }
 
   SENodeType GetType() const final { return Negative; }
-
 };
 
-
 class SEUnknown : public SENode {
-  public:
-
-  explicit SEUnknown(const ir::Instruction* inst)
-      : SENode(inst) {}
+ public:
+  explicit SEUnknown(const ir::Instruction* inst) : SENode(inst) {}
 
   void SetParent(SENode* parent) final {
     SENode::SetParent(parent);
@@ -214,12 +212,10 @@ class SEUnknown : public SENode {
   SENodeType GetType() const final { return Unknown; }
 };
 
-
-
-
 class ScalarEvolutionAnalysis {
  public:
-  explicit ScalarEvolutionAnalysis(ir::IRContext* context) : context_(context) {}
+  explicit ScalarEvolutionAnalysis(ir::IRContext* context)
+      : context_(context) {}
 
   ~ScalarEvolutionAnalysis() {
     for (auto& pair : scalar_evolutions_) {
@@ -236,6 +232,8 @@ class ScalarEvolutionAnalysis {
   SENode* CreateNegation(SENode* operand);
 
   SENode* CreateAddNode(SENode* operand_1, SENode* operand_2);
+
+  SENode* CreateSubtraction(SENode* operand_1, SENode* operand_2);
 
   SENode* AnalyzeInstruction(const ir::Instruction* inst);
 

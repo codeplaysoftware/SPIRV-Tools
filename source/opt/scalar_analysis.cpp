@@ -24,7 +24,8 @@ SENode* ScalarEvolutionAnalysis::CreateNegation(SENode* operand) {
   return negation_node;
 }
 
-SENode* ScalarEvolutionAnalysis::CreateAddNode(SENode* operand_1, SENode* operand_2) {
+SENode* ScalarEvolutionAnalysis::CreateAddNode(SENode* operand_1,
+                                               SENode* operand_2) {
   SENode* add_node{new SEAddNode(context_->TakeNextUniqueId())};
   scalar_evolutions_[add_node->UniqueID()] = add_node;
 
@@ -32,6 +33,14 @@ SENode* ScalarEvolutionAnalysis::CreateAddNode(SENode* operand_1, SENode* operan
   add_node->AddChild(operand_2);
 
   return add_node;
+}
+
+// This should be modified to not modify the graph
+SENode* ScalarEvolutionAnalysis::CreateSubtraction(SENode* operand_1,
+                                               SENode* operand_2) {
+  SENode* negation_node = CreateNegation(operand_2);
+  SENode* addition_node = CreateAddNode(operand_1, negation_node);
+  return addition_node;
 }
 
 SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
@@ -144,5 +153,5 @@ bool ScalarEvolutionAnalysis::CanProveNotEqual(const SENode& source,
   return source_value != destination_value;
 }
 
-} // namespace opt
-} // namespace spvtools
+}  // namespace opt
+}  // namespace spvtools

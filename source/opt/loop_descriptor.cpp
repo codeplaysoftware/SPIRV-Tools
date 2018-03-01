@@ -142,6 +142,28 @@ int64_t Loop::GetResidualConditionValue(SpvOp condition, int64_t initial_value,
   return remainder;
 }
 
+ir::Instruction* Loop::GetConditionInst() const {
+  return &*--FindConditionBlock()->tail();
+}
+
+ir::Instruction* Loop::GetLowerBoundInst() const {
+  ir::Instruction* cond_inst = GetConditionInst();
+  opt::analysis::DefUseManager* def_use_manager = context_->get_def_use_mgr();
+
+  ir::Instruction* lower_bound =
+      def_use_manager->GetDef(cond_inst->GetSingleWordInOperand(0));
+  return lower_bound;
+}
+
+ir::Instruction* Loop::GetUpperBoundInst() const {
+  ir::Instruction* cond_inst = GetConditionInst();
+  opt::analysis::DefUseManager* def_use_manager = context_->get_def_use_mgr();
+
+  ir::Instruction* upper_bound =
+      def_use_manager->GetDef(cond_inst->GetSingleWordInOperand(1));
+  return upper_bound;
+  }
+
 // Extract the initial value from the |induction| OpPhi instruction and store it
 // in |value|. If the function couldn't find the initial value of |induction|
 // return false.
@@ -475,15 +497,14 @@ bool Loop::IsLCSSA() const {
       // All uses must be either:
       //  - In the loop;
       //  - In an exit block and in a phi instruction.
-      if (!def_use_mgr->WhileEachUser(
-              &insn,
-              [&exit_blocks, ir_context, this](ir::Instruction* use) -> bool {
-                BasicBlock* parent = ir_context->get_instr_block(use);
-                assert(parent && "Invalid analysis");
-                if (IsInsideLoop(parent)) return true;
-                if (use->opcode() != SpvOpPhi) return false;
-                return exit_blocks.count(parent->id());
-              }))
+      if (!def_use_mgr->WhileEachUser(&insn, [&exit_blocks, ir_context, this](
+                                                 ir::Instruction* use) -> bool {
+            BasicBlock* parent = ir_context->get_instr_block(use);
+            assert(parent && "Invalid analysis");
+            if (IsInsideLoop(parent)) return true;
+            if (use->opcode() != SpvOpPhi) return false;
+            return exit_blocks.count(parent->id());
+          }))
         return false;
     }
   }

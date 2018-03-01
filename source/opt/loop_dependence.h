@@ -25,6 +25,12 @@
 namespace spvtools {
 namespace opt {
 
+struct DVEntry {
+  enum { NONE = 0, LT = 1, EQ = 2, LE = 3, GT = 4, NE = 5, GE = 6, ALL = 7 };
+  unsigned char Direction : 3;
+  DVEntry() : Direction(ALL) {}
+};
+
 class LoopDependenceAnalysis {
  public:
   LoopDependenceAnalysis(ir::IRContext* context, const ir::Loop& loop)
@@ -46,6 +52,7 @@ class LoopDependenceAnalysis {
   std::map<const ir::Instruction*, std::vector<SENode*>>
       memory_access_to_indice_;
 
+  // Returns true if independence can be proven and false if it can't be proven
   bool ZIVTest(const SENode& source, const SENode& destination);
 
   bool SIVTest(SENode* source, SENode* destination);
@@ -56,25 +63,30 @@ class LoopDependenceAnalysis {
   //              < if distance > 0
   // direction =  = if distance = 0
   //              > if distance < 0
+  // Returns true if independence is proven and false if it can't be proven
   bool StrongSIVTest(SENode* source, SENode* destination);
 
   // Takes the form a1*i + c1, a2*i + c2
   // Where a1 and a2 are constant and different
+  // Returns true if independence is proven and false if it can't be proven
   bool WeakSIVTest();
 
   // Takes the form a1*i + c1, a2*i + c2
   // when a1 = 0
-  // i = (c2 - c1) / a2
+  // distance = (c2 - c1) / a2
+  // Returns true if independence is proven and false if it can't be proven
   bool WeakZeroSourceSIVTest();
 
   // Takes the form a1*i + c1, a2*i + c2
   // when a2 = 0
-  // i = (c2 - c1) / a1
+  // distance = (c2 - c1) / a1
+  // Returns true if independence is proven and false if it can't be proven
   bool WeakZeroDestinationSIVTest();
 
   // Takes the form a1*i + c1, a2*i + c2
   // When a1 = -a2
-  // i = (c2 - c1) / 2*a1
+  // distance = (c2 - c1) / 2*a1
+  // Returns true if independence is proven and false if it can't be proven
   bool WeakCrossingSIVTest();
 };
 

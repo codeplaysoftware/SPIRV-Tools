@@ -273,8 +273,6 @@ TEST(DependencyAnalysis, ZIV) {
   // Testing bounds checking
 
   ir::Loop loop = *ld.begin();
-  opt::analysis::DefUseManager* def_use_manager = context->get_def_use_mgr();
-  if (!def_use_manager) return;
 
   ir::Instruction* lower_bound = loop.GetLowerBoundInst();
   ir::Instruction* upper_bound = loop.GetUpperBoundInst();
@@ -285,19 +283,23 @@ TEST(DependencyAnalysis, ZIV) {
   opt::SENode* lower_SENode = scal_evo_analysis.AnalyzeInstruction(lower_bound);
   opt::SENode* upper_SENode = scal_evo_analysis.AnalyzeInstruction(upper_bound);
 
+  opt::SENode* delta_SENode =
+      scal_evo_analysis.CreateSubtraction(lower_SENode, upper_SENode);
+
   if (!lower_SENode) return;
   if (!upper_SENode) return;
+  if (!delta_SENode) return;
 
   int64_t lower_val = 0;
   int64_t upper_val = 0;
-  int64_t dis_val = 0;
+  int64_t delta_val = 0;
 
-  if (lower_SENode->FoldToSingleValue(&lower_val) &&
-      upper_SENode->FoldToSingleValue(&upper_val)) {
-    dis_val = upper_val - lower_val;
-    if (dis_val) return;
+  if (!lower_SENode->FoldToSingleValue(&lower_val) ||
+      !upper_SENode->FoldToSingleValue(&upper_val) ||
+      !delta_SENode->FoldToSingleValue(&delta_val)) {
+    return;
   }
-  
+
   // end of testing bounds checking
 
   for (int i = 0; i < 4; ++i) {
