@@ -18,6 +18,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ir_builder.h"
 #include "ir_context.h"
 #include "loop_descriptor.h"
 #include "loop_utils.h"
@@ -33,7 +34,8 @@ class LoopPeeling {
   LoopPeeling(LoopUtils* loop_utils)
       : context_(loop_utils->GetContext()),
         loop_(loop_utils->GetLoop()),
-        loop_utils_(loop_utils) {}
+        loop_utils_(loop_utils),
+        extra_iv_(nullptr) {}
 
   void DuplicateLoop() {
     ir::CFG& cfg = *context_->cfg();
@@ -51,8 +53,7 @@ class LoopPeeling {
 
     loop_->ComputeLoopStructuredOrder(&ordered_loop_blocks);
 
-    new_loop_ =
-        loop_utils_->CloneLoop(&clone_results, ordered_loop_blocks);
+    new_loop_ = loop_utils_->CloneLoop(&clone_results, ordered_loop_blocks);
 
     // FIXME: fix the cfg.
     // FIXME: fix the dominator tree
@@ -80,7 +81,46 @@ class LoopPeeling {
           *succ = loop_->GetHeaderBlock()->id();
       });
     }
+
+    ConnectIterators(clone_results);
   }
+
+  // Insert an induction variable into the first loop as a simplified counter.
+  void InsertIterator(ir::Instruction* factor) {
+    analysis::Type* factor_type =
+        context_->get_type_mgr()->GetType(factor->type_id());
+    assert(factor_type->kind() == analysis::Type::kInteger);
+    analysis::Integer* int_type = factor_type->AsInteger();
+    assert(int_type->width() == 32);
+
+    InstructionBuilder builder(context_, &*GetBeforeLoop()->GetLatchBlock(),
+                               ir::IRContext::kAnalysisDefUse |
+                                   ir::IRContext::kAnalysisInstrToBlockMapping);
+    // Create the increment.
+    // Note that "factor->result_id()" is wrong, the proper id should the phi
+    // value but we don't have it yet. The operand will be set latter, leave
+    // "factor->result_id()" so that the id is a valid and so avoid any assert
+    // that's could be added.
+    ir::Instruction* iv_inc = builder.AddIAdd(
+        factor->type_id(), factor->result_id(),
+        builder.Add32BitConstantInteger<uint32_t>(1, int_type->IsSigned())
+            ->result_id());
+
+    builder.SetInsertPoint(&*GetBeforeLoop()->GetHeaderBlock()->begin());
+
+    extra_iv_ = builder.AddPhi(
+        factor->type_id(),
+        {builder.Add32BitConstantInteger<uint32_t>(0, int_type->IsSigned())
+             ->result_id(),
+         GetBeforeLoop()->GetPreHeaderBlock()->id(), iv_inc->result_id(),
+         GetBeforeLoop()->GetLatchBlock()->id()});
+    // Connect everything.
+    iv_inc->SetInOperand(0, {extra_iv_->result_id()});
+  }
+
+  ir::Loop* GetBeforeLoop() { return new_loop_; }
+  ir::Loop* GetAfterLoop() { return loop_; }
+  ir::Instruction* GetExtraInductionVariable() { return extra_iv_; }
 
  private:
   ir::IRContext* context_;
@@ -89,6 +129,8 @@ class LoopPeeling {
   // Peeled loop.
   ir::Loop* new_loop_;
   LoopUtils* loop_utils_;
+
+  ir::Instruction* extra_iv_;
 
   // Connects iterating values so that loop like
   // int z = 0;
@@ -111,9 +153,11 @@ class LoopPeeling {
   // }
   //
   // That basically means taking as initializer for the second loops iterators
-  // the phi nodes or the value involved into the exit condition of the first loop.
+  // the phi nodes or the value involved into the exit condition of the first
+  // loop.
   // We have 3 main cases:
-  // - The iterator also escape the loop (the last value is used outside the loop), because the loop is LCSSA, its only use is in the merge block;
+  // - The iterator also escape the loop (the last value is used outside the
+  // loop), because the loop is LCSSA, its only use is in the merge block;
   // - The iterator is used in the exit condition;
   // - The iterator is not used in the exit condition.
   void ConnectIterators(const LoopUtils::LoopCloningResult& clone_results) {
@@ -145,14 +189,80 @@ class LoopPeeling {
 
 }  // namespace
 
-void LoopUtils::PeelBefore(size_t /*factor*/) {
+void LoopUtils::PeelBefore(ir::Instruction* factor) {
+  ir::CFG& cfg = *context_->cfg();
   LoopPeeling loop_peeler(this);
   loop_peeler.DuplicateLoop();
+
+  loop_peeler.InsertIterator(factor);
+  ir::Instruction* iv = loop_peeler.GetExtraInductionVariable();
+
+  uint32_t condition_block_id = 0;
+  for (uint32_t id :
+       cfg.preds(loop_peeler.GetAfterLoop()->GetHeaderBlock()->id())) {
+    if (loop_peeler.GetAfterLoop()->IsInsideLoop(id)) {
+      condition_block_id = id;
+    }
+  }
+  assert(condition_block_id != 0 && "2nd loop in improperly connected");
+
+  analysis::Type* factor_type =
+    context_->get_type_mgr()->GetType(factor->type_id());
+  assert(factor_type->kind() == analysis::Type::kInteger);
+  analysis::Integer* int_type = factor_type->AsInteger();
+
+  ir::BasicBlock* condition_block = cfg.block(condition_block_id);
+  assert(condition_block->terminator()->opcode() == SpvOpBranchConditional);
+  InstructionBuilder builder(context_, &*condition_block->tail(),
+                             ir::IRContext::kAnalysisDefUse |
+                                 ir::IRContext::kAnalysisInstrToBlockMapping);
+  // check that stuff branch accordingly to the check.
+  // Build the following check: iv < factor
+  condition_block->terminator()->SetInOperand(
+      0, {builder.AddLessThan(int_type, iv->result_id(), factor->result_id())
+              ->result_id()});
 }
 
-void LoopUtils::PeelAfter(size_t /*factor*/) {
-// Fixme: add assertion for legality.
+void LoopUtils::PeelAfter(ir::Instruction* factor,
+                          ir::Instruction* iteration_count) {
+  ir::CFG& cfg = *context_->cfg();
+  LoopPeeling loop_peeler(this);
+  loop_peeler.DuplicateLoop();
 
+  loop_peeler.InsertIterator(factor);
+  ir::Instruction* iv = loop_peeler.GetExtraInductionVariable();
+
+  uint32_t condition_block_id = 0;
+  for (uint32_t id :
+       cfg.preds(loop_peeler.GetAfterLoop()->GetHeaderBlock()->id())) {
+    if (loop_peeler.GetAfterLoop()->IsInsideLoop(id)) {
+      condition_block_id = id;
+    }
+  }
+  assert(condition_block_id != 0 && "2nd loop in improperly connected");
+
+  analysis::Type* factor_type =
+    context_->get_type_mgr()->GetType(factor->type_id());
+  assert(factor_type->kind() == analysis::Type::kInteger);
+  analysis::Integer* int_type = factor_type->AsInteger();
+
+  ir::BasicBlock* condition_block = cfg.block(condition_block_id);
+  assert(condition_block->terminator()->opcode() == SpvOpBranchConditional);
+  InstructionBuilder builder(context_, &*condition_block->tail(),
+                             ir::IRContext::kAnalysisDefUse |
+                                 ir::IRContext::kAnalysisInstrToBlockMapping);
+  // Check that stuff branch accordingly to the check.
+  // Build the following check: iv + factor < iteration_count (do the add to
+  // avoid any issues with unsigned)
+  condition_block->terminator()->SetInOperand(
+      0,
+      {builder
+           .AddLessThan(int_type, builder
+                                      .AddIAdd(iv->type_id(), iv->result_id(),
+                                               factor->result_id())
+                                      ->result_id(),
+                        iteration_count->result_id())
+           ->result_id()});
 }
 
 }  // namespace opt

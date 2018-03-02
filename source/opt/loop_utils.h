@@ -127,11 +127,11 @@ class LoopUtils {
 
   // Moves the execution of the |factor| first iterations of the loop into a
   // dedicated loop.
-  void PeelBefore(size_t factor);
+  void PeelBefore(ir::Instruction* factor);
 
   // Moves the execution of the |factor| last iterations of the loop into a
   // dedicated loop.
-  void PeelAfter(size_t factor);
+  void PeelAfter(ir::Instruction* factor, ir::Instruction* iteration_count);
 
   // Returns the context associate to |loop_|.
   ir::IRContext* GetContext() { return context_; }
