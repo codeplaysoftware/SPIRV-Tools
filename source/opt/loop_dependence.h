@@ -75,19 +75,37 @@ class LoopDependenceAnalysis {
   // when a1 = 0
   // distance = (c2 - c1) / a2
   // Returns true if independence is proven and false if it can't be proven
-  bool WeakZeroSourceSIVTest();
+  bool WeakZeroSourceSIVTest(SENode* source, SENode* destination,
+                             SENode* coefficient, DVentry dv_entry);
 
   // Takes the form a1*i + c1, a2*i + c2
   // when a2 = 0
   // distance = (c2 - c1) / a1
   // Returns true if independence is proven and false if it can't be proven
-  bool WeakZeroDestinationSIVTest();
+  bool WeakZeroDestinationSIVTest(SENode* source, SENode* destination,
+                                  SENode* coefficient, DVentry dv_entry);
 
   // Takes the form a1*i + c1, a2*i + c2
   // When a1 = -a2
   // distance = (c2 - c1) / 2*a1
   // Returns true if independence is proven and false if it can't be proven
-  bool WeakCrossingSIVTest();
+  bool WeakCrossingSIVTest(SENode* source, SENode* destination,
+                           SENode* coefficient, DVentry dv_entry);
+
+  // Finds the lower bound of the loop as an SENode* and stores it in
+  // |lower_bound|
+  // Returns true if successful
+  bool GetLowerBound(SENode** lower_bound);
+
+  // Finds the upper bound of the loop as an SENode* and stores it in
+  // |upper_bound|
+  // Returns true if successful
+  bool GetUpperBound(SENode** upper_bound);
+
+  // Finds the lower and upper bounds of the loop as SENode* and stores them in
+  // |lower_bound| and |upper_bound| respectively
+  // Returns true is successful
+  bool GetLoopBounds(SENode** lower_bound, SENode** upper_bound)
 };
 
 }  // namespace ir

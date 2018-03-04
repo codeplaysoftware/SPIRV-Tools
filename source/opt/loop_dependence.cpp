@@ -83,19 +83,19 @@ void LoopDependenceAnalysis::DumpIterationSpaceAsDot(std::ostream& out_stream) {
 
 bool LoopDependenceAnalysis::ZIVTest(const SENode& source,
                                      const SENode& destination) {
-  // If we can prove not equal then we have prove independence.
-  if (scalar_evolution_.CanProveNotEqual(source, destination)) {
-    return true;
-  }
-
-  // If source can be proven to equal destination then we have proved
-  // dependence.
-  if (scalar_evolution_.CanProveEqual(source, destination)) {
+  int64_t source_value = 0;
+  int64_t destintion_value = 0;
+  // Fold the nodes to a single value. If we can't fold both of the nodes then
+  // we can not prove independence.
+  if (source.FoldToSingleValue(&source_value)) {
     return false;
   }
-
-  // Otherwise, we must assume they are dependent.
-  return false;
+  if (destination.FoldToSingleValue(&destination_value)) {
+    return false;
+  }
+  // If we can prove that the source and destination are not equal values
+  // we prove independence
+  return source_value == destination_value;
 }
 
 bool LoopDependenceAnalysis::SIVTest(SENode* source, SENode* destination,
@@ -134,43 +134,44 @@ bool LoopDependenceAnalysis::SIVTest(SENode* source, SENode* destination,
 //              > if distance < 0
 
 bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
-                                           int64_t coefficient,
+                                           SENode* coefficient,
                                            DVentry dv_entry) {
+  // Build an SENode for distance
+  SENode* src_const = source->GetConstant();
+  SENode* dest_const = destination->GetConstant();
+
   ScalarEvolutionAnalysis scal_evo_analysis = ScalarEvolutionAnalysis(context_);
+
+  SENode* delta = scal_evo_analysis.CreateNegation(src_const, dest_const);
+  SENode* distance = scal_evo_analysis.CreateDivision(delta, coefficient);
+
+  SENode* lower_bound = nullptr;
+  SENode* upper_bound = nullptr;
+  if (!GetLoopBounds(&lower_bound, &upper_bound)) {
+    return false;
+  }
+
+  // If delta < upper_bound
+  if ()
+
+
+
+
+
+
+
+
 
   // First we must collect some data for use in the pass
   // The loop bounds
   // The distance between the load and store (delta)
 
-  // Get the loop bounds as upper_bound - lower_bound
-  SENode* lower_SENode =
-      scal_evo_analysis.AnalyzeInstruction(loop_.GetLowerBoundInst());
-  SENode* upper_SENode =
-      scal_evo_analysis.AnalyzeInstruction(loop_.GetupperBoundInst());
 
-  // Find the absolute value of the bounds.
-  int64_t lower_bound_value = 0;
-  int64_t upper_bound_value = 0;
-  if (!lower_SENode->FoldToSingleValue(lower_bound_value) ||
-      !upper_SENode->FoldToSingleValue(upper_bound_value)) {
-    // We can't get the bounds of the loop, so return false
-    // This will be different when we deal with symbolics
+  int64_t delta = 0;
+  if (!GetDelta(source, destination, &delta)) {
+    // We couldn't find delta so return false
     return false;
   }
-  int64_t bound_value = upper_bound_value - lower_bound_value;
-
-  // Get |Delta| as |(c1 - c2)|
-  int64_t src_const = 0;
-  int64_t dest_const = 0;
-  if (!source->GetConstantValue(src_const) ||
-      !destination->GetConstantValue(dest_const)) {
-    // We can't get the constant terms required to calculate delta, so return
-    // false.
-    // This will be different when we deal with symbolics
-    return false;
-  }
-
-  int64_t delta = src_const - dest_const;
 
   // Now we have all the required information we need we can perform tests
 
@@ -224,17 +225,184 @@ bool LoopDependenceAnalysis::WeakSIVTest() { return false; }
 // Takes the form a1*i + c1, a2*i + c2
 // when a1 = 0
 // i = (c2 - c1) / a2
-bool LoopDependenceAnalysis::WeakZeroSourceSIVTest() { return false; }
+bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(SENode* source,
+                                                   SENode* destination,
+                                                   SENode* coefficient,
+                                                   DVentry dv_entry) {
+  // Build an SENode for i
+  SENode* src_const = source->GetConstant();
+  SENode* dest_const = destination->GetConstant();
+
+  ScalarEvolutionAnalysis scal_evo_analysis = ScalarEvolutionAnalysis(context_);
+
+  SENode* const_sub = scal_evo_analysis.CreateNegation(src_const, dest_const);
+  SENode* i = scal_evo_analysis.CreateDivision(const_sub, coefficient);
+
+  // If i is not an integer, there is no dependence
+  if (!i->isIntegral()) {
+
+  }
+
+  SENode* upper_bound = nullptr;
+  if (!GetUpperBound(&upper_bound)) {
+    return false;
+  }
+
+  // If i < 0 or > upper_bound, there is no dependence
+  if (i->LessThan(0) || i->GreaterThan(upper_bound)) {
+
+  }
+
+  // If i = 0, the direction is <= and peeling the 1st iteration will break the
+  // dependence
+  if (i->IsZero()) {
+
+  }
+
+  // If i = upper_bound, the dependence is >= and ppeling the last iteration
+  // will break the dependence
+  if (i->IsEqual(upper_bound)) {
+
+  }
+
+  // Otherwise we can't prove an independence or dependence direction so assume
+  // <=>
+  return false;
+}
 
 // Takes the form a1*i + c1, a2*i + c2
 // when a2 = 0
 // i = (c2 - c1) / a1
-bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest() { return false; }
+bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(SENode* source,
+                                                        SENode* destination,
+                                                        SENode* coefficient,
+                                                        DVentry dv_entry) {
+  // Build an SENode for i
+  SENode* src_const = source->GetConstant();
+  SENode* dest_const = destination->GetConstant();
+
+  ScalarEvolutionAnalysis scal_evo_analysis = ScalarEvolutionAnalysis(context_);
+
+  SENode* const_sub = scal_evo_analysis.CreateNegation(dest_const, src_const);
+  SENode* i = scal_evo_analysis.CreateDivision(const_sub, coefficient);
+
+  // If i is not an integer, there is no dependence
+  if (!i->IsIntegral()) {
+    return true;
+  }
+
+  SENode* upper_bound = nullptr;
+  if (!GetUpperBound(&upper_bound)) {
+    return false;
+  }
+
+  // If i < 0 or > upper_bound, there is no dependence
+  if (i->LessThan(0) || i->GreaterThan(upper_bound)) {
+
+  }
+
+  // If i == 0, the direction is <= and peeling the first iteration will break
+  // the dependence
+  if (i->IsZero()) {
+
+  }
+
+  // If i == upper_bound, the direction is >= and peeling the last iteration
+  // will break the dependence
+  if (i->IsEqual(upper_bound));
+
+  // Otherwise we can't prove an independence or dependence direction so assume
+  // <=>
+  return false;
+}
 
 // Takes the form a1*i + c1, a2*i + c2
 // When a1 = -a2
 // i = (c2 - c1) / 2*a1
-bool LoopDependenceAnalysis::WeakCrossingSIVTest() { return false; }
+bool LoopDependenceAnalysis::WeakCrossingSIVTest(SENode* source,
+                                                 SENode* destination,
+                                                 SENode* coefficient,
+                                                 DVentry dv_entry) {
+  SENode* src_const = source->GetConstant();
+  SENode* dest_const = destination->GetConstant();
+
+  ScalarEvolutionAnalysis scal_evo_analysis = ScalarEvolutionAnalysis(context_);
+
+  SENode* const_sub = scal_evo_analysis.CreateNegation(dest_const, src_const);
+  SENode* const_2 = scal_evo_analysis.CreateConstant(2);
+  SENode* mult_coeff =
+      scal_evo_analysis.CreateMultiplication(const_2, coefficient);
+  SENode* i = scal_evo_analysis.CreateDivision(const_sub, mult_coeff);
+
+  // If i = 0, there is a dependence of distance 0
+  if (i->IsZero()) {
+  }
+
+  // If i < 0, there is no dependence
+  if (i->LessThan(0)) {
+  }
+
+  SENode* upper_bound = nullptr;
+  if (!GetUpperBound(&upper_bound)) {
+    return false;
+  }
+
+  // If i > upper_bound, there is no dependence
+  if (i->GreaterThan(upper_bound)) {
+  }
+
+  // If i == upper_bound, there is a dependence with distance = 0
+  if (i->IsEqual(upper_bound)) {
+  }
+}
+
+bool LoopDependenceAnalysis::GetLowerBound(SENode** lower_bound) {
+  ir::Instruction* lower_bound_inst = loop_.GetLowerBoundInst();
+  if (!lower_bound_inst) {
+    return false;
+  }
+
+  ScalarEvolutionAnalysis scal_evo_analysis = ScalarEvolutionAnalysis(context_);
+
+  SENode* lower_SENode =
+      scal_evo_analysis.AnalyzeInstruction(loop_.GetLowerBoundInst());
+  if (!lower_SENode) {
+    return false;
+  }
+  *lower_bound = lower_SENode;
+  return true;
+}
+
+bool LoopDependenceAnalysis::GetUpperBound(SENode** upper_bound) {
+  ir::Instruction* upper_bound_inst = loop_.GetUpperBoundInst();
+  if (!upper_bound_inst) {
+    return false;
+  }
+
+  ScalarEvolutionAnalysis scal_evo_analysis = ScalarEvolutionAnalysis(context_);
+
+  SENode* upper_SENode =
+      scal_evo_analysis.AnalyzeInstruction(loop_.GetUpperBoundInst());
+  if (!upper_SENode) {
+    return false;
+  }
+  *upper_bound = upper_SENode;
+  return true;
+}
+
+bool LoopDependenceAnalysis::GetLoopBounds(SENode** lower_bound,
+                                           SENode** upper_bound) {
+  SENode* lower_bound_SENode = nullptr;
+  SENode* upper_bound_SENode = nullptr;
+  if (!GetLowerBound(&lower_bound_SENode) ||
+      !GetUpperBound(&upper_bound_SENode)) {
+    return false;
+  }
+
+  *lower_bound = lower_bound_node;
+  *upper_bound = upper_bound_node;
+  return true;
+}
 
 }  // namespace opt
 }  // namespace spvtools
