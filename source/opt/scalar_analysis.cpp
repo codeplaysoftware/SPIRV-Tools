@@ -24,7 +24,8 @@ SENode* ScalarEvolutionAnalysis::CreateNegation(SENode* operand) {
   return negation_node;
 }
 
-SENode* ScalarEvolutionAnalysis::CreateAddNode(SENode* operand_1, SENode* operand_2) {
+SENode* ScalarEvolutionAnalysis::CreateAddNode(SENode* operand_1,
+                                               SENode* operand_2) {
   SENode* add_node{new SEAddNode(context_->TakeNextUniqueId())};
   scalar_evolutions_[add_node->UniqueID()] = add_node;
 
@@ -51,6 +52,10 @@ SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
     }
     case SpvOp::SpvOpIAdd: {
       output = AnalyzeAddOp(inst);
+      break;
+    }
+    case SpvOp::SpvOpLoad: {
+      output = AnalyzeLoadOp(inst);
       break;
     }
     default: {
@@ -98,51 +103,75 @@ SENode* ScalarEvolutionAnalysis::AnalyzeAddOp(const ir::Instruction* add) {
 SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     const ir::Instruction* phi) {
   SEPhiNode* phi_node{new SEPhiNode(phi)};
+
   scalar_evolutions_[phi->unique_id()] = phi_node;
 
   opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
+
+  ir::BasicBlock* basic_block =
+      context_->get_instr_block(const_cast<ir::Instruction*>(phi));
+
+  ir::Function* function = basic_block->GetParent();
+
+  ir::Loop* loop = (*context_->GetLoopDescriptor(function))[basic_block->id()];
 
   for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
     uint32_t value_id = phi->GetSingleWordInOperand(i);
     uint32_t incoming_label_id = phi->GetSingleWordInOperand(i + 1);
 
     ir::Instruction* value_inst = def_use->GetDef(value_id);
+    SENode* value_node = AnalyzeInstruction(value_inst);
 
-    phi_node->AddChild(AnalyzeInstruction(value_inst), incoming_label_id);
+    if (incoming_label_id == loop->GetPreHeaderBlock()->id()) {
+      phi_node->AddTripCount(value_node);
+    } else if (incoming_label_id == loop->GetLatchBlock()->id()) {
+      phi_node->AddInitalizer(value_node);
+    }
   }
 
   return phi_node;
 }
 
+SENode* ScalarEvolutionAnalysis::AnalyzeLoadOp(const ir::Instruction* load) {
+ SELoad* load_node{new SELoad(load)};
+ scalar_evolutions_[load->unique_id()] = load_node;
+ return load_node;
+}
+
 bool ScalarEvolutionAnalysis::CanProveEqual(const SENode& source,
                                             const SENode& destination) {
-  int64_t source_value = 0;
-  if (!source.FoldToSingleValue(&source_value)) {
-    return false;
-  }
-
-  int64_t destination_value = 0;
-  if (!destination.FoldToSingleValue(&destination_value)) {
-    return false;
-  }
-
-  return source_value == destination_value;
+  return source == destination;
 }
 
 bool ScalarEvolutionAnalysis::CanProveNotEqual(const SENode& source,
                                                const SENode& destination) {
-  int64_t source_value = 0;
-  if (!source.FoldToSingleValue(&source_value)) {
-    return false;
-  }
-
-  int64_t destination_value = 0;
-  if (!destination.FoldToSingleValue(&destination_value)) {
-    return false;
-  }
-
-  return source_value != destination_value;
+  return source != destination;  
 }
 
-} // namespace opt
-} // namespace spvtools
+int64_t SEMultiplyNode::FoldToSingleValue() const {
+  int64_t val = 0;
+  for (SENode* child : children_) {
+    val *= child->FoldToSingleValue();
+  }
+  return val;
+}
+
+
+int64_t SEDivideNode::FoldToSingleValue() const {
+  int64_t val = 0;
+  for (SENode* child : children_) {
+    val /= child->FoldToSingleValue();
+  }
+  return val;
+}
+
+int64_t SEAddNode::FoldToSingleValue() const {
+  int64_t val = 0;
+  for (SENode* child : children_) {
+    val += child->FoldToSingleValue();
+  }
+  return val;
+}
+
+}  // namespace opt
+}  // namespace spvtools
