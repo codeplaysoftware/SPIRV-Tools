@@ -37,10 +37,71 @@ class LoopPeeling {
         loop_utils_(loop_utils),
         extra_iv_(nullptr) {}
 
+  // Returns true if the loop can be peeled.
+  // To be peelable, all operation involved in the update of the loop iterators
+  // must not dominates the exit condition. This restriction is a work around to
+  // not miss compile code like:
+  //
+  //   for (int i = 0; i + 1 < N; i++) {}
+  //   for (int i = 0; ++i < N; i++) {}
+  //
+  // The increment will happen before the test on the exit condition leading to
+  // very look-a-like code.
+  //
+  // This restriction will not apply if a loop rotate is applied before (i.e.
+  // becomes a do-while loop).
+  bool CanPeelLoop() {
+    ir::CFG& cfg = *context_->cfg();
+
+    if (!loop_->GetMergeBlock()) {
+      return false;
+    }
+    if (cfg.preds(loop_->GetMergeBlock()->id()).size() > 1) {
+      return false;
+    }
+
+    uint32_t condition_block_id = 0;
+    for (uint32_t id : cfg.preds(loop_->GetHeaderBlock()->id())) {
+      if (loop_->IsInsideLoop(id)) {
+        condition_block_id = id;
+      }
+    }
+    DominatorTree* dom_tree =
+        &context_->GetDominatorAnalysis(loop_utils_->GetFunction(), cfg)
+             ->GetDomTree();
+    ir::BasicBlock* condition_block = cfg.block(condition_block_id);
+
+    return loop_->GetHeaderBlock()->WhileEachPhiInst(
+        [dom_tree, condition_block, this](ir::Instruction* phi) {
+          std::unordered_set<ir::Instruction*> operations;
+          GetIteratorUpdateOperations(loop_, phi, &operations);
+          uint32_t iv_inc = 0;
+          for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
+            if (loop_->IsInsideLoop(phi->GetSingleWordInOperand(i + 1))) {
+              iv_inc = phi->GetSingleWordInOperand(i);
+            }
+          }
+
+          for (ir::Instruction* insn : operations) {
+            if (insn == phi || insn->result_id() == iv_inc) {
+              continue;
+            }
+            if (dom_tree->Dominates(context_->get_instr_block(insn),
+                                    condition_block))
+              return false;
+          }
+
+          return true;
+        });
+  }
+
+  // Duplicate |loop_| and place the new loop before the cloned loop.
+  // |loop_| must be in LCSSA form and have a merge block with a using
+  // incoming
+  // branch (i.e. must not contain a break).
   void DuplicateLoop() {
     ir::CFG& cfg = *context_->cfg();
 
-    // Fixme: add assertion for legality.
     assert(loop_->GetMergeBlock());
     assert(loop_->IsLCSSA());
     assert(cfg.preds(loop_->GetMergeBlock()->id()).size() > 1 &&
@@ -55,9 +116,6 @@ class LoopPeeling {
 
     new_loop_ = loop_utils_->CloneLoop(&clone_results, ordered_loop_blocks);
 
-    // FIXME: fix the cfg.
-    // FIXME: fix the dominator tree
-
     // Add the basic block to the function.
     ir::Function::iterator it =
         loop_utils_->GetFunction()->FindBlock(pre_header->id());
@@ -68,24 +126,34 @@ class LoopPeeling {
     ir::BasicBlock* clonedHeader = new_loop_->GetHeaderBlock();
     pre_header->ForEachSuccessorLabel(
         [clonedHeader](uint32_t* succ) { *succ = clonedHeader->id(); });
+    // Update cfg.
+    cfg.RemoveEdge(pre_header->id(), loop_->GetHeaderBlock()->id());
 
     // When cloning the loop, we didn't cloned the merge block, so currently
     // |new_loop| shares the same block as |loop_|.
     // We mutate all branches form |new_loop| block to |loop_|'s merge into a
     // branch to |loop_|'s header (so header will also be the merge of
     // |new_loop|).
+    std::vector<uint32_t> new_preds;
     for (uint32_t pred_id : cfg.preds(loop_->GetMergeBlock()->id())) {
       ir::BasicBlock* bb = clone_results.old_to_new_bb_[pred_id];
+      new_preds.push_back(bb->id());
       bb->ForEachSuccessorLabel([this](uint32_t* succ) {
         if (*succ == loop_->GetMergeBlock()->id())
           *succ = loop_->GetHeaderBlock()->id();
       });
+    }
+    // Update cfg.
+    cfg.RemoveNonExistingEdges(loop_->GetMergeBlock()->id());
+    for (uint32_t pred_id : new_preds) {
+      cfg.AddEdge(pred_id, loop_->GetHeaderBlock()->id());
     }
 
     ConnectIterators(clone_results);
   }
 
   // Insert an induction variable into the first loop as a simplified counter.
+  // Fixme(Victor): with a scalar evolution, this can removed.
   void InsertIterator(ir::Instruction* factor) {
     analysis::Type* factor_type =
         context_->get_type_mgr()->GetType(factor->type_id());
@@ -151,38 +219,38 @@ class LoopPeeling {
   //   if (cond)
   //     z += cst2;
   // }
-  //
-  // That basically means taking as initializer for the second loops iterators
-  // the phi nodes or the value involved into the exit condition of the first
-  // loop.
-  // We have 3 main cases:
-  // - The iterator also escape the loop (the last value is used outside the
-  // loop), because the loop is LCSSA, its only use is in the merge block;
-  // - The iterator is used in the exit condition;
-  // - The iterator is not used in the exit condition.
   void ConnectIterators(const LoopUtils::LoopCloningResult& clone_results) {
-    // std::unordered_map<uint32_t, uint32_t> phi_to_init;
-    // ir::BasicBlock* merge = loop_->GetMergeBlock();
-    // analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
-
-    // merge->ForEachPhiInst([&clone_results, &phi_to_init, def_use_mgr,
-    // &clone_results, this](Instruction* phi) {
-    //     uint32_t value_id = phi->GetSingleWordInOperand(i);
-    //     ir::Instruction* value = def_use_mgr->GetDef(value_id);
-    //     if (context_->get_instr_block(value) == loop_->GetMergeBlock()) {
-    //       phi_to_init[value->id()] = clone_results.value_map_[value->id()];
-    //     }
-    //   });
     ir::BasicBlock* header = loop_->GetHeaderBlock();
     header->ForEachPhiInst([&clone_results, this](ir::Instruction* phi) {
       for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
         uint32_t pred_id = phi->GetSingleWordInOperand(i + 1);
         if (!loop_->IsInsideLoop(pred_id)) {
-          // FIXME: temporary measure ...
           phi->SetInOperand(
               i, {clone_results.value_map_.at(phi->GetSingleWordInOperand(i))});
         }
       }
+    });
+  }
+
+  // Gathers all operations involved in the update of |iterator| into
+  // |operations|.
+  void GetIteratorUpdateOperations(
+      const ir::Loop* loop, ir::Instruction* iterator,
+      std::unordered_set<ir::Instruction*>* operations) {
+    opt::analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
+    operations->insert(iterator);
+    iterator->ForEachInId([def_use_mgr, loop, operations, this](uint32_t* id) {
+      ir::Instruction* insn = def_use_mgr->GetDef(*id);
+      if (insn->opcode() == SpvOpLabel) {
+        return;
+      }
+      if (operations->count(insn)) {
+        return;
+      }
+      if (!loop->IsInsideLoop(insn)) {
+        return;
+      }
+      GetIteratorUpdateOperations(loop, insn, operations);
     });
   }
 };
@@ -207,7 +275,7 @@ void LoopUtils::PeelBefore(ir::Instruction* factor) {
   assert(condition_block_id != 0 && "2nd loop in improperly connected");
 
   analysis::Type* factor_type =
-    context_->get_type_mgr()->GetType(factor->type_id());
+      context_->get_type_mgr()->GetType(factor->type_id());
   assert(factor_type->kind() == analysis::Type::kInteger);
   analysis::Integer* int_type = factor_type->AsInteger();
 
@@ -242,7 +310,7 @@ void LoopUtils::PeelAfter(ir::Instruction* factor,
   assert(condition_block_id != 0 && "2nd loop in improperly connected");
 
   analysis::Type* factor_type =
-    context_->get_type_mgr()->GetType(factor->type_id());
+      context_->get_type_mgr()->GetType(factor->type_id());
   assert(factor_type->kind() == analysis::Type::kInteger);
   analysis::Integer* int_type = factor_type->AsInteger();
 
@@ -255,14 +323,14 @@ void LoopUtils::PeelAfter(ir::Instruction* factor,
   // Build the following check: iv + factor < iteration_count (do the add to
   // avoid any issues with unsigned)
   condition_block->terminator()->SetInOperand(
-      0,
-      {builder
-           .AddLessThan(int_type, builder
-                                      .AddIAdd(iv->type_id(), iv->result_id(),
-                                               factor->result_id())
-                                      ->result_id(),
-                        iteration_count->result_id())
-           ->result_id()});
+      0, {builder
+              .AddLessThan(int_type,
+                           builder
+                               .AddIAdd(iv->type_id(), iv->result_id(),
+                                        factor->result_id())
+                               ->result_id(),
+                           iteration_count->result_id())
+              ->result_id()});
 }
 
 }  // namespace opt

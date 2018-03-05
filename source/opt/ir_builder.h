@@ -197,14 +197,14 @@ class InstructionBuilder {
     return AddInstruction(std::move(inst));
   }
 
-  // Creates an OpILessThan or OpULessThen instruction depending on the signed of |type|.
-  // The |type| is the type of the instruction.
-  // The id |op1| is the left hand side of the operation.
-  // The id |op2| is the right hand side of the operation.
-  // It is assumed that |type| represents the type of both operand as well.
-  ir::Instruction* AddLessThan(analysis::Integer* type, uint32_t op1, uint32_t op2) {
-    uint32_t type_id =
-      GetContext()->get_type_mgr()->GetTypeInstruction(type);
+  // Creates an OpILessThan or OpULessThen instruction depending on the signed
+  // of |type|. The |type| is the type of the instruction. The id |op1| is the
+  // left hand side of the operation. The id |op2| is the right hand side of the
+  // operation. It is assumed that |type| represents the type of both operand as
+  // well.
+  ir::Instruction* AddLessThan(analysis::Integer* type, uint32_t op1,
+                               uint32_t op2) {
+    uint32_t type_id = GetContext()->get_type_mgr()->GetTypeInstruction(type);
     if (type->IsSigned())
       return AddSLessThan(type_id, op1, op2);
     else
