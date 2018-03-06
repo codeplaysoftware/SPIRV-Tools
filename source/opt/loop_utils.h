@@ -87,11 +87,14 @@ class LoopUtils {
 
   // Clone |loop_| and remap its instructions. Newly created blocks
   // will be added to the |cloning_result.cloned_bb_| list, correctly ordered to
-  // be inserted into a function. If the loop is structured, the merge construct
-  // will also be cloned. The function preserves the def/use, cfg and instr to
-  // block analyses.
+  // be inserted into a function.
+  // It is assumed that |ordered_loop_blocks| is compatible with the result of
+  // |Loop::ComputeLoopStructuredOrder|. If the preheader and merge block are in
+  // the list they will also be cloned. If not, the resulting loop will share
+  // them with the original loop.
+  // The function preserves the def/use, cfg and instr to block analyses.
   // The cloned loop nest will be added to the loop descriptor and will have
-  // owner ship.
+  // ownership.
   ir::Loop* CloneLoop(
       LoopCloningResult* cloning_result,
       const std::vector<ir::BasicBlock*>& ordered_loop_blocks) const;
@@ -124,14 +127,6 @@ class LoopUtils {
   // Maintains the loop descriptor object after the unroll functions have been
   // called, otherwise the analysis should be invalidated.
   void Finalize();
-
-  // Moves the execution of the |factor| first iterations of the loop into a
-  // dedicated loop.
-  void PeelBefore(ir::Instruction* factor);
-
-  // Moves the execution of the |factor| last iterations of the loop into a
-  // dedicated loop.
-  void PeelAfter(ir::Instruction* factor, ir::Instruction* iteration_count);
 
   // Returns the context associate to |loop_|.
   ir::IRContext* GetContext() { return context_; }

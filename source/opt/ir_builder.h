@@ -177,7 +177,9 @@ class InstructionBuilder {
   // The id |op1| is the left hand side of the operation.
   // The id |op2| is the right hand side of the operation.
   // It is assumed that |type| represents the type of both operand as well.
-  ir::Instruction* AddULessThan(uint32_t type, uint32_t op1, uint32_t op2) {
+  ir::Instruction* AddULessThan(uint32_t op1, uint32_t op2) {
+    analysis::Bool bool_type;
+    uint32_t type = GetContext()->get_type_mgr()->GetId(&bool_type);
     std::unique_ptr<ir::Instruction> inst(new ir::Instruction(
         GetContext(), SpvOpULessThan, type, GetContext()->TakeNextId(),
         {{SPV_OPERAND_TYPE_ID, {op1}}, {SPV_OPERAND_TYPE_ID, {op2}}}));
@@ -185,12 +187,12 @@ class InstructionBuilder {
   }
 
   // Creates a less than instruction for signed integer.
-  // The id |type| must be the id of an signed int and must be the same as
-  // |op1| and |op2| types.
   // The id |op1| is the left hand side of the operation.
   // The id |op2| is the right hand side of the operation.
   // It is assumed that |type| represents the type of both operand as well.
-  ir::Instruction* AddSLessThan(uint32_t type, uint32_t op1, uint32_t op2) {
+  ir::Instruction* AddSLessThan(uint32_t op1, uint32_t op2) {
+    analysis::Bool bool_type;
+    uint32_t type = GetContext()->get_type_mgr()->GetId(&bool_type);
     std::unique_ptr<ir::Instruction> inst(new ir::Instruction(
         GetContext(), SpvOpSLessThan, type, GetContext()->TakeNextId(),
         {{SPV_OPERAND_TYPE_ID, {op1}}, {SPV_OPERAND_TYPE_ID, {op2}}}));
@@ -202,13 +204,17 @@ class InstructionBuilder {
   // left hand side of the operation. The id |op2| is the right hand side of the
   // operation. It is assumed that |type| represents the type of both operand as
   // well.
-  ir::Instruction* AddLessThan(analysis::Integer* type, uint32_t op1,
-                               uint32_t op2) {
-    uint32_t type_id = GetContext()->get_type_mgr()->GetTypeInstruction(type);
-    if (type->IsSigned())
-      return AddSLessThan(type_id, op1, op2);
+  ir::Instruction* AddLessThan(uint32_t op1, uint32_t op2) {
+    ir::Instruction* op1_insn = context_->get_def_use_mgr()->GetDef(op1);
+    analysis::Type* type =
+        GetContext()->get_type_mgr()->GetType(op1_insn->type_id());
+    analysis::Integer* int_type = type->AsInteger();
+    assert(int_type && "Operand is not of int type");
+
+    if (int_type->IsSigned())
+      return AddSLessThan(op1, op2);
     else
-      return AddULessThan(type_id, op1, op2);
+      return AddULessThan(op1, op2);
   }
 
   // Creates a select instruction.

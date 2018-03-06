@@ -58,6 +58,7 @@ add_library(SPIRV-Tools-opt
   local_ssa_elim_pass.h
   log.h
   loop_descriptor.h
+  loop_peeling.h
   loop_unroller.h
   loop_utils.h
   loop_unswitch_pass.h
