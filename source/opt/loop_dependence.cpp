@@ -221,13 +221,15 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(SENode* source,
   // If i = 0, the direction is <= and peeling the 1st iteration will break the
   // dependence
   if (i->IsZero()) {
+    dv_entry->direction = DVEntry::LE;
     dv_entry->peel_first = true;
     return false;
   }
 
-  // If i = upper_bound, the dependence is >= and ppeling the last iteration
+  // If i = upper_bound, the dependence is >= and peeling the last iteration
   // will break the dependence
   if (i->IsEqual(upper_bound)) {
+    dv_entry->direction = DVEntry::GE;
     dv_entry->peel_last = true;
     return false;
   }
@@ -284,6 +286,7 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(SENode* source,
 
   // Otherwise we can't prove an independence or dependence direction so assume
   // <=>
+  dv_entry->direction = DVEntry::ALL;
   return false;
 }
 
