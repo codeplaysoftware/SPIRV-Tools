@@ -40,137 +40,6 @@ using DependencyAnalysis = ::testing::Test;
   with --eliminate-local-multi-store
 #version 440 core
 void main(){
-  int[5] dep_arr;
-  dep_arr[1*2] = dep_arr[1+1];
-  int x = 3;
-  dep_arr[x] = dep_arr[x];
-  int y = 4;
-  int z = 4;
-  dep_arr[y+1-1] = dep_arr[z*2-4];
-
-  int[18] indep_arr;
-  int i = 4;
-  indep_arr[i] = indep_arr[5];
-  int j = 6;
-  indep_arr[j] = indep_arr[j+1];
-  int k = 9;
-  indep_arr[k-1] = indep_arr[k];
-  int a = 3;
-  int b = 6;
-  int c = 9;
-  indep_arr[a + b + c + -1] = indep_arr[c - b + 2*a + 1];
-}
-*/
-TEST(DependencyAnalysis, NoLoops) {
-  const std::string text = R"(               OpCapability Shader
-          %1 = OpExtInstImport "GLSL.std.450"
-               OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %4 "main"
-               OpExecutionMode %4 OriginUpperLeft
-               OpSource GLSL 440
-               OpName %4 "main"
-               OpName %11 "dep_arr"
-               OpName %41 "indep_arr"
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeInt 32 1
-          %7 = OpTypeInt 32 0
-          %8 = OpConstant %7 5
-          %9 = OpTypeArray %6 %8
-         %10 = OpTypePointer Function %9
-         %12 = OpConstant %6 2
-         %13 = OpTypePointer Function %6
-         %18 = OpConstant %6 3
-         %25 = OpConstant %6 4
-         %28 = OpConstant %6 1
-         %38 = OpConstant %7 18
-         %39 = OpTypeArray %6 %38
-         %40 = OpTypePointer Function %39
-         %43 = OpConstant %6 5
-         %48 = OpConstant %6 6
-         %56 = OpConstant %6 9
-         %71 = OpConstant %6 -1
-          %4 = OpFunction %2 None %3
-          %5 = OpLabel
-         %11 = OpVariable %10 Function
-         %41 = OpVariable %40 Function
-         %14 = OpAccessChain %13 %11 %12
-         %15 = OpLoad %6 %14
-         %16 = OpAccessChain %13 %11 %12
-               OpStore %16 %15
-         %21 = OpAccessChain %13 %11 %18
-         %22 = OpLoad %6 %21
-         %23 = OpAccessChain %13 %11 %18
-               OpStore %23 %22
-         %29 = OpIAdd %6 %25 %28
-         %30 = OpISub %6 %29 %28
-         %32 = OpIMul %6 %25 %12
-         %33 = OpISub %6 %32 %25
-         %34 = OpAccessChain %13 %11 %33
-         %35 = OpLoad %6 %34
-         %36 = OpAccessChain %13 %11 %30
-               OpStore %36 %35
-         %44 = OpAccessChain %13 %41 %43
-         %45 = OpLoad %6 %44
-         %46 = OpAccessChain %13 %41 %25
-               OpStore %46 %45
-         %51 = OpIAdd %6 %48 %28
-         %52 = OpAccessChain %13 %41 %51
-         %53 = OpLoad %6 %52
-         %54 = OpAccessChain %13 %41 %48
-               OpStore %54 %53
-         %58 = OpISub %6 %56 %28
-         %60 = OpAccessChain %13 %41 %56
-         %61 = OpLoad %6 %60
-         %62 = OpAccessChain %13 %41 %58
-               OpStore %62 %61
-         %68 = OpIAdd %6 %18 %48
-         %70 = OpIAdd %6 %68 %56
-         %72 = OpIAdd %6 %70 %71
-         %75 = OpISub %6 %56 %48
-         %77 = OpIMul %6 %12 %18
-         %78 = OpIAdd %6 %75 %77
-         %79 = OpIAdd %6 %78 %28
-         %80 = OpAccessChain %13 %41 %79
-         %81 = OpLoad %6 %80
-         %82 = OpAccessChain %13 %41 %72
-               OpStore %82 %81
-               OpReturn
-               OpFunctionEnd
-
-)";
-
-  // Testing dependence by looking at constants
-  // %15 = OpLoad and OpStore %16 %15
-  // = dependence
-  // %22 = OpLoad and OpStore %23 %22
-  // = dependence
-
-  // Testing looking through manipulation in variables to get dependence
-  // %35 = OpLoad and OpStore %36 %35
-  // = dependence
-
-  // TODO(Alexander): %49 %52 %58 doing same test, flatten into one
-  // Testing independence by looking at constants
-  // %45 = OpLoad and OpStore %46 %45
-  // independence
-
-  // Testing looking through manipulation in variables to get independence
-  // %53 = OpLoad and OpStore %54 %53
-  // independence
-  // %61 = OpLoad and OpStore %62 %61
-  // independence
-
-  // Testing looking through many + - and * to get independence
-  // %81 = OpLoad and OpStore %82 %81
-  // independence
-}
-
-/*
-  Generated from the following GLSL fragment shader
-  with --eliminate-local-multi-store
-#version 440 core
-void main(){
   int[10] arr;
   int[10] arr2;
   int a = 2;
@@ -259,7 +128,6 @@ TEST(DependencyAnalysis, ZIV) {
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
   opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
-  analysis.DumpIterationSpaceAsDot(std::cout);
 
   const ir::Instruction* store[4];
   int stores_found = 0;
@@ -270,56 +138,28 @@ TEST(DependencyAnalysis, ZIV) {
     }
   }
 
-  // Testing bounds checking
-
-  ir::Loop loop = *ld.begin();
-
-  ir::Instruction* lower_bound = loop.GetLowerBoundInst();
-  ir::Instruction* upper_bound = loop.GetUpperBoundInst();
-
-  opt::ScalarEvolutionAnalysis scal_evo_analysis =
-      opt::ScalarEvolutionAnalysis(context.get());
-
-  opt::SENode* lower_SENode = scal_evo_analysis.AnalyzeInstruction(lower_bound);
-  opt::SENode* upper_SENode = scal_evo_analysis.AnalyzeInstruction(upper_bound);
-
-  opt::SENode* delta_SENode =
-      scal_evo_analysis.CreateSubtraction(lower_SENode, upper_SENode);
-
-  if (!lower_SENode) return;
-  if (!upper_SENode) return;
-  if (!delta_SENode) return;
-
-  int64_t lower_val = 0;
-  int64_t upper_val = 0;
-  int64_t delta_val = 0;
-
-  if (!lower_SENode->FoldToSingleValue(&lower_val) ||
-      !upper_SENode->FoldToSingleValue(&upper_val) ||
-      !delta_SENode->FoldToSingleValue(&delta_val)) {
-    return;
-  }
-
-  // end of testing bounds checking
-
   for (int i = 0; i < 4; ++i) {
     EXPECT_TRUE(store[i]);
   }
-  EXPECT_FALSE(
-      analysis.GetDependence(store[0], context->get_def_use_mgr()->GetDef(29)));
-  EXPECT_FALSE(
-      analysis.GetDependence(store[1], context->get_def_use_mgr()->GetDef(36)));
-  EXPECT_FALSE(
-      analysis.GetDependence(store[2], context->get_def_use_mgr()->GetDef(41)));
-  EXPECT_FALSE(
-      analysis.GetDependence(store[3], context->get_def_use_mgr()->GetDef(48)));
 
-  // All independent
+  opt::DVEntry dv_entry{};
+
   // 29 -> 30 tests looking through constants
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(29),
+                                     store[0], &dv_entry));
+
   // 36 -> 37 tests looking through additions
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(36),
+                                     store[1], &dv_entry));
+
   // 41 -> 42 tests looking at same index across two different arrays
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(41),
+                                     store[2], &dv_entry));
+
   // 48 -> 49 tests looking through additions for same index in two different
-  // arrs
+  // arrays
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(48),
+                                     store[3], &dv_entry));
 }
 
 /*
@@ -423,14 +263,50 @@ TEST(DependencyAnalysis, SymbolicZIV) {
                OpReturn
                OpFunctionEnd
 )";
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 4);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+
+  const ir::Instruction* store[4];
+  int stores_found = 0;
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 22)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store[stores_found] = &inst;
+      ++stores_found;
+    }
+  }
+
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(store[i]);
+  }
+
+  opt::DVEntry dv_entry{};
 
   // independent due to loop bounds (won't enter if N <= 0)
   // 39 -> 40 tests looking through symbols and multiplicaiton
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(40),
+                                     store[0], &dv_entry));
+
   // 48 -> 49 tests looking through symbols and multiplication + addition
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(49),
+                                     store[1], &dv_entry));
+
   // 56 -> 57 tests looking through symbols and arithmetic on load and store
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(57),
+                                     store[2], &dv_entry));
+
   // independent as different arrays
   // 63 -> 64 tests looking through symbols and load/store from/to different
   // arrays
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(64),
+                                     store[3], &dv_entry));
 }
 
 /*
@@ -534,7 +410,6 @@ TEST(DependencyAnalysis, SIV) {
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
   opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
-  analysis.DumpIterationSpaceAsDot(std::cout);
 
   const ir::Instruction* store[4];
   int stores_found = 0;
@@ -548,23 +423,37 @@ TEST(DependencyAnalysis, SIV) {
   for (int i = 0; i < 4; ++i) {
     EXPECT_TRUE(store[i]);
   }
-  EXPECT_TRUE(
-      analysis.GetDependence(store[0], context->get_def_use_mgr()->GetDef(29)));
-  EXPECT_TRUE(
-      analysis.GetDependence(store[1], context->get_def_use_mgr()->GetDef(40)));
-  EXPECT_TRUE(
-      analysis.GetDependence(store[2], context->get_def_use_mgr()->GetDef(50)));
-  EXPECT_TRUE(
-      analysis.GetDependence(store[3], context->get_def_use_mgr()->GetDef(57)));
 
   // = dependence
   // 29 -> 30 tests looking at SIV in same array
+  opt::DVEntry dv_entry{};
+  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(29),
+                                      store[0], &dv_entry));
+  EXPECT_TRUE(dv_entry->direction == opt::DVEntry::EQ);
+  EXPECT_TRUE(dv_entry->distance == 0);
+
   // < -1 dependence
   // 40 -> 41 tests looking at SIV in same array with addition
+  opt::DVEntry dv_entry{};
+  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(40),
+                                      store[1], &dv_entry));
+  EXPECT_TRUE(dv_entry->direction == opt::DVEntry::LT);
+  EXPECT_TRUE(dv_entry->distance == -1);
+
   // > 1 dependence
   // 50 -> 51 tests looking at SIV in same array with subtraction
+  opt::DVEntry dv_entry{};
+  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(50),
+                                      store[2], &dv_entry));
+  EXPECT_TRUE(dv_entry->direction == opt::DVEntry::GT);
+  EXPECT_TRUE(dv_entry->distance == 1);
+
   // =,> dependence
   // 57 -> 58 tests looking at SIV in same array with multiplication
+  opt::DVEntry dv_entry{};
+  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(57),
+                                      store[3], &dv_entry));
+  EXPECT_TRUE(dv_entry->direction == opt::DVEntry::EQ | opt::DVEntry::GT);
 }
 
 /*
@@ -689,37 +578,89 @@ TEST(DependencyAnalysis, SymbolicSIV) {
                OpReturn
                OpFunctionEnd
 )";
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 4);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+
+  const ir::Instruction* store[4];
+  int stores_found = 0;
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 25)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store[stores_found] = &inst;
+      ++stores_found;
+    }
+  }
+
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(store[i]);
+  }
 
   // independent due to loop bounds (won't enter when N <= 0)
   // 45 -> 46 tests looking through SIV and symbols with multiplication
+  opt::DVEntry dv_entry{};
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(45),
+                                     store[0], &dv_entry));
+
   // 59 -> 62 tests looking through SIV and symbols with multiplication and + C
+  opt::DVEntry dv_entry{};
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(59),
+                                     store[1], &dv_entry));
+
   // 80 -> 81 tests looking through arithmetic on SIV and symbols
-  // 87 -> 98 tests looking through symbol arithmetic on SIV and symbols
+  opt::DVEntry dv_entry{};
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(80),
+                                     store[2], &dv_entry));
+
+  // 97 -> 98 tests looking through symbol arithmetic on SIV and symbols
+  opt::DVEntry dv_entry{};
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(97),
+                                     store[3], &dv_entry));
 }
 
 /*
   Generated from the following GLSL fragment shader
   with --eliminate-local-multi-store
 #version 440 core
-void main(){
+void a() {
   int[6] arr;
-  int[6] arr2;
-  int[11] arr3;
-  int[11] arr4;
   int N = 5;
-  int N2 = 10;
   for (int i = 1; i < N; i++) {
     arr[i] = arr[N-i];
   }
+}
+void b() {
+  int[6] arr;
+  int N = 5;
   for (int i = 1; i < N; i++) {
-    arr2[N-i] = arr2[i];
+    arr[N-i] = arr[i];
   }
-  for (int i = 1; i < N2; i++) {
-    arr3[i] = arr3[N-i+1];
+}
+void c() {
+  int[11] arr;
+  int N = 10;
+  for (int i = 1; i < N; i++) {
+    arr[i] = arr[N-i+1];
   }
-  for (int i = 1; i < N2; i++) {
-    arr4[N-i+1] = arr4[i];
+}
+void d() {
+  int[11] arr;
+  int N = 10;
+  for (int i = 1; i < N; i++) {
+    arr[N-i+1] = arr[i];
   }
+}
+void main(){
+  a();
+  b();
+  c();
+  d();
 }
 */
 TEST(DependencyAnalysis, Crossing) {
@@ -730,123 +671,338 @@ TEST(DependencyAnalysis, Crossing) {
                OpExecutionMode %4 OriginUpperLeft
                OpSource GLSL 440
                OpName %4 "main"
-               OpName %27 "arr"
-               OpName %46 "arr2"
-               OpName %68 "arr3"
-               OpName %88 "arr4"
+               OpName %6 "a("
+               OpName %8 "b("
+               OpName %10 "c("
+               OpName %12 "d("
+               OpName %33 "arr"
+               OpName %53 "arr"
+               OpName %77 "arr"
+               OpName %98 "arr"
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+         %14 = OpTypeInt 32 1
+         %15 = OpTypePointer Function %14
+         %17 = OpConstant %14 5
+         %19 = OpConstant %14 1
+         %27 = OpTypeBool
+         %29 = OpTypeInt 32 0
+         %30 = OpConstant %29 6
+         %31 = OpTypeArray %14 %30
+         %32 = OpTypePointer Function %31
+         %64 = OpConstant %14 10
+         %74 = OpConstant %29 11
+         %75 = OpTypeArray %14 %74
+         %76 = OpTypePointer Function %75
+          %4 = OpFunction %2 None %3
+          %5 = OpLabel
+        %109 = OpFunctionCall %2 %6
+        %110 = OpFunctionCall %2 %8
+        %111 = OpFunctionCall %2 %10
+        %112 = OpFunctionCall %2 %12
+               OpReturn
+               OpFunctionEnd
+          %6 = OpFunction %2 None %3
+          %7 = OpLabel
+         %33 = OpVariable %32 Function
+               OpBranch %20
+         %20 = OpLabel
+        %113 = OpPhi %14 %19 %7 %42 %23
+               OpLoopMerge %22 %23 None
+               OpBranch %24
+         %24 = OpLabel
+         %28 = OpSLessThan %27 %113 %17
+               OpBranchConditional %28 %21 %22
+         %21 = OpLabel
+         %37 = OpISub %14 %17 %113
+         %38 = OpAccessChain %15 %33 %37
+         %39 = OpLoad %14 %38
+         %40 = OpAccessChain %15 %33 %113
+               OpStore %40 %39
+               OpBranch %23
+         %23 = OpLabel
+         %42 = OpIAdd %14 %113 %19
+               OpBranch %20
+         %22 = OpLabel
+               OpReturn
+               OpFunctionEnd
+          %8 = OpFunction %2 None %3
+          %9 = OpLabel
+         %53 = OpVariable %32 Function
+               OpBranch %45
+         %45 = OpLabel
+        %114 = OpPhi %14 %19 %9 %62 %48
+               OpLoopMerge %47 %48 None
+               OpBranch %49
+         %49 = OpLabel
+         %52 = OpSLessThan %27 %114 %17
+               OpBranchConditional %52 %46 %47
+         %46 = OpLabel
+         %56 = OpISub %14 %17 %114
+         %58 = OpAccessChain %15 %53 %114
+         %59 = OpLoad %14 %58
+         %60 = OpAccessChain %15 %53 %56
+               OpStore %60 %59
+               OpBranch %48
+         %48 = OpLabel
+         %62 = OpIAdd %14 %114 %19
+               OpBranch %45
+         %47 = OpLabel
+               OpReturn
+               OpFunctionEnd
+         %10 = OpFunction %2 None %3
+         %11 = OpLabel
+         %77 = OpVariable %76 Function
+               OpBranch %66
+         %66 = OpLabel
+        %115 = OpPhi %14 %19 %11 %87 %69
+               OpLoopMerge %68 %69 None
+               OpBranch %70
+         %70 = OpLabel
+         %73 = OpSLessThan %27 %115 %64
+               OpBranchConditional %73 %67 %68
+         %67 = OpLabel
+         %81 = OpISub %14 %64 %115
+         %82 = OpIAdd %14 %81 %19
+         %83 = OpAccessChain %15 %77 %82
+         %84 = OpLoad %14 %83
+         %85 = OpAccessChain %15 %77 %115
+               OpStore %85 %84
+               OpBranch %69
+         %69 = OpLabel
+         %87 = OpIAdd %14 %115 %19
+               OpBranch %66
+         %68 = OpLabel
+               OpReturn
+               OpFunctionEnd
+         %12 = OpFunction %2 None %3
+         %13 = OpLabel
+         %98 = OpVariable %76 Function
+               OpBranch %90
+         %90 = OpLabel
+        %116 = OpPhi %14 %19 %13 %108 %93
+               OpLoopMerge %92 %93 None
+               OpBranch %94
+         %94 = OpLabel
+         %97 = OpSLessThan %27 %116 %64
+               OpBranchConditional %97 %91 %92
+         %91 = OpLabel
+        %101 = OpISub %14 %64 %116
+        %102 = OpIAdd %14 %101 %19
+        %104 = OpAccessChain %15 %98 %116
+        %105 = OpLoad %14 %104
+        %106 = OpAccessChain %15 %98 %102
+               OpStore %106 %105
+               OpBranch %93
+         %93 = OpLabel
+        %108 = OpIAdd %14 %116 %19
+               OpBranch %90
+         %92 = OpLabel
+               OpReturn
+               OpFunctionEnd
+)";
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 6);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+
+  const ir::Instruction* store;
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 21)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store = &inst;
+    }
+  }
+  // First two tests can be split into two loops
+  // Tests even crossing subscripts from low to high indexes
+  // 39 -> 40
+  opt::DVEntry dv_entry{};
+  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(39),
+                                      store, &dv_entry));
+  EXPECT_TRUE(dv_entry->splitable == true);
+
+  f = spvtest::GetFunction(module, 8);
+  ld = *context->GetLoopDescriptor(f);
+
+  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 46)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store = &inst;
+    }
+  }
+  // Tests even crossing subscripts from high to low indexes
+  // 59 -> 60
+  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(59),
+                                      store, &dv_entry));
+  EXPECT_TRUE(dv_entry->splitable == true);
+
+  f = spvtest::GetFunction(module, 10);
+  ld = *context->GetLoopDescriptor(f);
+
+  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 67)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store = &inst;
+    }
+  }
+  // Next two tests can have an end peeled, then be split
+  // Tests uneven crossing subscripts from low to high indexes
+  // 84 -> 85
+
+  f = spvtest::GetFunction(module, 12);
+  ld = *context->GetLoopDescriptor(f);
+
+  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 91)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store = &inst;
+    }
+  }
+  // Tests uneven crossing subscripts from high to low indexes
+  // 105 -> 106
+}
+
+/*
+  Generated from the following GLSL fragment shader
+  with --eliminate-local-multi-store
+#version 440 core
+void main(){
+  int[10] arr;
+  int[10] arr2;
+  int[10] arr3;
+  int[10] arr4;
+  for (int i = 0; i < 10; i++) {
+    arr[0] = arr[i];
+    arr2[i] = arr2[0];
+    arr3[9] = arr3[i];
+    arr4[i] = arr4[9];
+  }
+}
+*/
+TEST(DependencyAnalysis, WeakZeroSIV) {
+  const std::string text = R"(               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %4 "main"
+               OpExecutionMode %4 OriginUpperLeft
+               OpSource GLSL 440
+               OpName %4 "main"
+               OpName %23 "arr"
+               OpName %28 "arr2"
+               OpName %33 "arr3"
+               OpName %39 "arr4"
           %2 = OpTypeVoid
           %3 = OpTypeFunction %2
           %6 = OpTypeInt 32 1
           %7 = OpTypePointer Function %6
-          %9 = OpConstant %6 5
-         %11 = OpConstant %6 10
-         %13 = OpConstant %6 1
-         %21 = OpTypeBool
-         %23 = OpTypeInt 32 0
-         %24 = OpConstant %23 6
-         %25 = OpTypeArray %6 %24
-         %26 = OpTypePointer Function %25
-         %65 = OpConstant %23 11
-         %66 = OpTypeArray %6 %65
-         %67 = OpTypePointer Function %66
+          %9 = OpConstant %6 0
+         %16 = OpConstant %6 10
+         %17 = OpTypeBool
+         %19 = OpTypeInt 32 0
+         %20 = OpConstant %19 10
+         %21 = OpTypeArray %6 %20
+         %22 = OpTypePointer Function %21
+         %34 = OpConstant %6 9
+         %45 = OpConstant %6 1
           %4 = OpFunction %2 None %3
           %5 = OpLabel
-         %27 = OpVariable %26 Function
-         %46 = OpVariable %26 Function
-         %68 = OpVariable %67 Function
-         %88 = OpVariable %67 Function
+         %23 = OpVariable %22 Function
+         %28 = OpVariable %22 Function
+         %33 = OpVariable %22 Function
+         %39 = OpVariable %22 Function
+               OpBranch %10
+         %10 = OpLabel
+         %47 = OpPhi %6 %9 %5 %46 %13
+               OpLoopMerge %12 %13 None
                OpBranch %14
          %14 = OpLabel
-         %99 = OpPhi %6 %13 %5 %36 %17
-               OpLoopMerge %16 %17 None
-               OpBranch %18
-         %18 = OpLabel
-         %22 = OpSLessThan %21 %99 %9
-               OpBranchConditional %22 %15 %16
-         %15 = OpLabel
-         %31 = OpISub %6 %9 %99
-         %32 = OpAccessChain %7 %27 %31
-         %33 = OpLoad %6 %32
-         %34 = OpAccessChain %7 %27 %99
-               OpStore %34 %33
-               OpBranch %17
-         %17 = OpLabel
-         %36 = OpIAdd %6 %99 %13
-               OpBranch %14
-         %16 = OpLabel
-               OpBranch %38
-         %38 = OpLabel
-        %100 = OpPhi %6 %13 %16 %55 %41
-               OpLoopMerge %40 %41 None
-               OpBranch %42
-         %42 = OpLabel
-         %45 = OpSLessThan %21 %100 %9
-               OpBranchConditional %45 %39 %40
-         %39 = OpLabel
-         %49 = OpISub %6 %9 %100
-         %51 = OpAccessChain %7 %46 %100
-         %52 = OpLoad %6 %51
-         %53 = OpAccessChain %7 %46 %49
-               OpStore %53 %52
-               OpBranch %41
-         %41 = OpLabel
-         %55 = OpIAdd %6 %100 %13
-               OpBranch %38
-         %40 = OpLabel
-               OpBranch %57
-         %57 = OpLabel
-        %101 = OpPhi %6 %13 %40 %78 %60
-               OpLoopMerge %59 %60 None
-               OpBranch %61
-         %61 = OpLabel
-         %64 = OpSLessThan %21 %101 %11
-               OpBranchConditional %64 %58 %59
-         %58 = OpLabel
-         %72 = OpISub %6 %9 %101
-         %73 = OpIAdd %6 %72 %13
-         %74 = OpAccessChain %7 %68 %73
-         %75 = OpLoad %6 %74
-         %76 = OpAccessChain %7 %68 %101
-               OpStore %76 %75
-               OpBranch %60
-         %60 = OpLabel
-         %78 = OpIAdd %6 %101 %13
-               OpBranch %57
-         %59 = OpLabel
-               OpBranch %80
-         %80 = OpLabel
-        %102 = OpPhi %6 %13 %59 %98 %83
-               OpLoopMerge %82 %83 None
-               OpBranch %84
-         %84 = OpLabel
-         %87 = OpSLessThan %21 %102 %11
-               OpBranchConditional %87 %81 %82
-         %81 = OpLabel
-         %91 = OpISub %6 %9 %102
-         %92 = OpIAdd %6 %91 %13
-         %94 = OpAccessChain %7 %88 %102
-         %95 = OpLoad %6 %94
-         %96 = OpAccessChain %7 %88 %92
-               OpStore %96 %95
-               OpBranch %83
-         %83 = OpLabel
-         %98 = OpIAdd %6 %102 %13
-               OpBranch %80
-         %82 = OpLabel
+         %18 = OpSLessThan %17 %47 %16
+               OpBranchConditional %18 %11 %12
+         %11 = OpLabel
+         %25 = OpAccessChain %7 %23 %47
+         %26 = OpLoad %6 %25
+         %27 = OpAccessChain %7 %23 %9
+               OpStore %27 %26
+         %30 = OpAccessChain %7 %28 %9
+         %31 = OpLoad %6 %30
+         %32 = OpAccessChain %7 %28 %47
+               OpStore %32 %31
+         %36 = OpAccessChain %7 %33 %47
+         %37 = OpLoad %6 %36
+         %38 = OpAccessChain %7 %33 %34
+               OpStore %38 %37
+         %41 = OpAccessChain %7 %39 %34
+         %42 = OpLoad %6 %41
+         %43 = OpAccessChain %7 %39 %47
+               OpStore %43 %42
+               OpBranch %13
+         %13 = OpLabel
+         %46 = OpIAdd %6 %47 %45
+               OpBranch %10
+         %12 = OpLabel
                OpReturn
                OpFunctionEnd
 )";
 
-  // First two tests can be split into two loops
-  // Tests even crossing subscripts from low to high indexes
-  // 33 -> 34
-  // Tests even crossing subscripts from high to low indexes
-  // 52 -> 53
-  // Next two tests can have an end peeled, then be split
-  // Tests uneven crossing subscripts from low to high indexes
-  // 75 -> 76
-  // Tests uneven crossing subscripts from high to low indexes
-  // 95 -> 96
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 4);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+
+  const ir::Instruction* store[4];
+  int stores_found = 0;
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 11)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store[stores_found] = &inst;
+      ++stores_found;
+    }
+  }
+
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(store[i]);
+  }
+
+  // Tests identifying peel first with weak zero with destination as zero index.
+  // 26 -> 27
+  opt::DVEntry dv_entry{};
+  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(26),
+                                      store[0], &dv_entry));
+  EXPECT_TRUE(dv_entry->peel_first);
+
+  // Tests identifying peel first with weak zero with source as zero index.
+  // 31 -> 32
+  opt::DVEntry dv_entry{};
+  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(31),
+                                      store[1], &dv_entry));
+  EXPECT_TRUE(dv_entry->peel_first);
+
+  // Tests identifying peel first with weak zero with destination as zero index.
+  // 37 -> 38
+  opt::DVEntry dv_entry{};
+  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(37),
+                                      store[2], &dv_entry));
+  EXPECT_TRUE(dv_entry->peel_last);
+
+  // Tests identifying peel first with weak zero with source as zero index.
+  // 42 -> 43
+  opt::DVEntry dv_entry{};
+  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(42),
+                                      store[3], &dv_entry));
+  EXPECT_TRUE(dv_entry->peel_last);
 }
 
 /*

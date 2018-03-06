@@ -17,12 +17,10 @@ namespace spvtools {
 namespace opt {
 
 bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
-                                           const ir::Instruction* destination) {
+                                           const ir::Instruction* destination,
+                                           DVEntry* dv_entry) {
   SENode* source_node = memory_access_to_indice_[source][0];
   SENode* destination_node = memory_access_to_indice_[destination][0];
-  bool independence_proved = false;
-
-  DVEntry dv_entry{};
 
   // TODO(Alexander): Check source and destination are loading and storing from
   // the same variables. If not, there is no dependence
@@ -32,45 +30,43 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
 
   // If the subscripts have no coefficients, preform a ZIV test
   if (!src_coeff && !dest_coeff) {
-    independence_proved = ZIVTest(source_node, destination_node, &dv_entry);
-    if (independence_proved) return true;
+    if (ZIVTest(source_node, destination_node, dv_entry)) return true;
   }
 
   // If the subscript takes the form [c1] = [a*i + c2] use weak zero source SIV
   if (!src_coeff && dest_coeff) {
-    independence_proved = WeakZeroSourceSIVTest(source_node, destination_node,
-                                                dest_coeff, &dv_entry);
-    if (independence_proved) return true;
+    if (WeakZeroSourceSIVTest(source_node, destination_node, dest_coeff,
+                              dv_entry))
+      return true;
   }
 
   // If the subscript takes the form [a*i + c1] = [c2] use weak zero dest SIV
   if (src_coeff && !dest_coeff) {
-    independence_proved = WeakZeroDestinationSIVTest(
-        source_node, destination_node, src_coeff, &dv_entry);
-    if (independence_proved) return true;
+    if (WeakZeroDestinationSIVTest(source_node, destination_node, src_coeff,
+                                   dv_entry))
+      return true;
   }
 
   // If the subscript takes the form [a*i + c1] = [a*i + c2] use strong SIV
   if (src_coeff && dest_coeff && src_coeff->IsEqual(dest_coeff)) {
-    independence_proved =
-        StrongSIVTest(source_node, destination_node, src_coeff, &dv_entry);
-    if (independence_proved) return true;
+    if (StrongSIVTest(source_node, destination_node, src_coeff, dv_entry))
+      return true;
   }
 
   // If the subscript takes the form [a1*i + c1] = [a2*i + c2] where a1 = -a2
   // use weak crossing SIV
   if (src_coeff && dest_coeff &&
       src_coeff->IsEqual(scalar_evolution_.CreateNegation(dest_coeff))) {
-    independence_proved = WeakCrossingSIVTest(source_node, destination_node,
-                                              src_coeff, dest_coeff, &dv_entry);
-    if (independence_proved) return true;
+    if (WeakCrossingSIVTest(source_node, destination_node, src_coeff,
+                            dest_coeff, dv_entry))
+      return true;
   }
 
   // If the subscript takes the form [a1*i + c1] = [a2*i + c2] use weak SIV
   if (src_coeff && dest_coeff && !src_coeff->IsEqual(dest_coeff)) {
-    independence_proved = WeakSIVTest(source_node, destination_node, src_coeff,
-                                      dest_coeff, &dv_entry);
-    if (independence_proved) return true;
+    if (WeakSIVTest(source_node, destination_node, src_coeff, dest_coeff,
+                    dv_entry))
+      return true;
   }
   return false;
 }
@@ -178,7 +174,7 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
     // distance = 0
     dv_entry->direction = DVEntry::EQ;
     dv_entry->distance = 0;
-      return false;
+    return false;
   } else {
     if (coefficient->IsEqual(1)) {
       // distance = delta

@@ -30,6 +30,7 @@ struct DVEntry {
   unsigned char direction : 3;
   bool peel_first : 1;
   bool peel_last : 1;
+  bool splitable : 1;
   int distance;
   DVEntry() : direction(ALL), distance(0) {}
 };
