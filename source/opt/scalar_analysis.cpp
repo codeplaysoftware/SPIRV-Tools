@@ -45,17 +45,6 @@ SENode* ScalarEvolutionAnalysis::CreateAddNode(SENode* operand_1,
   add_node->AddChild(operand_1);
   add_node->AddChild(operand_2);
 
-  return add_node;
-}
-
-// This should be modified to not modify the graph
-SENode* ScalarEvolutionAnalysis::CreateSubtraction(SENode* operand_1,
-                                               SENode* operand_2) {
-  SENode* negation_node = CreateNegation(operand_2);
-  SENode* addition_node = CreateAddNode(operand_1, negation_node);
-  return addition_node;
-}
-
   add_node = GetCachedOrAdd(add_node);
   return add_node;
 }
@@ -79,8 +68,6 @@ SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
       output = AnalyzeAddOp(inst);
       break;
     }
-    default: {
-      output = new SEUnknown(inst);
     case SpvOp::SpvOpLoad: {
       output = AnalyzeLoadOp(inst);
       break;
@@ -150,26 +137,6 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     uint32_t incoming_label_id = phi->GetSingleWordInOperand(i + 1);
 
     ir::Instruction* value_inst = def_use->GetDef(value_id);
-
-    phi_node->AddChild(AnalyzeInstruction(value_inst), incoming_label_id);
-  }
-
-  return phi_node;
-}
-
-bool ScalarEvolutionAnalysis::CanProveEqual(const SENode& source,
-                                            const SENode& destination) {
-  int64_t source_value = 0;
-  if (!source.FoldToSingleValue(&source_value)) {
-    return false;
-  }
-
-  int64_t destination_value = 0;
-  if (!destination.FoldToSingleValue(&destination_value)) {
-    return false;
-  }
-
-  return source_value == destination_value;
     SENode* value_node = AnalyzeInstruction(value_inst);
 
     if (incoming_label_id == loop->GetPreHeaderBlock()->id()) {

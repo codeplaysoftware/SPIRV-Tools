@@ -103,22 +103,24 @@ class LoopDependenceAnalysis {
   // Finds the lower bound of the loop as an SENode* and stores it in
   // |lower_bound|
   // Returns true if successful
-  bool GetLowerBound(SENode** lower_bound);
+  SENode* GetLowerBound();
 
   // Finds the upper bound of the loop as an SENode* and stores it in
   // |upper_bound|
   // Returns true if successful
-  bool GetUpperBound(SENode** upper_bound);
+  SENode* GetUpperBound();
 
   // Finds the lower and upper bounds of the loop as SENode* and stores them in
   // |lower_bound| and |upper_bound| respectively
   // Returns true isf successful
-  bool GetLoopLowerUpperBounds(SENode** lower_bound, SENode** upper_bound);
+  std::pair<SENode*, SENode*> GetLoopLowerUpperBounds();
 
   // Finds the loop bounds as upper_bound - lower_bound and stores the
   // resulting SENode in |loop_bounds|
   // Returns true if successful
-  bool GetTripCount(SENode* loop_bounds);
+  SENode* GetTripCount();
+
+  LoopDescriptor* GetLoopDescriptor();
 };
 
 }  // namespace ir

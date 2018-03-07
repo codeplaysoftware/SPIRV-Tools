@@ -204,7 +204,7 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(SENode* source,
   // If i is not an integer, there is no dependence
   if (!i->isIntegral()) {
     dv_entry->direction = NONE;
-    return false;
+    return true;
   }
 
   SENode* upper_bound = nullptr;
@@ -215,7 +215,7 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(SENode* source,
   // If i < 0 or > upper_bound, there is no dependence
   if (i->LessThan(0) || i->GreaterThan(upper_bound)) {
     dv_entry->direction = NONE;
-    return false;
+    return true;
   }
 
   // If i = 0, the direction is <= and peeling the 1st iteration will break the
@@ -354,64 +354,77 @@ bool LoopDependenceAnalysis::DeltaTest(SENode* source, SENode* direction) {
   return false;
 }
 
-bool LoopDependenceAnalysis::GetLowerBound(SENode** lower_bound) {
+SENode* LoopDependenceAnalysis::GetLowerBound() {
   ir::Instruction* lower_bound_inst = loop_.GetLowerBoundInst();
   if (!lower_bound_inst) {
-    return false;
+    return nullptr;
   }
 
   SENode* lower_SENode =
       scalar_evolution_.AnalyzeInstruction(loop_.GetLowerBoundInst());
-  if (!lower_SENode) {
-    return false;
-  }
-  *lower_bound = lower_SENode;
-  return true;
+  return lower_SENode;
 }
 
-bool LoopDependenceAnalysis::GetUpperBound(SENode** upper_bound) {
+SENode* LoopDependenceAnalysis::GetUpperBound() {
   ir::Instruction* upper_bound_inst = loop_.GetUpperBoundInst();
   if (!upper_bound_inst) {
-    return false;
+    return nullptr;
   }
 
   SENode* upper_SENode =
       scalar_evolution_.AnalyzeInstruction(loop_.GetUpperBoundInst());
-  if (!upper_SENode) {
-    return false;
-  }
-  *upper_bound = upper_SENode;
-  return true;
+  return upper_SENode;
 }
 
-bool LoopDependenceAnalysis::GetLoopLowerUpperBounds(SENode** lower_bound,
-                                                     SENode** upper_bound) {
-  SENode* lower_bound_SENode = nullptr;
-  SENode* upper_bound_SENode = nullptr;
-  if (!GetLowerBound(&lower_bound_SENode) ||
-      !GetUpperBound(&upper_bound_SENode)) {
-    return false;
+SENode* LoopDependenceAnalysis::GetLoopLowerUpperBounds() {
+  SENode* lower_bound_SENode = GetLowerBound();
+  SENode* upper_bound_SENode = GetUpperBound();
+  if (!lower_bound_SENode || !upper_bound_SENode) {
+    return nullptr;
   }
 
-  *lower_bound = lower_bound_node;
-  *upper_bound = upper_bound_node;
-  return true;
+  return std::make_pair(lower_bound_SENode, upper_bound_SENode);
 }
 
-bool LoopDependenceAnalysis::GetTripCount(SENode* trip_count) {
-  SENode* lower_bound = nullptr;
-  SENode* upper_bound = nullptr;
-  if (!GetLoopLowerUpperBounds(&lower_bound, &upper_bound)) {
-    return false;
+SENode* LoopDependenceAnalysis::GetTripCount() {
+  SENode* lower_bound = GetLowerBound();
+  SENode* upper_bound = GetUpperBound();
+  if (!lower_bound || !upper_bound) {
+    return nullptr;
+  }
+  ir::Instruction* cond_instr = loop_.GetConditionInst();
+
+  switch (cond_instr->opcode()) {
+    case SpvOpULessThan:
+      break;
+    case SpvOpSLessThan:
+      break;
+    case SpvOpULessThanEqual:
+      break;
+    case SpvOpSLessThanEqual:
+      break;
+    case SpvOpUGreaterThan:
+      break;
+    case SpvOpSGreaterThan:
+      break;
+    case SpvOpUGreaterThanEqual:
+      break;
+    case SpvOpSGreaterThanEqual:
+      break;
+    default:
+      return nullptr;
   }
 
-  SENode* loop_bounds_sub =
-      scalar_evolution_.CreateSubtraction(upper_bound, lower_bound);
-  if (!loop_bounds) {
-    return false;
-  }
-  *trip_count = loop_bounds_sub;
-  return true;
+  // TODO(Alexander): Now work from lower bound until we pass the upper bound to
+  // find the trip count
+  // We should check to make sure we aren't at an infinite loop by checking we
+  // actually step towards the condition
+
+  return nullptr;
+}
+
+LoopDescriptor* LoopDependenceAnalysis::GetLoopDescriptor() {
+  return context_->GetLoopDescriptor(loop_.GetHeaderBlock()->GetParent());
 }
 
 }  // namespace opt
