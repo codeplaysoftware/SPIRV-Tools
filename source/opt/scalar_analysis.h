@@ -80,14 +80,32 @@ class ScalarEvolutionAnalysis {
   SENode* CreateAddNode(SENode* operand_1, SENode* operand_2);
 
   SENode* AnalyzeInstruction(const ir::Instruction* inst);
- 
+
+  SENode* SimplifyExpression(SENode*);
+
+  SENode* CloneGraphFromNode(SENode* node);
+
+  // If the graph contains a recurrent expression, ie, an expression with the
+  // loop iterations as a term in the expression, then the whole expression can
+  // be rewritten to be a recurrent expression.
+  SENode* GetRecurrentExpression(SENode*);
+
   bool CanProveEqual(const SENode& source, const SENode& destination);
   bool CanProveNotEqual(const SENode& source, const SENode& destination);
+
+  SENode* GetCachedOrAdd(SENode* perspective_node);
 
  private:
   ir::IRContext* context_;
   std::map<uint32_t, SENode*> scalar_evolutions_;
 
+  struct NodePointersEquality {
+    bool operator()(const SENode* const lhs, const SENode* const rhs) const {
+      return *lhs == *rhs;
+    }
+  };
+
+  std::unordered_set<SENode*, SENodeHash, NodePointersEquality> node_cache_;
 
   SENode* AnalyzeConstant(const ir::Instruction* inst);
   SENode* AnalyzeAddOp(const ir::Instruction* add);

@@ -13,6 +13,19 @@
 // limitations under the License.
 
 #include "opt/scalar_analysis.h"
+#include <functional>
+/*namespace st
+{
+  template<> struct hash<spvtools::opt::SENodeHashable> {
+    typedef spvtools::opt::SENodeHashable argument_type;
+    typedef size_t result_type;
+
+    result_type operator()(const argument_type & arg) {
+      return arg();
+    }
+  };
+} // namespace std
+*/
 namespace spvtools {
 namespace opt {
 
@@ -32,6 +45,7 @@ SENode* ScalarEvolutionAnalysis::CreateAddNode(SENode* operand_1,
   add_node->AddChild(operand_1);
   add_node->AddChild(operand_2);
 
+  add_node = GetCachedOrAdd(add_node);
   return add_node;
 }
 
@@ -59,7 +73,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
       break;
     }
     default: {
-      output = new SEUnknown(inst);
+      output = new SECantCompute(inst);
       scalar_evolutions_[inst->unique_id()] = output;
       break;
     }
@@ -84,25 +98,29 @@ SENode* ScalarEvolutionAnalysis::AnalyzeConstant(const ir::Instruction* inst) {
   }
 
   SENode* constant_node{new SEConstantNode(inst, value)};
-  scalar_evolutions_[inst->unique_id()] = constant_node;
+
+  constant_node = GetCachedOrAdd(constant_node);
+
   return constant_node;
 }
 
 SENode* ScalarEvolutionAnalysis::AnalyzeAddOp(const ir::Instruction* add) {
   opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
   SENode* add_node{new SEAddNode(add)};
-  scalar_evolutions_[add->unique_id()] = add_node;
 
   add_node->AddChild(
       AnalyzeInstruction(def_use->GetDef(add->GetSingleWordInOperand(0))));
   add_node->AddChild(
       AnalyzeInstruction(def_use->GetDef(add->GetSingleWordInOperand(1))));
+
+  add_node = GetCachedOrAdd(add_node);
+
   return add_node;
 }
 
 SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     const ir::Instruction* phi) {
-  SEPhiNode* phi_node{new SEPhiNode(phi)};
+  SERecurrentNode* phi_node{new SERecurrentNode(phi)};
 
   scalar_evolutions_[phi->unique_id()] = phi_node;
 
@@ -112,7 +130,6 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
       context_->get_instr_block(const_cast<ir::Instruction*>(phi));
 
   ir::Function* function = basic_block->GetParent();
-
   ir::Loop* loop = (*context_->GetLoopDescriptor(function))[basic_block->id()];
 
   for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
@@ -123,19 +140,61 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     SENode* value_node = AnalyzeInstruction(value_inst);
 
     if (incoming_label_id == loop->GetPreHeaderBlock()->id()) {
-      phi_node->AddTripCount(value_node);
-    } else if (incoming_label_id == loop->GetLatchBlock()->id()) {
       phi_node->AddInitalizer(value_node);
+    } else if (incoming_label_id == loop->GetLatchBlock()->id()) {
+      SENode* just_child = value_node->GetChild(1);
+      phi_node->AddTripCount(just_child);
     }
   }
 
-  return phi_node;
+  return GetCachedOrAdd(phi_node);
+}
+
+SENode* ScalarEvolutionAnalysis::SimplifyExpression(SENode*) { return nullptr; }
+
+SENode* ScalarEvolutionAnalysis::GetRecurrentExpression(SENode* node) {
+  //  SERecurrentNode* recurrent_node{new SERecurrentNode(node)};
+
+  if (node->GetType() != SENode::Add) return node;
+
+  SERecurrentNode* recurrent_expr = nullptr;
+  for (auto child = node->graph_begin(); child != node->graph_end(); ++child) {
+    if (child->GetType() == SENode::RecurrentExpr) {
+      recurrent_expr = static_cast<SERecurrentNode*>(&*child);
+    }
+  }
+
+  if (!recurrent_expr) return nullptr;
+
+  SERecurrentNode* recurrent_node{
+      new SERecurrentNode(context_->TakeNextUniqueId())};
+
+  recurrent_node->AddInitalizer(node->GetChild(1));
+  recurrent_node->AddTripCount(recurrent_expr->GetTripCount());
+
+  recurrent_node =
+      static_cast<SERecurrentNode*>(GetCachedOrAdd(recurrent_node));
+  return recurrent_node;
+}
+
+SENode* ScalarEvolutionAnalysis::CloneGraphFromNode(SENode* node) {
+  SENode* new_node = node->Clone(context_->TakeNextUniqueId());
+
+  if (new_node->GetType() == SENode::Constant) {
+    new_node = GetCachedOrAdd(new_node);
+    //  scalar_evolutions_[new_node->UniqueID()] = new_node;
+  }
+  for (SENode* child : *node) {
+    new_node->AddChild(CloneGraphFromNode(child));
+  }
+
+  return new_node;
 }
 
 SENode* ScalarEvolutionAnalysis::AnalyzeLoadOp(const ir::Instruction* load) {
- SELoad* load_node{new SELoad(load)};
- scalar_evolutions_[load->unique_id()] = load_node;
- return load_node;
+  SEValueUnknown* load_node{new SEValueUnknown(load)};
+  scalar_evolutions_[load->unique_id()] = load_node;
+  return load_node;
 }
 
 bool ScalarEvolutionAnalysis::CanProveEqual(const SENode& source,
@@ -145,7 +204,7 @@ bool ScalarEvolutionAnalysis::CanProveEqual(const SENode& source,
 
 bool ScalarEvolutionAnalysis::CanProveNotEqual(const SENode& source,
                                                const SENode& destination) {
-  return source != destination;  
+  return source != destination;
 }
 
 int64_t SEMultiplyNode::FoldToSingleValue() const {
@@ -155,7 +214,6 @@ int64_t SEMultiplyNode::FoldToSingleValue() const {
   }
   return val;
 }
-
 
 int64_t SEDivideNode::FoldToSingleValue() const {
   int64_t val = 0;
@@ -172,6 +230,24 @@ int64_t SEAddNode::FoldToSingleValue() const {
   }
   return val;
 }
+
+SENode* ScalarEvolutionAnalysis::GetCachedOrAdd(SENode* perspective_node) {
+  auto itr = node_cache_.find(perspective_node);
+  if (itr != node_cache_.end()) {
+    delete perspective_node;
+    return *itr;
+  }
+
+  node_cache_.insert(perspective_node);
+  scalar_evolutions_[perspective_node->UniqueID()] = perspective_node;
+  return perspective_node;
+}
+
+bool SENode::operator==(const SENode& other) const {
+  return SENodeHash{}(this) == SENodeHash{}(&other);
+}
+
+bool SENode::operator!=(const SENode& other) const { return !(*this == other); }
 
 }  // namespace opt
 }  // namespace spvtools

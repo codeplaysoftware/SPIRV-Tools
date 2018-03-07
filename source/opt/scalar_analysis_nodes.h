@@ -15,6 +15,7 @@
 #ifndef LIBSPIRV_OPT_SCALAR_ANALYSIS_NODES_H_
 #define LIBSPIRV_OPT_SCALAR_ANALYSIS_NODES_H_
 
+#include "tree_iterator.h"
 
 namespace spvtools {
 namespace opt {
@@ -23,27 +24,25 @@ namespace opt {
 class SENode {
  public:
   enum SENodeType {
-    Constant,
-    Phi,
+    Constant = 1,
+    RecurrentExpr,
     Add,
     Multiply,
     Divide,
     Negative,
-    Load,
+    ValueUnknown,
     Unknown
   };
 
   explicit SENode(const ir::Instruction* inst)
       : result_id_(inst->result_id()),
         unique_id_(inst->unique_id()),
-        parent_(nullptr),
         can_fold_to_constant_(true),
         is_unknown_(false) {}
 
   explicit SENode(uint32_t unique_id)
       : result_id_(0),
         unique_id_(unique_id),
-        parent_(nullptr),
         can_fold_to_constant_(true),
         is_unknown_(false) {}
 
@@ -53,18 +52,14 @@ class SENode {
 
   inline void AddChild(SENode* child) {
     children_.push_back(child);
-    child->SetParent(this);
+
+    std::sort(children_.begin(), children_.end());
     if (!child->can_fold_to_constant_) {
       this->MarkAsNonConstant();
     }
   }
 
-  inline virtual void SetParent(SENode* parent) { parent_ = parent; }
-
-  inline void MarkAsNonConstant() {
-    can_fold_to_constant_ = false;
-    if (parent_) parent_->MarkAsNonConstant();
-  }
+  inline void MarkAsNonConstant() { can_fold_to_constant_ = false; }
 
   inline uint32_t UniqueID() const { return unique_id_; }
   inline uint32_t ResultID() const { return result_id_; }
@@ -73,16 +68,16 @@ class SENode {
     switch (GetType()) {
       case Constant:
         return "Constant";
-      case Phi:
-        return "Phi";
+      case RecurrentExpr:
+        return "RecurrentExpr";
       case Add:
         return "Add";
       case Negative:
         return "Negative";
       case Multiply:
         return "Multiply";
-      case Load:
-        return "Load";
+      case ValueUnknown:
+        return "Value Unknown";
       case Divide:
         return "Division";
       case Unknown:
@@ -91,7 +86,7 @@ class SENode {
     return "NULL";
   }
 
-  void DumpDot(std::ostream& out) {
+  void DumpDot(std::ostream& out) const {
     out << UniqueID() << " [label=\"" << AsString() << " " << ResultID()
         << "\"]\n";
     for (const SENode* child : children_) {
@@ -110,28 +105,45 @@ class SENode {
 
   bool CanFoldToConstant() const { return can_fold_to_constant_; }
 
-  inline void MarkAsUnknown() {
-    is_unknown_ = true;
-    if (parent_) parent_->MarkAsUnknown();
+  inline void MarkAsUnknown() { is_unknown_ = true; }
+
+  bool operator==(const SENode& other) const;
+
+  bool operator!=(const SENode& other) const;
+
+  inline SENode* GetChild(size_t index) { return children_[index]; }
+
+  using iterator = std::vector<SENode*>::iterator;
+  using const_iterator = std::vector<SENode*>::const_iterator;
+
+  using graph_iterator = TreeDFIterator<SENode>;
+  using const_graph_iterator = TreeDFIterator<const SENode>;
+
+  iterator begin() { return children_.begin(); }
+  iterator end() { return children_.end(); }
+
+  const_iterator begin() const { return children_.cbegin(); }
+  const_iterator end() const { return children_.cend(); }
+  const_iterator cbegin() { return children_.cbegin(); }
+  const_iterator cend() { return children_.cend(); }
+
+  graph_iterator graph_begin() { return graph_iterator(this); }
+  graph_iterator graph_end() { return graph_iterator(); }
+  const_graph_iterator graph_begin() const { return graph_cbegin(); }
+  const_graph_iterator graph_end() const { return graph_cend(); }
+  const_graph_iterator graph_cbegin() const {
+    return const_graph_iterator(this);
   }
+  const_graph_iterator graph_cend() const { return const_graph_iterator(); }
 
-  bool operator==(const SENode& other) const {
-    if (!other.CanFoldToConstant() || !this->CanFoldToConstant()) return false;
-    return this->FoldToSingleValue() == other.FoldToSingleValue();
-  }
+  virtual SENode* Clone(uint32_t) const = 0;
 
-  bool operator!=(const SENode& other) const {
-    if (!other.CanFoldToConstant() || !this->CanFoldToConstant()) return false;
-
-    return this->FoldToSingleValue() != other.FoldToSingleValue();
-  }
-
+  const std::vector<SENode*>& GetChildren() const { return children_; }
 
  protected:
   uint32_t result_id_;
   uint32_t unique_id_;
 
-  SENode* parent_;
   std::vector<SENode*> children_;
   // Are all child nodes constant. Defualts to true and should be set to false
   // when a child node is added which is not constant.
@@ -144,21 +156,50 @@ class SEConstantNode : public SENode {
   explicit SEConstantNode(const ir::Instruction* inst, int64_t value)
       : SENode(inst), literal_value_(value) {}
 
+  SEConstantNode(uint32_t unique_id, int64_t value)
+      : SENode(unique_id), literal_value_(value) {}
+
   SENodeType GetType() const final { return Constant; }
 
-  int64_t FoldToSingleValue() const override {
-       return literal_value_;
+  int64_t FoldToSingleValue() const override { return literal_value_; }
+
+  SENode* Clone(uint32_t id) const final {
+    return new SEConstantNode(id, literal_value_);
   }
 
  protected:
   int64_t literal_value_;
 };
 
-class SEPhiNode : public SENode {
- public:
-  explicit SEPhiNode(const ir::Instruction* inst) : SENode(inst) {}
+struct SENodeHash {
+  size_t operator()(const SENode* node) const {
+    SENode::SENodeType type = node->GetType();
+    int64_t literal_value = 0;
+    if (node->GetType() == SENode::Constant)
+      literal_value = node->FoldToSingleValue();
 
-  SENodeType GetType() const final { return Phi; }
+    const std::vector<SENode*>& children = node->GetChildren();
+
+    int new_type = static_cast<int>(type) << 16;
+    int64_t new_literal = (literal_value + 1) << 2;
+
+    size_t resulting_hash =
+        std::hash<int>{}(new_type) ^ std::hash<int64_t>{}(new_literal);
+
+    for (const SENode* child : children) {
+      resulting_hash ^= std::hash<const SENode*>{}(child);
+    }
+
+    return resulting_hash;
+  }
+};
+
+class SERecurrentNode : public SENode {
+ public:
+  explicit SERecurrentNode(const ir::Instruction* inst) : SENode(inst) {}
+  explicit SERecurrentNode(uint32_t unique_id) : SENode(unique_id) {}
+
+  SENodeType GetType() const final { return RecurrentExpr; }
 
   inline void AddChild(SENode* child, uint32_t index) {
     // Add the block that value came from.
@@ -185,8 +226,12 @@ class SEPhiNode : public SENode {
   }
 
   inline const SENode* GetInitalizer() const { return initalizer_; }
+  inline SENode* GetInitalizer() { return initalizer_; }
 
   inline const SENode* GetTripCount() const { return step_operation_; }
+  inline SENode* GetTripCount() { return step_operation_; }
+
+  SENode* Clone(uint32_t id) const final { return new SERecurrentNode(id); }
 
  private:
   // Each child node of this node will be the value parameters to the phi. This
@@ -205,6 +250,8 @@ class SEAddNode : public SENode {
   SENodeType GetType() const final { return Add; }
 
   int64_t FoldToSingleValue() const override;
+
+  SENode* Clone(uint32_t id) const final { return new SEAddNode(id); }
 };
 
 class SEMultiplyNode : public SENode {
@@ -214,6 +261,8 @@ class SEMultiplyNode : public SENode {
   SENodeType GetType() const final { return Add; }
 
   int64_t FoldToSingleValue() const override;
+
+  SENode* Clone(uint32_t id) const final { return new SEMultiplyNode(id); }
 };
 
 class SEDivideNode : public SENode {
@@ -223,6 +272,7 @@ class SEDivideNode : public SENode {
   SENodeType GetType() const final { return Add; }
 
   int64_t FoldToSingleValue() const override;
+  SENode* Clone(uint32_t id) const final { return new SEDivideNode(id); }
 };
 
 class SENegative : public SENode {
@@ -230,57 +280,43 @@ class SENegative : public SENode {
   explicit SENegative(uint32_t unique_id) : SENode(unique_id) {}
 
   int64_t FoldToSingleValue() const override {
-
-   return -children_[0]->FoldToSingleValue();
+    return -children_[0]->FoldToSingleValue();
   }
+  SENode* Clone(uint32_t id) const final { return new SENegative(id); }
 
   SENodeType GetType() const final { return Negative; }
 };
 
-class SELoad : public SENode {
+class SEValueUnknown : public SENode {
  public:
-  explicit SELoad(const ir::Instruction* inst) : SENode(inst) {
+  explicit SEValueUnknown(const ir::Instruction* inst) : SENode(inst) {
     can_fold_to_constant_ = false;
   }
 
-  SENodeType GetType() const final { return Load; }
+  explicit SEValueUnknown(uint32_t unique_id) : SENode(unique_id) {
+    can_fold_to_constant_ = false;
+  }
+
+  SENode* Clone(uint32_t id) const final { return new SEValueUnknown(id); }
+
+  SENodeType GetType() const final { return ValueUnknown; }
 };
 
-class SEUnknown : public SENode {
+class SECantCompute : public SENode {
  public:
-  explicit SEUnknown(const ir::Instruction* inst) : SENode(inst) {
+  explicit SECantCompute(const ir::Instruction* inst) : SENode(inst) {
     can_fold_to_constant_ = false;
   }
 
-  void SetParent(SENode* parent) final {
-    SENode::SetParent(parent);
-    parent_->MarkAsUnknown();
+  explicit SECantCompute(uint32_t unique_id) : SENode(unique_id) {
+    can_fold_to_constant_ = false;
   }
+
+  SENode* Clone(uint32_t id) const final { return new SECantCompute(id); }
 
   bool IsUnknown() const final { return true; }
   SENodeType GetType() const final { return Unknown; }
 };
-
-
-// This class represents an expression with respect to the loop bounds.
-class SELoopRecurrence: public SENode {
- public:
-  bool IsAffine() const {
-    if (children_.size() != 2) return false;
-
-    SENode* lhs = children_[0];
-    SENode* rhs = children_[1];
-
-    // Expected to be in the form of a*x + c
-    if ((rhs->CanFoldToConstant() || lhs->GetType() == Multiply) &&
-        (lhs->CanFoldToConstant() || rhs->GetType() == Multiply)) {
-      return true;
-    }
-
-    return false;
-  }
-};
-
 
 }  // namespace opt
 }  // namespace spvtools

@@ -27,8 +27,8 @@
 #include "opt/iterator.h"
 #include "opt/loop_descriptor.h"
 #include "opt/pass.h"
-#include "opt/tree_iterator.h"
 #include "opt/scalar_analysis.h"
+#include "opt/tree_iterator.h"
 
 namespace {
 
@@ -36,7 +36,6 @@ using namespace spvtools;
 using ::testing::UnorderedElementsAre;
 
 using PassClassTest = PassTest<::testing::Test>;
-
 
 /*
 Generated from the following GLSL + --eliminate-local-multi-store
@@ -109,36 +108,44 @@ TEST_F(PassClassTest, BasicEvolutionTest) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::ScalarEvolutionAnalysis analysis { context.get() };
-  //opt::LoopDependenceAnalysis analysis {context.get(), ld.etLoopByIndex(0)};
- // analysis.DumpIterationSpaceAsDot(std::cout);
+  opt::ScalarEvolutionAnalysis analysis{context.get()};
+  // opt::LoopDependenceAnalysis analysis {context.get(), ld.etLoopByIndex(0)};
+  // analysis.DumpIterationSpaceAsDot(std::cout);
 
   const ir::Instruction* store = nullptr;
-  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f,11)) {
+  const ir::Instruction* load = nullptr;
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 11)) {
     if (inst.opcode() == SpvOp::SpvOpStore) {
       store = &inst;
     }
+    if (inst.opcode() == SpvOp::SpvOpLoad) {
+      load = &inst;
+    }
   }
 
+  EXPECT_TRUE(load);
   EXPECT_TRUE(store);
 
-	analysis.AnalyzeLoop(ld.GetLoopByIndex(0));
-analysis.DumpAsDot(std::cout);
+  analysis.AnalyzeLoop(ld.GetLoopByIndex(0));
+  analysis.DumpAsDot(std::cout);
 
+  ir::Instruction* access_chain =
+      context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
 
-  ir::Instruction* access_chain = context->get_def_use_mgr()->GetDef(
-                    store->GetSingleWordInOperand(0));
-
-  ir::Instruction* child =  context->get_def_use_mgr()->GetDef(access_chain->GetSingleWordInOperand(1));
-  const opt::SENode* node = analysis.GetNodeFromInstruction(child->unique_id());
+  ir::Instruction* child = context->get_def_use_mgr()->GetDef(
+      access_chain->GetSingleWordInOperand(1));
+  const opt::SENode* node = analysis.AnalyzeInstruction(child);
 
   EXPECT_TRUE(node);
   EXPECT_TRUE(node->CanFoldToConstant());
+  node->DumpDot(std::cout);
+  analysis.GetRecurrentExpression(const_cast<opt::SENode*>(node));
+
+  analysis.DumpAsDot(std::cout);
+
   // EXPECT_FALSE(
- //     analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(31)));
- // analysis.DumpIterationSpaceAsDot(std::cout);
-
-
+  //     analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(31)));
+  // analysis.DumpIterationSpaceAsDot(std::cout);
 }
 
 /*
@@ -212,12 +219,12 @@ TEST_F(PassClassTest, LoadTest) {
   const ir::Function* f = spvtest::GetFunction(module, 2);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::ScalarEvolutionAnalysis analysis { context.get() };
-  //opt::LoopDependenceAnalysis analysis {context.get(), ld.etLoopByIndex(0)};
- // analysis.DumpIterationSpaceAsDot(std::cout);
+  opt::ScalarEvolutionAnalysis analysis{context.get()};
+  // opt::LoopDependenceAnalysis analysis {context.get(), ld.etLoopByIndex(0)};
+  // analysis.DumpIterationSpaceAsDot(std::cout);
 
   const ir::Instruction* load = nullptr;
-  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f,28)) {
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 28)) {
     if (inst.opcode() == SpvOp::SpvOpLoad) {
       load = &inst;
     }
@@ -225,25 +232,23 @@ TEST_F(PassClassTest, LoadTest) {
 
   EXPECT_TRUE(load);
 
-	analysis.AnalyzeLoop(ld.GetLoopByIndex(0));
+  analysis.AnalyzeLoop(ld.GetLoopByIndex(0));
   analysis.DumpAsDot(std::cout);
 
+  ir::Instruction* access_chain =
+      context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
 
-  ir::Instruction* access_chain = context->get_def_use_mgr()->GetDef(
-                    load->GetSingleWordInOperand(0));
+  ir::Instruction* child = context->get_def_use_mgr()->GetDef(
+      access_chain->GetSingleWordInOperand(1));
+  //  const opt::SENode* node =
+  //  analysis.GetNodeFromInstruction(child->unique_id());
 
-  ir::Instruction* child =  context->get_def_use_mgr()->GetDef(access_chain->GetSingleWordInOperand(1));
-  const opt::SENode* node = analysis.GetNodeFromInstruction(child->unique_id());
-
+  const opt::SENode* node = analysis.AnalyzeInstruction(child);
   EXPECT_TRUE(node);
   EXPECT_FALSE(node->CanFoldToConstant());
   // EXPECT_FALSE(
- //     analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(31)));
- // analysis.DumpIterationSpaceAsDot(std::cout);
+  //     analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(31)));
+  // analysis.DumpIterationSpaceAsDot(std::cout);
 }
-
-
-
-
 
 }  // namespace
