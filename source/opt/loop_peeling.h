@@ -35,7 +35,7 @@ class LoopPeeling {
       : context_(context),
         loop_utils_(context, loop),
         loop_(loop),
-        extra_iv_(nullptr) {
+        extra_induction_variable_(nullptr) {
     assert(loop_->IsLCSSA() && "Loop is not in LCSSA form");
     GetIteratingExitValue();
   }
@@ -82,7 +82,9 @@ class LoopPeeling {
   // Returns the second loop (peeled loop for PeelAfter).
   ir::Loop* GetAfterLoop() { return loop_; }
   // Returns the induction variable build and use to peel the loop.
-  ir::Instruction* GetExtraInductionVariable() { return extra_iv_; }
+  ir::Instruction* GetExtraInductionVariable() {
+    return extra_induction_variable_;
+  }
 
  private:
   ir::IRContext* context_;
@@ -91,8 +93,11 @@ class LoopPeeling {
   ir::Loop* loop_;
   // Peeled loop.
   ir::Loop* new_loop_;
+  // This is set to true when the exit and back-edge branch instruction is the
+  // same.
+  bool do_while_form_;
 
-  ir::Instruction* extra_iv_;
+  ir::Instruction* extra_induction_variable_;
 
   // Map between loop iterators and exit values.
   std::unordered_map<uint32_t, ir::Instruction*> exit_value_;
@@ -106,6 +111,13 @@ class LoopPeeling {
   // Insert an induction variable into the first loop as a simplified counter.
   // Fixme(Victor): with a scalar evolution, this can removed.
   void InsertIterator(ir::Instruction* factor);
+
+  // Fixes the exit condition of the before loop. The function calls
+  // |condition_builder| to get the condition to use in the conditional branch
+  // of the loop exit. The loop will be exited if the condition evaluate to
+  // true.
+  void FixExitCondition(
+      const std::function<uint32_t(ir::BasicBlock*)>& condition_builder);
 
   // Connects iterating values so that loop like
   // int z = 0;

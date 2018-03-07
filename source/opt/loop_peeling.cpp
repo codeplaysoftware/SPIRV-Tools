@@ -117,14 +117,19 @@ void LoopPeeling::InsertIterator(ir::Instruction* factor) {
 
   builder.SetInsertPoint(&*GetBeforeLoop()->GetHeaderBlock()->begin());
 
-  extra_iv_ = builder.AddPhi(
+  extra_induction_variable_ = builder.AddPhi(
       factor->type_id(),
       {builder.Add32BitConstantInteger<uint32_t>(0, int_type->IsSigned())
            ->result_id(),
        GetBeforeLoop()->GetPreHeaderBlock()->id(), iv_inc->result_id(),
        GetBeforeLoop()->GetLatchBlock()->id()});
   // Connect everything.
-  iv_inc->SetInOperand(0, {extra_iv_->result_id()});
+  iv_inc->SetInOperand(0, {extra_induction_variable_->result_id()});
+
+  // If do-while form, use the incremented value.
+  if (do_while_form_) {
+    extra_induction_variable_ = iv_inc;
+  }
 }
 
 void LoopPeeling::ConnectIterators(
@@ -175,62 +180,56 @@ void LoopPeeling::GetIteratingExitValue() {
   if (cfg.preds(loop_->GetMergeBlock()->id()).size() != 1) {
     return;
   }
+  opt::analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
 
-  uint32_t condition_block_id = 0;
-  for (uint32_t id : cfg.preds(loop_->GetMergeBlock()->id())) {
-    if (loop_->IsInsideLoop(id)) {
-      condition_block_id = id;
-    }
+  uint32_t condition_block_id = cfg.preds(loop_->GetMergeBlock()->id())[0];
+
+  auto& header_pred = cfg.preds(loop_->GetHeaderBlock()->id());
+  do_while_form_ = std::find(header_pred.begin(), header_pred.end(),
+                             condition_block_id) != header_pred.end();
+  if (do_while_form_) {
+    loop_->GetHeaderBlock()->ForEachPhiInst(
+        [condition_block_id, def_use_mgr, this](ir::Instruction* phi) {
+          std::unordered_set<ir::Instruction*> operations;
+
+          for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
+            if (condition_block_id == phi->GetSingleWordInOperand(i + 1)) {
+              exit_value_[phi->result_id()] =
+                  def_use_mgr->GetDef(phi->GetSingleWordInOperand(i));
+            }
+          }
+        });
+  } else {
+    DominatorTree* dom_tree =
+        &context_->GetDominatorAnalysis(loop_utils_.GetFunction(), cfg)
+             ->GetDomTree();
+    ir::BasicBlock* condition_block = cfg.block(condition_block_id);
+
+    loop_->GetHeaderBlock()->ForEachPhiInst(
+        [dom_tree, condition_block, this](ir::Instruction* phi) {
+          std::unordered_set<ir::Instruction*> operations;
+
+          // Not the back-edge value, check if the phi instruction is the only
+          // possible candidate.
+          GetIteratorUpdateOperations(loop_, phi, &operations);
+
+          for (ir::Instruction* insn : operations) {
+            if (insn == phi) {
+              continue;
+            }
+            if (dom_tree->Dominates(context_->get_instr_block(insn),
+                                    condition_block)) {
+              return;
+            }
+          }
+          exit_value_[phi->result_id()] = phi;
+        });
   }
-
-  DominatorTree* dom_tree =
-      &context_->GetDominatorAnalysis(loop_utils_.GetFunction(), cfg)
-           ->GetDomTree();
-  ir::BasicBlock* condition_block = cfg.block(condition_block_id);
-
-  loop_->GetHeaderBlock()->ForEachPhiInst(
-      [dom_tree, condition_block, this](ir::Instruction* phi) {
-        opt::analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
-        std::unordered_set<ir::Instruction*> operations;
-
-        uint32_t iv_inc = 0;
-        for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
-          if (loop_->IsInsideLoop(phi->GetSingleWordInOperand(i + 1))) {
-            iv_inc = phi->GetSingleWordInOperand(i);
-          }
-        }
-
-        // If the value coming from the back edge dominates the exit
-        // condition, take it as the exit value (do-while loop).
-        if (dom_tree->Dominates(context_->get_instr_block(iv_inc),
-                                condition_block)) {
-          exit_value_[phi->result_id()] = def_use_mgr->GetDef(iv_inc);
-          return;
-        }
-
-        // Not the back-edge value, check if the phi instruction is the only
-        // possible candidate.
-        GetIteratorUpdateOperations(loop_, phi, &operations);
-
-        for (ir::Instruction* insn : operations) {
-          if (insn == phi) {
-            continue;
-          }
-          if (dom_tree->Dominates(context_->get_instr_block(insn),
-                                  condition_block)) {
-            return;
-          }
-        }
-        exit_value_[phi->result_id()] = phi;
-      });
 }
 
-void LoopPeeling::PeelBefore(ir::Instruction* factor) {
+void LoopPeeling::FixExitCondition(
+    const std::function<uint32_t(ir::BasicBlock*)>& condition_builder) {
   ir::CFG& cfg = *context_->cfg();
-
-  DuplicateLoop();
-
-  InsertIterator(factor);
 
   uint32_t condition_block_id = 0;
   for (uint32_t id : cfg.preds(GetAfterLoop()->GetHeaderBlock()->id())) {
@@ -245,10 +244,10 @@ void LoopPeeling::PeelBefore(ir::Instruction* factor) {
   InstructionBuilder builder(context_, &*condition_block->tail(),
                              ir::IRContext::kAnalysisDefUse |
                                  ir::IRContext::kAnalysisInstrToBlockMapping);
-  // Build the following check: extra_iv_ < factor
+
   condition_block->terminator()->SetInOperand(
-      0, {builder.AddLessThan(extra_iv_->result_id(), factor->result_id())
-              ->result_id()});
+      0, {condition_builder(condition_block)});
+
   uint32_t to_continue_block =
       condition_block->terminator()->GetSingleWordInOperand(
           condition_block->terminator()->GetSingleWordInOperand(1) ==
@@ -260,39 +259,44 @@ void LoopPeeling::PeelBefore(ir::Instruction* factor) {
       2, {GetAfterLoop()->GetHeaderBlock()->id()});
 }
 
-void LoopPeeling::PeelAfter(ir::Instruction* factor,
-                            ir::Instruction* iteration_count) {
-  ir::CFG& cfg = *context_->cfg();
-
+void LoopPeeling::PeelBefore(ir::Instruction* factor) {
   DuplicateLoop();
 
   InsertIterator(factor);
 
-  uint32_t condition_block_id = 0;
-  for (uint32_t id : cfg.preds(GetAfterLoop()->GetHeaderBlock()->id())) {
-    if (!GetAfterLoop()->IsInsideLoop(id)) {
-      condition_block_id = id;
-    }
-  }
-  assert(condition_block_id != 0 && "2nd loop in improperly connected");
+  FixExitCondition([factor, this](ir::BasicBlock* condition_block) {
+    InstructionBuilder builder(context_, &*condition_block->tail(),
+                               ir::IRContext::kAnalysisDefUse |
+                                   ir::IRContext::kAnalysisInstrToBlockMapping);
+    return builder
+        .AddLessThan(extra_induction_variable_->result_id(),
+                     factor->result_id())
+        ->result_id();
+  });
+}
 
-  ir::BasicBlock* condition_block = cfg.block(condition_block_id);
-  assert(condition_block->terminator()->opcode() == SpvOpBranchConditional);
-  InstructionBuilder builder(context_, &*condition_block->tail(),
-                             ir::IRContext::kAnalysisDefUse |
-                                 ir::IRContext::kAnalysisInstrToBlockMapping);
-  // Check that stuff branch accordingly to the check.
-  // Build the following check: extra_iv_ + factor < iteration_count (do the add
-  // to avoid any issues with unsigned)
-  condition_block->terminator()->SetInOperand(
-      0, {builder
-              .AddLessThan(
-                  builder
-                      .AddIAdd(extra_iv_->type_id(), extra_iv_->result_id(),
-                               factor->result_id())
-                      ->result_id(),
-                  iteration_count->result_id())
-              ->result_id()});
+void LoopPeeling::PeelAfter(ir::Instruction* factor,
+                            ir::Instruction* iteration_count) {
+  DuplicateLoop();
+
+  InsertIterator(factor);
+
+  FixExitCondition([factor, iteration_count,
+                    this](ir::BasicBlock* condition_block) {
+    InstructionBuilder builder(context_, &*condition_block->tail(),
+                               ir::IRContext::kAnalysisDefUse |
+                                   ir::IRContext::kAnalysisInstrToBlockMapping);
+    // Build the following check: extra_induction_variable_ + factor <
+    // iteration_count
+    return builder
+        .AddLessThan(builder
+                         .AddIAdd(extra_induction_variable_->type_id(),
+                                  extra_induction_variable_->result_id(),
+                                  factor->result_id())
+                         ->result_id(),
+                     iteration_count->result_id())
+        ->result_id();
+  });
 }
 
 }  // namespace opt
