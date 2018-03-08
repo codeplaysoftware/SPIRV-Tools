@@ -147,6 +147,7 @@ add_library(SPIRV-Tools-opt
   remove_duplicates_pass.cpp
   replace_invalid_opc.cpp
   scalar_analysis.cpp
+  scalar_analysis_simplification.cpp
   scalar_replacement_pass.cpp
   set_spec_constant_default_value_pass.cpp
   simplification_pass.cpp

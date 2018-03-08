@@ -30,20 +30,10 @@ class SENode {
     Multiply,
     Negative,
     ValueUnknown,
-    Unknown
+    CanNotCompute
   };
 
-  explicit SENode(const ir::Instruction* inst)
-      : result_id_(inst->result_id()),
-        unique_id_(inst->unique_id()),
-        can_fold_to_constant_(true),
-        is_unknown_(false) {}
-
-  explicit SENode(uint32_t unique_id)
-      : result_id_(0),
-        unique_id_(unique_id),
-        can_fold_to_constant_(true),
-        is_unknown_(false) {}
+  SENode() : unique_id_(NodeCount++), can_fold_to_constant_(true) {}
 
   virtual SENodeType GetType() const = 0;
 
@@ -61,7 +51,6 @@ class SENode {
   inline void MarkAsNonConstant() { can_fold_to_constant_ = false; }
 
   inline uint32_t UniqueID() const { return unique_id_; }
-  inline uint32_t ResultID() const { return result_id_; }
 
   std::string AsString() const {
     switch (GetType()) {
@@ -77,8 +66,8 @@ class SENode {
         return "Multiply";
       case ValueUnknown:
         return "Value Unknown";
-      case Unknown:
-        return "Unknown";
+      case CanNotCompute:
+        return "Can not compute";
     }
     return "NULL";
   }
@@ -100,34 +89,38 @@ class SENode {
     return 0;
   }
 
-  virtual bool IsUnknown() const { return false; }
-
-  bool ContainsUnknown() const { return is_unknown_; }
-
   bool CanFoldToConstant() const { return can_fold_to_constant_; }
 
-  inline void MarkAsUnknown() { is_unknown_ = true; }
-
+  // Checks if two nodes are the same by hashing them.
   bool operator==(const SENode& other) const;
 
+  // Checks if two nodes are not the same by comparing the hashes.
   bool operator!=(const SENode& other) const;
 
+  // Return the child node at |index|.
   inline SENode* GetChild(size_t index) { return children_[index]; }
 
+  // Iterator to iterate over the child nodes.
   using iterator = std::vector<SENode*>::iterator;
   using const_iterator = std::vector<SENode*>::const_iterator;
 
+  // Iterator to iterate over the entire DAG. Even though we are using the tree
+  // iterator it should still be safe to iterate over. However, nodes with
+  // multiple parents will be visited multiple times, unlike in a tree.
   using graph_iterator = TreeDFIterator<SENode>;
   using const_graph_iterator = TreeDFIterator<const SENode>;
 
+  // Iterate over immediate child nodes.
   iterator begin() { return children_.begin(); }
   iterator end() { return children_.end(); }
 
+  // Constant overloads for iterating over immediate child nodes.
   const_iterator begin() const { return children_.cbegin(); }
   const_iterator end() const { return children_.cend(); }
   const_iterator cbegin() { return children_.cbegin(); }
   const_iterator cend() { return children_.cend(); }
 
+  // Iterate over all child nodes in the graph.
   graph_iterator graph_begin() { return graph_iterator(this); }
   graph_iterator graph_end() { return graph_iterator(); }
   const_graph_iterator graph_begin() const { return graph_cbegin(); }
@@ -137,184 +130,101 @@ class SENode {
   }
   const_graph_iterator graph_cend() const { return const_graph_iterator(); }
 
-  virtual SENode* Clone(uint32_t) const = 0;
-
+  // Return the vector of immediate children.
   const std::vector<SENode*>& GetChildren() const { return children_; }
   std::vector<SENode*>& GetChildren() { return children_; }
 
-  void OverwriteChild(int index, SENode* new_child) {
-    children_[index] = new_child;
-
-    std::sort(children_.begin(), children_.end());
-    if (!new_child->can_fold_to_constant_) {
-      this->MarkAsNonConstant();
-    }
-  }
-
  protected:
-  uint32_t result_id_;
+  // Each node is assigned a unique id.
   uint32_t unique_id_;
 
+  // Generate a unique id for each node in the graph by maintaining a count of
+  // nodes currently in the graph.
+  static uint32_t NodeCount;
+
   std::vector<SENode*> children_;
+
   // Are all child nodes constant. Defualts to true and should be set to false
   // when a child node is added which is not constant.
   bool can_fold_to_constant_;
-  bool is_unknown_;
 };
 
 class SEConstantNode : public SENode {
  public:
-  explicit SEConstantNode(const ir::Instruction* inst, int64_t value)
-      : SENode(inst), literal_value_(value) {}
-
-  SEConstantNode(uint32_t unique_id, int64_t value)
-      : SENode(unique_id), literal_value_(value) {}
+  explicit SEConstantNode(int64_t value) : literal_value_(value) {}
 
   SENodeType GetType() const final { return Constant; }
 
   int64_t FoldToSingleValue() const override { return literal_value_; }
-
-  SENode* Clone(uint32_t id) const final {
-    return new SEConstantNode(id, literal_value_);
-  }
 
  protected:
   int64_t literal_value_;
 };
 
 struct SENodeHash {
-  size_t operator()(const SENode* node) const {
-    std::string type = node->AsString();
-    int64_t literal_value = 0;
-    if (node->GetType() == SENode::Constant)
-      literal_value = node->FoldToSingleValue();
-
-    const std::vector<SENode*>& children = node->GetChildren();
-
-    int64_t new_literal = (literal_value + 1) << 2;
-    size_t resulting_hash =
-        std::hash<std::string>{}(type) ^ std::hash<int64_t>{}(new_literal);
-
-    for (const SENode* child : children) {
-      resulting_hash ^= std::hash<const SENode*>{}(child);
-    }
-
-    return resulting_hash;
-  }
+  size_t operator()(const std::unique_ptr<SENode>& node) const;
+  size_t operator()(const SENode* node) const;
 };
 
 class SERecurrentNode : public SENode {
  public:
-  explicit SERecurrentNode(const ir::Instruction* inst) : SENode(inst) {}
-  explicit SERecurrentNode(uint32_t unique_id) : SENode(unique_id) {}
-
   SENodeType GetType() const final { return RecurrentExpr; }
 
-  inline void AddChild(SENode* child, uint32_t index) {
-    // Add the block that value came from.
-    incoming_blocks_[index] = children_.size();
-    // Add the value.
+  inline void AddCoefficient(SENode* child) {
+    coefficient_ = child;
     SENode::AddChild(child);
   }
 
-  inline SENode* GetValueFromEdge(uint32_t edge) const {
-    auto itr = incoming_blocks_.find(edge);
-    if (itr == incoming_blocks_.end()) return nullptr;
-
-    return children_[itr->second];
-  }
-
-  inline void AddInitalizer(SENode* child) {
-    initalizer_ = child;
-    SENode::AddChild(child);
-  }
-
-  inline void AddTripCount(SENode* child) {
+  inline void AddOffset(SENode* child) {
     step_operation_ = child;
     SENode::AddChild(child);
   }
 
-  inline const SENode* GetInitalizer() const { return initalizer_; }
-  inline SENode* GetInitalizer() { return initalizer_; }
+  inline const SENode* GetCoefficient() const { return coefficient_; }
+  inline SENode* GetCoefficient() { return coefficient_; }
 
-  inline const SENode* GetTripCount() const { return step_operation_; }
-  inline SENode* GetTripCount() { return step_operation_; }
-
-  SENode* Clone(uint32_t id) const final { return new SERecurrentNode(id); }
+  inline const SENode* GetOffset() const { return step_operation_; }
+  inline SENode* GetOffset() { return step_operation_; }
 
  private:
-  // Each child node of this node will be the value parameters to the phi. This
-  // map maintains a list of the blocks the values came from to their child
-  // index.
-  std::map<uint32_t, size_t> incoming_blocks_;
-
-  SENode* initalizer_;
+  SENode* coefficient_;
   SENode* step_operation_;
 };
 
 class SEAddNode : public SENode {
  public:
-  explicit SEAddNode(const ir::Instruction* inst) : SENode(inst) {}
-  explicit SEAddNode(uint32_t unique_id) : SENode(unique_id) {}
   SENodeType GetType() const final { return Add; }
 
   int64_t FoldToSingleValue() const override;
-
-  SENode* Clone(uint32_t id) const final { return new SEAddNode(id); }
 };
 
 class SEMultiplyNode : public SENode {
  public:
-  explicit SEMultiplyNode(const ir::Instruction* inst) : SENode(inst) {}
-  explicit SEMultiplyNode(uint32_t unique_id) : SENode(unique_id) {}
   SENodeType GetType() const final { return Multiply; }
 
   int64_t FoldToSingleValue() const override;
-
-  SENode* Clone(uint32_t id) const final { return new SEMultiplyNode(id); }
 };
 
 class SENegative : public SENode {
  public:
-  explicit SENegative(uint32_t unique_id) : SENode(unique_id) {}
-
   int64_t FoldToSingleValue() const override {
     return -children_[0]->FoldToSingleValue();
   }
-  SENode* Clone(uint32_t id) const final { return new SENegative(id); }
 
   SENodeType GetType() const final { return Negative; }
 };
 
 class SEValueUnknown : public SENode {
  public:
-  explicit SEValueUnknown(const ir::Instruction* inst) : SENode(inst) {
-    can_fold_to_constant_ = false;
-  }
-
-  explicit SEValueUnknown(uint32_t unique_id) : SENode(unique_id) {
-    can_fold_to_constant_ = false;
-  }
-
-  SENode* Clone(uint32_t id) const final { return new SEValueUnknown(id); }
+  SEValueUnknown() : SENode() { can_fold_to_constant_ = false; }
 
   SENodeType GetType() const final { return ValueUnknown; }
 };
 
 class SECantCompute : public SENode {
  public:
-  explicit SECantCompute(const ir::Instruction* inst) : SENode(inst) {
-    can_fold_to_constant_ = false;
-  }
-
-  explicit SECantCompute(uint32_t unique_id) : SENode(unique_id) {
-    can_fold_to_constant_ = false;
-  }
-
-  SENode* Clone(uint32_t id) const final { return new SECantCompute(id); }
-
-  bool IsUnknown() const final { return true; }
-  SENodeType GetType() const final { return Unknown; }
+  SECantCompute() : SENode() { can_fold_to_constant_ = false; }
+  SENodeType GetType() const final { return CanNotCompute; }
 };
 
 }  // namespace opt
