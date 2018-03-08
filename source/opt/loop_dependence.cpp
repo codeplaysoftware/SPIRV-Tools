@@ -128,68 +128,57 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
   SENode* delta = scalar_evolution_.CreateSubtraction(src_const, dest_const);
   SENode* distance = scalar_evolution_.CreateDivision(delta, coefficient);
 
-  SENode* trip_count = nullptr;
-  if (!GetTripCount(&trip_count)) {
-    return false;
-  }
-
-  // If abs(delta) > trip_count
-  SENode* abs_delta = delta->abs();
-  if (abs_delta->IsGreater(trip_count)) {
-    // Prove independence
+  // If the distance is not an integer we prove independence
+  if (distance->IsFoldable() && !IsIntegral(distance)) {
     dv_entry->direction = DVEntry::NONE;
     return true;
   }
 
-  SENode* distance = scalar_evolution_.CreateDivision(delta, coefficient);
-  if (!coeff_div_delta) {
-    return false;
+  SENode* lower_bound = GetLowerBound();
+  SENode* upper_bound = GetUpperBound();
+  SENode* bounds =
+      scalar_evolution_.CreateSubtraction(upper_bound, lower_bound);
+  // If the absolute value of the distance is > upper bound - lower bound then
+  // we prove independence
+  // This can work for symbolics in which we have the same symbols in the
+  // subscript as in the loop bounds, allowing us to prove distance
+  if (distance->IsGreater(bounds)) {
+    dv_entry->direction = DVEntry::NONE;
+    return true;
   }
 
-  // Now attempt to compute distance
-  // Only do this if we can fold the distance to a constant value
-  if (distance->Foldable()) {
-    // Check that coefficient divides delta exactly.
-    // If it does not, we prove independence
-    if (!distance->IsIntegral()) {
-      dv_entry->direction = DVEntry::NONE;
-      return true;
-    }
+  // Otherwise we can get a direction as follows
+  //             { < if distance > 0
+  // direction = { = if distance == 0
+  //             { > if distance < 0
 
-    if (distance->IsGreater(0)) {
-      // direction LT
-      dv_entry->direction = DVEntry::LT;
-      return false;
-    } else if (distance->IsLess(0)) {
-      // direction GT
-      dv_entry->direction = DVEntry::GT;
-      return false;
-    } else {
-      // direction EQ
-      dv_entry->direction = DVEntry::EQ;
-      return false;
+  if (distance->IsGreater(0)) {
+    dv_entry->direction = DVEntry::LT;
+    if (distance->IsFoldable()) {
+      dv_entry->distance = distance->FoldToSingleValue();
     }
-  } else if (delta->IsEqual(0)) {
-    // direction = EQ
-    // distance = 0
+    return false;
+  }
+  if (distance->IsEqual(0)) {
     dv_entry->direction = DVEntry::EQ;
     dv_entry->distance = 0;
     return false;
-  } else {
-    if (coefficient->IsEqual(1)) {
-      // distance = delta
-      dv_entry->distance = delta->FoldToSingleValue();
-      return false;
+  }
+  if (distance->IsLess(0)) {
+    dv_entry->direction = DVEntry::GT;
+    if (distance->IsFoldable()) {
+      dv_entry->distance = distance->FoldToSingleValue();
     }
+    return false;
   }
 
-  // Can't prove independence
+  // We were unable to prove independence
   return false;
 }
 
 // Takes the form a1*i + c1, a2*i + c2
 // when a1 = 0
-// i = (c2 - c1) / a2
+// distance = (c2 - c1) / a2
 bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(SENode* source,
                                                    SENode* destination,
                                                    SENode* coefficient,
@@ -199,7 +188,20 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(SENode* source,
   SENode* dest_const = destination->GetConstant();
 
   SENode* const_sub = scalar_evolution_.CreateNegation(src_const, dest_const);
-  SENode* i = scalar_evolution_.CreateDivision(const_sub, coefficient);
+  SENode* distance = scalar_evolution_.CreateDivision(const_sub, coefficient);
+
+  // If distance is not an integer, we prove independence
+  if (distance->IsFoldable() && !distance->IsIntegral()) {
+    dv_entry->direction = DVEntry::NONE;
+    return true;
+  }
+
+  // If the distance is not within the loop bounds, we prove independence
+  if (distance->IsFoldable() &&
+      !IsWithinBounds(distance, GetLowerBound(), GetUpperBound())) {
+    dv_entry->direction = DVEntry::NONE;
+    return true;
+  }
 
   // If i is not an integer, there is no dependence
   if (!i->isIntegral()) {
@@ -338,27 +340,18 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(SENode* source,
 
 bool LoopDependenceAnalysis::IsWithinBounds(SENode* value, SENode* bound_one,
                                             SENode* bound_two) {
-  SENode* abs_value = nullptr;
-
-  // Get the absolute value of |value|
-  if (value->IsNegative()) {
-    abs_value = scalar_evolution_.CreateNegation(value);
-  } else {
-    abs_value = value;
-  }
-
   // If |bound_one| is the lower bound
   if (bound_one->IsLess(bound_two)) {
-    return (abs_value->IsGreaterOrEqual(bound_one) &&
-            abs_value->IsLessOrEqual(bound_two));
+    return (value->IsGreaterOrEqual(bound_one) &&
+            value->IsLessOrEqual(bound_two));
   } else
       // If |bound_two| is the lower bound
       if (bound_one->IsGreater(bound_two)) {
-    return (abs_value->IsGreaterOrEqual(bound_two) &&
-            abs_value->IsLessOrEqual(bound_one));
+    return (value->IsGreaterOrEqual(bound_two) &&
+            value->IsLessOrEqual(bound_one));
   } else {
     // Both bounds have the same value
-    return abs_value->IsEqual(bound_one);
+    return value->IsEqual(bound_one);
   }
 }
 
@@ -382,24 +375,52 @@ bool LoopDependenceAnalysis::DeltaTest(SENode* source, SENode* direction) {
 
 SENode* LoopDependenceAnalysis::GetLowerBound() {
   ir::Instruction* lower_bound_inst = loop_.GetLowerBoundInst();
-  if (!lower_bound_inst) {
+  ir::Instruction* upper_bound_inst = loop_.GetUpperBoundInst();
+  if (!lower_bound_inst || !upper_bound_inst) {
     return nullptr;
   }
 
   SENode* lower_SENode =
       scalar_evolution_.AnalyzeInstruction(loop_.GetLowerBoundInst());
-  return lower_SENode;
+  SENode* upper_SENode =
+      scalar_evolution_.AnalyzeInstruction(loop_.GetUpperBoundInst());
+  if (lower_SENode->IsLess(upper_SENode)) {
+    return lower_SENode;
+  }
+  if (lower_SENode->IsEqual(upper_SENode)) {
+    return lower_SENode;
+  }
+  if (lower_SENode->IsGreater(upper_SENode)) {
+    return upper_SENode;
+  }
+  // We couldn't determine which bound instr was lower and can't determine they
+  // are equal. As a result it is not safe to return either bound
+  return nullptr;
 }
 
 SENode* LoopDependenceAnalysis::GetUpperBound() {
+  ir::Instruction* lower_bound_inst = loop_.GetLowerBoundInst();
   ir::Instruction* upper_bound_inst = loop_.GetUpperBoundInst();
-  if (!upper_bound_inst) {
+  if (!lower_bound_inst || !upper_bound_inst) {
     return nullptr;
   }
 
+  SENode* lower_SENode =
+      scalar_evolution_.AnalyzeInstruction(loop_.GetLowerBoundInst());
   SENode* upper_SENode =
       scalar_evolution_.AnalyzeInstruction(loop_.GetUpperBoundInst());
-  return upper_SENode;
+  if (lower_SENode->IsLess(upper_SENode)) {
+    return upper_SENode;
+  }
+  if (lower_SENode->IsEqual(upper_SENode)) {
+    return lower_SENode;
+  }
+  if (lower_SENode->IsGreater(upper_SENode)) {
+    return lower_SENode;
+  }
+  // We couldn't determine which bound instr was higher and can't determine they
+  // are equal. As a result it is not safe to return either bound
+  return nullptr;
 }
 
 SENode* LoopDependenceAnalysis::GetLoopLowerUpperBounds() {

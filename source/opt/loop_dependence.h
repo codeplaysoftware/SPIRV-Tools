@@ -100,17 +100,18 @@ class LoopDependenceAnalysis {
 
   bool DeltaTest(SENode* source, SENode* direction);
 
-  // Returns true if the absolute value of |value| is between |bound_one| and
-  // |bound_two| (inclusive)
+  // Returns true if |value| is between |bound_one| and |bound_two| (inclusive)
   bool IsWithinBounds(SENode* value, SENode* bound_one, SENode* bound_two);
 
   // Finds the lower bound of the loop as an SENode* and returns the resulting
-  // SENode
+  // SENode. The lower bound is evaluated as the bound with the lesser signed
+  // value.
   // If the operations can not be completed a nullptr is returned
   SENode* GetLowerBound();
 
   // Finds the upper bound of the loop as an SENode* and returns the resulting
-  // SEnode
+  // SEnode. The upper bound is evaluated as the bound with the greater signed
+  // value.
   // If the operations can not be completed a nullptr is returned
   SENode* GetUpperBound();
 
