@@ -336,6 +336,32 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(SENode* source,
   }
 }
 
+bool LoopDependenceAnalysis::IsWithinBounds(SENode* value, SENode* bound_one,
+                                            SENode* bound_two) {
+  SENode* abs_value = nullptr;
+
+  // Get the absolute value of |value|
+  if (value->IsNegative()) {
+    abs_value = scalar_evolution_.CreateNegation(value);
+  } else {
+    abs_value = value;
+  }
+
+  // If |bound_one| is the lower bound
+  if (bound_one->IsLess(bound_two)) {
+    return (abs_value->IsGreaterOrEqual(bound_one) &&
+            abs_value->IsLessOrEqual(bound_two));
+  } else
+      // If |bound_two| is the lower bound
+      if (bound_one->IsGreater(bound_two)) {
+    return (abs_value->IsGreaterOrEqual(bound_two) &&
+            abs_value->IsLessOrEqual(bound_one));
+  } else {
+    // Both bounds have the same value
+    return abs_value->IsEqual(bound_one);
+  }
+}
+
 // Takes the form a1*i + c1, a2*i + c2
 // Where a1 and a2 are constant and different
 bool LoopDependenceAnalysis::WeakSIVTest(SENode* source, SENode* destination,
