@@ -35,8 +35,8 @@ class ScalarEvolutionAnalysis {
       : context_(context) {}
 
   ~ScalarEvolutionAnalysis() {
-    for (auto& pair : scalar_evolutions_) {
-      delete pair.second;
+    for (SENode* node : node_cache_) {
+      delete node;
     }
   }
 
@@ -78,16 +78,19 @@ class ScalarEvolutionAnalysis {
   SENode* CreateNegation(SENode* operand);
 
   SENode* CreateAddNode(SENode* operand_1, SENode* operand_2);
+  SENode* CreateMultiplyNode(SENode* operand_1, SENode* operand_2);
 
   SENode* AnalyzeInstruction(const ir::Instruction* inst);
 
   SENode* SimplifyExpression(SENode*);
 
+  void FlattenAddExpressions(SENode* child_node,
+                             std::vector<SENode*>* nodes_to_add) const;
   SENode* CloneGraphFromNode(SENode* node);
 
   // If the graph contains a recurrent expression, ie, an expression with the
-  // loop iterations as a term in the expression, then the whole expression can
-  // be rewritten to be a recurrent expression.
+  // loop iterations as a term in the expression, then the whole expression
+  // can be rewritten to be a recurrent expression.
   SENode* GetRecurrentExpression(SENode*);
 
   bool CanProveEqual(const SENode& source, const SENode& destination);
@@ -108,13 +111,11 @@ class ScalarEvolutionAnalysis {
   std::unordered_set<SENode*, SENodeHash, NodePointersEquality> node_cache_;
 
   SENode* AnalyzeConstant(const ir::Instruction* inst);
-  SENode* AnalyzeAddOp(const ir::Instruction* add);
+  SENode* AnalyzeAddOp(const ir::Instruction* add, bool is_subtraction);
 
   SENode* AnalyzeLoadOp(const ir::Instruction* load);
 
   SENode* AnalyzeMultiplyOp(const ir::Instruction* multiply);
-
-  SENode* AnalyzeDivideOp(const ir::Instruction* divide);
 
   SENode* AnalyzePhiInstruction(const ir::Instruction* phi);
 };
