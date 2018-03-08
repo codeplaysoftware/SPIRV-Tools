@@ -251,4 +251,149 @@ TEST_F(PassClassTest, LoadTest) {
   // analysis.DumpIterationSpaceAsDot(std::cout);
 }
 
+TEST_F(PassClassTest, SimplifySimple) {
+  const std::string text = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %2 "main" %3 %4
+               OpExecutionMode %2 OriginUpperLeft
+               OpSource GLSL 430
+               OpName %2 "main"
+               OpName %3 "array"
+               OpName %4 "loop_invariant"
+               OpDecorate %3 Location 1
+               OpDecorate %4 Flat
+               OpDecorate %4 Location 2
+          %5 = OpTypeVoid
+          %6 = OpTypeFunction %5
+          %7 = OpTypeInt 32 1
+          %8 = OpTypePointer Function %7
+          %9 = OpConstant %7 0
+         %10 = OpConstant %7 10
+         %11 = OpTypeBool
+         %12 = OpTypeFloat 32
+         %13 = OpTypeInt 32 0
+         %14 = OpConstant %13 10
+         %15 = OpTypeArray %12 %14
+         %16 = OpTypePointer Output %15
+          %3 = OpVariable %16 Output
+         %17 = OpTypePointer Input %7
+          %4 = OpVariable %17 Input
+         %18 = OpConstant %7 4
+         %19 = OpConstant %7 48
+         %20 = OpTypePointer Output %12
+         %21 = OpConstant %7 32
+         %22 = OpConstant %7 3
+         %23 = OpConstant %7 2
+         %24 = OpConstant %7 15
+         %25 = OpConstant %7 1
+          %2 = OpFunction %5 None %6
+         %26 = OpLabel
+               OpBranch %27
+         %27 = OpLabel
+         %28 = OpPhi %7 %9 %26 %29 %30
+               OpLoopMerge %31 %30 None
+               OpBranch %32
+         %32 = OpLabel
+         %33 = OpSLessThan %11 %28 %10
+               OpBranchConditional %33 %34 %31
+         %34 = OpLabel
+         %35 = OpLoad %7 %4
+         %36 = OpIMul %7 %35 %18
+         %37 = OpIAdd %7 %36 %18
+         %38 = OpIAdd %7 %37 %18
+         %39 = OpIAdd %7 %38 %19
+         %40 = OpAccessChain %20 %3 %39
+         %41 = OpLoad %12 %40
+         %42 = OpAccessChain %20 %3 %28
+               OpStore %42 %41
+         %43 = OpLoad %7 %4
+         %44 = OpIMul %7 %43 %18
+         %45 = OpIAdd %7 %44 %21
+         %46 = OpLoad %7 %4
+         %47 = OpIMul %7 %46 %22
+         %48 = OpISub %7 %45 %47
+         %49 = OpAccessChain %20 %3 %48
+         %50 = OpLoad %12 %49
+         %51 = OpAccessChain %20 %3 %28
+               OpStore %51 %50
+         %52 = OpLoad %7 %4
+         %53 = OpIMul %7 %52 %23
+         %54 = OpIAdd %7 %53 %21
+         %55 = OpLoad %7 %4
+         %56 = OpISub %7 %54 %55
+         %57 = OpLoad %7 %4
+         %58 = OpISub %7 %56 %57
+         %59 = OpISub %7 %58 %24
+         %60 = OpAccessChain %20 %3 %59
+         %61 = OpLoad %12 %60
+         %62 = OpAccessChain %20 %3 %28
+               OpStore %62 %61
+               OpBranch %30
+         %30 = OpLabel
+         %29 = OpIAdd %7 %28 %25
+               OpBranch %27
+         %31 = OpLabel
+               OpReturn
+               OpFunctionEnd
+    )";
+  // clang-format on
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 2);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  opt::ScalarEvolutionAnalysis analysis{context.get()};
+  // opt::LoopDependenceAnalysis analysis {context.get(), ld.etLoopByIndex(0)};
+  // analysis.DumpIterationSpaceAsDot(std::cout);
+
+  int count = 0;
+  const ir::Instruction* load = nullptr;
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 34)) {
+    if (inst.opcode() == SpvOp::SpvOpLoad) {
+      count++;
+      load = &inst;
+
+      if (count == 5) break;
+    }
+  }
+
+  EXPECT_TRUE(load);
+
+  analysis.AnalyzeLoop(ld.GetLoopByIndex(0));
+  analysis.DumpAsDot(std::cout);
+
+  ir::Instruction* access_chain =
+      context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
+
+  ir::Instruction* child = context->get_def_use_mgr()->GetDef(
+      access_chain->GetSingleWordInOperand(1));
+  //  const opt::SENode* node =
+  //  analysis.GetNodeFromInstruction(child->unique_id());
+
+  const opt::SENode* node = analysis.AnalyzeInstruction(child);
+  EXPECT_TRUE(node);
+  EXPECT_FALSE(node->CanFoldToConstant());
+
+  std::cout << "digraph  {\n";
+  node->DumpDot(std::cout, true);
+  std::cout << "}\n";
+
+  analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
+
+  std::cout << "digraph  {\n";
+  node->DumpDot(std::cout, true);
+  std::cout << "}\n";
+  //  analysis.DumpAsDot(std::cout);
+
+  // EXPECT_FALSE(
+  //     analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(31)));
+  // analysis.DumpIterationSpaceAsDot(std::cout);
+}
+
 }  // namespace

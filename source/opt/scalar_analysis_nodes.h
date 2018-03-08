@@ -28,7 +28,6 @@ class SENode {
     RecurrentExpr,
     Add,
     Multiply,
-    Divide,
     Negative,
     ValueUnknown,
     Unknown
@@ -78,19 +77,21 @@ class SENode {
         return "Multiply";
       case ValueUnknown:
         return "Value Unknown";
-      case Divide:
-        return "Division";
       case Unknown:
         return "Unknown";
     }
     return "NULL";
   }
 
-  void DumpDot(std::ostream& out) const {
-    out << UniqueID() << " [label=\"" << AsString() << " " << ResultID()
-        << "\"]\n";
+  void DumpDot(std::ostream& out, bool recurse = false) const {
+    out << UniqueID() << " [label=\"" << AsString() << " ";
+    if (GetType() == SENode::Constant) {
+      out << "\nwith value: " << FoldToSingleValue();
+    }
+    out << "\"]\n";
     for (const SENode* child : children_) {
       out << UniqueID() << " -> " << child->UniqueID() << " \n";
+      if (recurse) child->DumpDot(out, true);
     }
   }
 
@@ -139,6 +140,16 @@ class SENode {
   virtual SENode* Clone(uint32_t) const = 0;
 
   const std::vector<SENode*>& GetChildren() const { return children_; }
+  std::vector<SENode*>& GetChildren() { return children_; }
+
+  void OverwriteChild(int index, SENode* new_child) {
+    children_[index] = new_child;
+
+    std::sort(children_.begin(), children_.end());
+    if (!new_child->can_fold_to_constant_) {
+      this->MarkAsNonConstant();
+    }
+  }
 
  protected:
   uint32_t result_id_;
@@ -173,18 +184,16 @@ class SEConstantNode : public SENode {
 
 struct SENodeHash {
   size_t operator()(const SENode* node) const {
-    SENode::SENodeType type = node->GetType();
+    std::string type = node->AsString();
     int64_t literal_value = 0;
     if (node->GetType() == SENode::Constant)
       literal_value = node->FoldToSingleValue();
 
     const std::vector<SENode*>& children = node->GetChildren();
 
-    int new_type = static_cast<int>(type) << 16;
     int64_t new_literal = (literal_value + 1) << 2;
-
     size_t resulting_hash =
-        std::hash<int>{}(new_type) ^ std::hash<int64_t>{}(new_literal);
+        std::hash<std::string>{}(type) ^ std::hash<int64_t>{}(new_literal);
 
     for (const SENode* child : children) {
       resulting_hash ^= std::hash<const SENode*>{}(child);
@@ -258,21 +267,11 @@ class SEMultiplyNode : public SENode {
  public:
   explicit SEMultiplyNode(const ir::Instruction* inst) : SENode(inst) {}
   explicit SEMultiplyNode(uint32_t unique_id) : SENode(unique_id) {}
-  SENodeType GetType() const final { return Add; }
+  SENodeType GetType() const final { return Multiply; }
 
   int64_t FoldToSingleValue() const override;
 
   SENode* Clone(uint32_t id) const final { return new SEMultiplyNode(id); }
-};
-
-class SEDivideNode : public SENode {
- public:
-  explicit SEDivideNode(const ir::Instruction* inst) : SENode(inst) {}
-  explicit SEDivideNode(uint32_t unique_id) : SENode(unique_id) {}
-  SENodeType GetType() const final { return Add; }
-
-  int64_t FoldToSingleValue() const override;
-  SENode* Clone(uint32_t id) const final { return new SEDivideNode(id); }
 };
 
 class SENegative : public SENode {
