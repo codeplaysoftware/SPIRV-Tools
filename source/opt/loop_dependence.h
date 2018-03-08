@@ -100,26 +100,32 @@ class LoopDependenceAnalysis {
 
   bool DeltaTest(SENode* source, SENode* direction);
 
-  // Finds the lower bound of the loop as an SENode* and stores it in
-  // |lower_bound|
-  // Returns true if successful
+  // Finds the lower bound of the loop as an SENode* and returns the resulting
+  // SENode
+  // If the operations can not be completed a nullptr is returned
   SENode* GetLowerBound();
 
-  // Finds the upper bound of the loop as an SENode* and stores it in
-  // |upper_bound|
-  // Returns true if successful
+  // Finds the upper bound of the loop as an SENode* and returns the resulting
+  // SEnode
+  // If the operations can not be completed a nullptr is returned
   SENode* GetUpperBound();
 
-  // Finds the lower and upper bounds of the loop as SENode* and stores them in
-  // |lower_bound| and |upper_bound| respectively
-  // Returns true isf successful
+  // Finds the lower and upper bounds of the loop as SENode* and returns a pair
+  // of the resulting SENodes
+  // If the operations can not be completed a pair of nullptr is returned
   std::pair<SENode*, SENode*> GetLoopLowerUpperBounds();
 
-  // Finds the loop bounds as upper_bound - lower_bound and stores the
-  // resulting SENode in |loop_bounds|
-  // Returns true if successful
+  // Finds the loop bounds as upper_bound - lower_bound and returns the
+  // resulting SENode
+  // If the operations can not be completed a nullptr is returned
   SENode* GetTripCount();
 
+  // Finds the value of the induction variable at the final trip of the loop and
+  // returns the resulting SENode
+  // If the operations can not be completed a nullptr is returned
+  SENode* GetFinalTripValue();
+
+  // Finds and returns the loop descriptor for the loop stored by this analysis
   LoopDescriptor* GetLoopDescriptor();
 };
 

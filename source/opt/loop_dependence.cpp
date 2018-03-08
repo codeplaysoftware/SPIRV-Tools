@@ -387,40 +387,75 @@ SENode* LoopDependenceAnalysis::GetLoopLowerUpperBounds() {
 }
 
 SENode* LoopDependenceAnalysis::GetTripCount() {
-  SENode* lower_bound = GetLowerBound();
-  SENode* upper_bound = GetUpperBound();
-  if (!lower_bound || !upper_bound) {
+  ir::BasicBlock* condition_block = loop_.FindConditionBlock();
+  if (!condition_block) {
+    return nullptr;
+  }
+  ir::Instruction* induction_instr = loop_.FindConditionVariable(condition);
+  if (!induction_instr) {
     return nullptr;
   }
   ir::Instruction* cond_instr = loop_.GetConditionInst();
+  if (!cond_instr) {
+    return nullptr;
+  }
 
+  int64_t iteration_count = 0;
+
+  // We have to check the instruction type here. If the condition instruction
+  // isn't of one of the below types we can't calculate the trip count.
   switch (cond_instr->opcode()) {
     case SpvOpULessThan:
-      break;
     case SpvOpSLessThan:
-      break;
     case SpvOpULessThanEqual:
-      break;
     case SpvOpSLessThanEqual:
-      break;
     case SpvOpUGreaterThan:
-      break;
     case SpvOpSGreaterThan:
-      break;
     case SpvOpUGreaterThanEqual:
-      break;
     case SpvOpSGreaterThanEqual:
+      if (!loop_.FindNumberOfIterations(induction_instr, condition_instr,
+                                        &iteration_count)) {
+        return nullptr;
+      }
       break;
     default:
       return nullptr;
   }
 
-  // TODO(Alexander): Now work from lower bound until we pass the upper bound to
-  // find the trip count
-  // We should check to make sure we aren't at an infinite loop by checking we
-  // actually step towards the condition
-
   return nullptr;
+}
+
+SENode* LoopDependenceAnalysis::GetFinalTripValue() {
+  ir::BasicBlock* condition_block = loop_.FindConditionBlock();
+  if (!condition_block) {
+    return nullptr;
+  }
+  ir::Instruction* induction_instr = loop_.FindConditionVariable(condition);
+  if (!induction_instr) {
+    return nullptr;
+  }
+  SENode* trip_count = GetTripCount();
+
+  int64_t induction_initial_value = 0;
+  if (!loop_.GetInductionInitValue(induction_instr, &induction_initial_value)) {
+    return nullptr;
+  }
+
+  ir::Instruction* step_instr =
+      loop_.GetInductionStepOperation(induction_instr);
+
+  // TODO(Alexander): Ensure all of these are cached so there isn't any memory
+  // leakage
+
+  SENode* induction_init_SENode =
+      scalar_evolution_.CreateNode(induction_initial_value);
+  SENode* step_SENode = scalar_evolution_.AnalyzeInstruction(step_instr);
+  SENode* total_change_SENode =
+      scalar_evolution_.CreateMultiplication(step_SENode, trip_count);
+  SENode* final_iteration = scalar_evolution_.CreateAddNode(
+      induction_init_SENode, total_change_SENode);
+
+  return final_iteration;
 }
 
 LoopDescriptor* LoopDependenceAnalysis::GetLoopDescriptor() {
