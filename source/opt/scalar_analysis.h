@@ -69,17 +69,14 @@ class ScalarEvolutionAnalysis {
   SENode* CreateMultiplyNode(SENode* operand_1, SENode* operand_2);
 
   SENode* CreateConstant(int64_t integer);
+  SENode* CreateValueUnknownNode();
 
+  SENode* CreateCantComputeNode();
   SENode* AnalyzeInstruction(const ir::Instruction* inst);
 
   SENode* SimplifyExpression(SENode*);
 
   SENode* CloneGraphFromNode(SENode* node);
-
-  // If the graph contains a recurrent expression, ie, an expression with the
-  // loop iterations as a term in the expression, then the whole expression
-  // can be rewritten to be a recurrent expression.
-  SENode* GetRecurrentExpression(SENode*);
 
   bool CanProveEqual(const SENode& source, const SENode& destination);
   bool CanProveNotEqual(const SENode& source, const SENode& destination);
@@ -102,8 +99,6 @@ class ScalarEvolutionAnalysis {
 
   SENode* AnalyzeConstant(const ir::Instruction* inst);
   SENode* AnalyzeAddOp(const ir::Instruction* add, bool is_subtraction);
-
-  SENode* AnalyzeLoadOp(const ir::Instruction* load);
 
   SENode* AnalyzeMultiplyOp(const ir::Instruction* multiply);
 

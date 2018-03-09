@@ -139,7 +139,7 @@ TEST_F(PassClassTest, BasicEvolutionTest) {
   EXPECT_TRUE(node);
   EXPECT_TRUE(node->CanFoldToConstant());
   node->DumpDot(std::cout);
-  analysis.GetRecurrentExpression(const_cast<opt::SENode*>(node));
+  analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
 
   analysis.DumpAsDot(std::cout);
 
