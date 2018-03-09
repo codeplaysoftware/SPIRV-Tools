@@ -18,11 +18,8 @@
 namespace spvtools {
 namespace opt {
 
-uint32_t SENode::NodeCount = 0;
-
 SENode* ScalarEvolutionAnalysis::CreateNegation(SENode* operand) {
   std::unique_ptr<SENode> negation_node{new SENegative()};
-
   negation_node->AddChild(operand);
   return GetCachedOrAdd(std::move(negation_node));
 }
@@ -35,18 +32,22 @@ SENode* ScalarEvolutionAnalysis::AnalyzeMultiplyOp(
     const ir::Instruction* multiply) {
   opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
 
-  std::unique_ptr<SENode> multiply_node{new SEMultiplyNode()};
+  SENode* op1 =
+      AnalyzeInstruction(def_use->GetDef(multiply->GetSingleWordInOperand(0)));
+  SENode* op2 =
+      AnalyzeInstruction(def_use->GetDef(multiply->GetSingleWordInOperand(1)));
 
-  multiply_node->AddChild(
-      AnalyzeInstruction(def_use->GetDef(multiply->GetSingleWordInOperand(0))));
-  multiply_node->AddChild(
-      AnalyzeInstruction(def_use->GetDef(multiply->GetSingleWordInOperand(1))));
-
-  return GetCachedOrAdd(std::move(multiply_node));
+  return CreateMultiplyNode(op1, op2);
 }
 
 SENode* ScalarEvolutionAnalysis::CreateMultiplyNode(SENode* operand_1,
                                                     SENode* operand_2) {
+  if (operand_1->GetType() == SENode::Constant &&
+      operand_2->GetType() == SENode::Constant) {
+    return CreateConstant(operand_1->FoldToSingleValue() *
+                          operand_2->FoldToSingleValue());
+  }
+
   std::unique_ptr<SENode> add_node{new SEMultiplyNode()};
 
   add_node->AddChild(operand_1);
@@ -89,7 +90,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
       break;
     }
     case SpvOp::SpvOpLoad: {
-      output = AnalyzeLoadOp(inst);
+      output = CreateValueUnknownNode();
       break;
     }
     case SpvOp::SpvOpIMul: {
@@ -144,17 +145,17 @@ SENode* ScalarEvolutionAnalysis::AnalyzeAddOp(const ir::Instruction* add,
 
 SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     const ir::Instruction* phi) {
-  std::unique_ptr<SERecurrentNode> phi_node{new SERecurrentNode()};
-
-  instruction_map_[phi] = phi_node.get();
-
   opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
 
   ir::BasicBlock* basic_block =
       context_->get_instr_block(const_cast<ir::Instruction*>(phi));
-
   ir::Function* function = basic_block->GetParent();
+
   ir::Loop* loop = (*context_->GetLoopDescriptor(function))[basic_block->id()];
+  if (!loop) return CreateCantComputeNode();
+
+  std::unique_ptr<SERecurrentNode> phi_node{new SERecurrentNode(loop)};
+  instruction_map_[phi] = phi_node.get();
 
   for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
     uint32_t value_id = phi->GetSingleWordInOperand(i);
@@ -174,10 +175,13 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
   return GetCachedOrAdd(std::move(phi_node));
 }
 
-SENode* ScalarEvolutionAnalysis::AnalyzeLoadOp(
-    const ir::Instruction* /*load*/) {
+SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode() {
   std::unique_ptr<SEValueUnknown> load_node{new SEValueUnknown()};
   return GetCachedOrAdd(std::move(load_node));
+}
+
+SENode* ScalarEvolutionAnalysis::CreateCantComputeNode() {
+  return GetCachedOrAdd(std::unique_ptr<SECantCompute>(new SECantCompute));
 }
 
 bool ScalarEvolutionAnalysis::CanProveEqual(const SENode& source,
@@ -206,6 +210,7 @@ int64_t SEAddNode::FoldToSingleValue() const {
   return val;
 }
 
+// Add the created node into the cache of nodes. If it already exists return it.
 SENode* ScalarEvolutionAnalysis::GetCachedOrAdd(
     std::unique_ptr<SENode> perspective_node) {
   auto itr = node_cache_.find(perspective_node);
@@ -252,6 +257,20 @@ size_t SENodeHash::operator()(const SENode* node) const {
 // This overload is the actual overload used by the node_cache_ set.
 size_t SENodeHash::operator()(const std::unique_ptr<SENode>& node) const {
   return this->operator()(node.get());
+}
+
+void SENode::DumpDot(std::ostream& out, bool recurse) const {
+  size_t unique_id = std::hash<const SENode*>{}(this);
+  out << unique_id << " [label=\"" << AsString() << " ";
+  if (GetType() == SENode::Constant) {
+    out << "\nwith value: " << FoldToSingleValue();
+  }
+  out << "\"]\n";
+  for (const SENode* child : children_) {
+    size_t child_unique_id = std::hash<const SENode*>{}(child);
+    out << unique_id << " -> " << child_unique_id << " \n";
+    if (recurse) child->DumpDot(out, true);
+  }
 }
 
 }  // namespace opt

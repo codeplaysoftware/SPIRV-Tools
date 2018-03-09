@@ -33,7 +33,7 @@ class SENode {
     CanNotCompute
   };
 
-  SENode() : unique_id_(NodeCount++), can_fold_to_constant_(true) {}
+  SENode() : can_fold_to_constant_(true) {}
 
   virtual SENodeType GetType() const = 0;
 
@@ -50,8 +50,8 @@ class SENode {
 
   inline void MarkAsNonConstant() { can_fold_to_constant_ = false; }
 
-  inline uint32_t UniqueID() const { return unique_id_; }
-
+  // Get the type as an std::string. This is used to represent the node in the
+  // dot output`
   std::string AsString() const {
     switch (GetType()) {
       case Constant:
@@ -72,17 +72,7 @@ class SENode {
     return "NULL";
   }
 
-  void DumpDot(std::ostream& out, bool recurse = false) const {
-    out << UniqueID() << " [label=\"" << AsString() << " ";
-    if (GetType() == SENode::Constant) {
-      out << "\nwith value: " << FoldToSingleValue();
-    }
-    out << "\"]\n";
-    for (const SENode* child : children_) {
-      out << UniqueID() << " -> " << child->UniqueID() << " \n";
-      if (recurse) child->DumpDot(out, true);
-    }
-  }
+  void DumpDot(std::ostream& out, bool recurse = false) const;
 
   virtual int64_t FoldToSingleValue() const {
     assert(can_fold_to_constant_);
@@ -104,12 +94,6 @@ class SENode {
   using iterator = std::vector<SENode*>::iterator;
   using const_iterator = std::vector<SENode*>::const_iterator;
 
-  // Iterator to iterate over the entire DAG. Even though we are using the tree
-  // iterator it should still be safe to iterate over. However, nodes with
-  // multiple parents will be visited multiple times, unlike in a tree.
-  using graph_iterator = TreeDFIterator<SENode>;
-  using const_graph_iterator = TreeDFIterator<const SENode>;
-
   // Iterate over immediate child nodes.
   iterator begin() { return children_.begin(); }
   iterator end() { return children_.end(); }
@@ -120,28 +104,25 @@ class SENode {
   const_iterator cbegin() { return children_.cbegin(); }
   const_iterator cend() { return children_.cend(); }
 
+  // Iterator to iterate over the entire DAG. Even though we are using the tree
+  // iterator it should still be safe to iterate over. However, nodes with
+  // multiple parents will be visited multiple times, unlike in a tree.
+  using dag_iterator = TreeDFIterator<SENode>;
+  using const_dag_iterator = TreeDFIterator<const SENode>;
+
   // Iterate over all child nodes in the graph.
-  graph_iterator graph_begin() { return graph_iterator(this); }
-  graph_iterator graph_end() { return graph_iterator(); }
-  const_graph_iterator graph_begin() const { return graph_cbegin(); }
-  const_graph_iterator graph_end() const { return graph_cend(); }
-  const_graph_iterator graph_cbegin() const {
-    return const_graph_iterator(this);
-  }
-  const_graph_iterator graph_cend() const { return const_graph_iterator(); }
+  dag_iterator graph_begin() { return dag_iterator(this); }
+  dag_iterator graph_end() { return dag_iterator(); }
+  const_dag_iterator graph_begin() const { return graph_cbegin(); }
+  const_dag_iterator graph_end() const { return graph_cend(); }
+  const_dag_iterator graph_cbegin() const { return const_dag_iterator(this); }
+  const_dag_iterator graph_cend() const { return const_dag_iterator(); }
 
   // Return the vector of immediate children.
   const std::vector<SENode*>& GetChildren() const { return children_; }
   std::vector<SENode*>& GetChildren() { return children_; }
 
  protected:
-  // Each node is assigned a unique id.
-  uint32_t unique_id_;
-
-  // Generate a unique id for each node in the graph by maintaining a count of
-  // nodes currently in the graph.
-  static uint32_t NodeCount;
-
   std::vector<SENode*> children_;
 
   // Are all child nodes constant. Defualts to true and should be set to false
@@ -149,6 +130,15 @@ class SENode {
   bool can_fold_to_constant_;
 };
 
+// Function object to handle the hashing of SENodes. Hashing algorithm hashes
+// the type (as a string), the literal value of any constants, and the child
+// pointers which are assumed to be unique.
+struct SENodeHash {
+  size_t operator()(const std::unique_ptr<SENode>& node) const;
+  size_t operator()(const SENode* node) const;
+};
+
+// A node representing a constant integer.
 class SEConstantNode : public SENode {
  public:
   explicit SEConstantNode(int64_t value) : literal_value_(value) {}
@@ -161,13 +151,13 @@ class SEConstantNode : public SENode {
   int64_t literal_value_;
 };
 
-struct SENodeHash {
-  size_t operator()(const std::unique_ptr<SENode>& node) const;
-  size_t operator()(const SENode* node) const;
-};
-
+// A node represeting a recurrent expression in the code. A recurrent expression
+// is an expression with a loop variant as one of its terms, such as an
+// induction variable.
 class SERecurrentNode : public SENode {
  public:
+  SERecurrentNode(const ir::Loop* loop) : SENode(), loop_(loop) {}
+
   SENodeType GetType() const final { return RecurrentExpr; }
 
   inline void AddCoefficient(SENode* child) {
@@ -186,11 +176,16 @@ class SERecurrentNode : public SENode {
   inline const SENode* GetOffset() const { return step_operation_; }
   inline SENode* GetOffset() { return step_operation_; }
 
+  // Return the loop which this recurrent expression is recurring within.
+  const ir::Loop* GetLoop() const { return loop_; }
+
  private:
   SENode* coefficient_;
   SENode* step_operation_;
+  const ir::Loop* loop_;
 };
 
+// A node representing an addition operation between child nodes.
 class SEAddNode : public SENode {
  public:
   SENodeType GetType() const final { return Add; }
@@ -198,6 +193,7 @@ class SEAddNode : public SENode {
   int64_t FoldToSingleValue() const override;
 };
 
+// A node representing a multiply operation between child nodes.
 class SEMultiplyNode : public SENode {
  public:
   SENodeType GetType() const final { return Multiply; }
@@ -205,6 +201,7 @@ class SEMultiplyNode : public SENode {
   int64_t FoldToSingleValue() const override;
 };
 
+// A node representing a unary negative operation.
 class SENegative : public SENode {
  public:
   int64_t FoldToSingleValue() const override {
@@ -214,6 +211,8 @@ class SENegative : public SENode {
   SENodeType GetType() const final { return Negative; }
 };
 
+// A node representing a value which we do not know the value of, such as a load
+// instruction.
 class SEValueUnknown : public SENode {
  public:
   SEValueUnknown() : SENode() { can_fold_to_constant_ = false; }
@@ -221,6 +220,7 @@ class SEValueUnknown : public SENode {
   SENodeType GetType() const final { return ValueUnknown; }
 };
 
+// A node which we cannot reason about at all.
 class SECantCompute : public SENode {
  public:
   SECantCompute() : SENode() { can_fold_to_constant_ = false; }
