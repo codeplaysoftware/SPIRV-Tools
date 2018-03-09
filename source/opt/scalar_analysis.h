@@ -34,22 +34,10 @@ class ScalarEvolutionAnalysis {
   explicit ScalarEvolutionAnalysis(ir::IRContext* context)
       : context_(context) {}
 
-  ~ScalarEvolutionAnalysis() {
-    for (SENode* node : node_cache_) {
-      delete node;
-    }
-  }
-
-  const SENode* GetNodeFromInstruction(uint32_t instruction) {
-    auto itr = scalar_evolutions_.find(instruction);
-    if (itr == scalar_evolutions_.end()) return nullptr;
-    return itr->second;
-  }
-
   void DumpAsDot(std::ostream& out_stream) {
     out_stream << "digraph  {\n";
-    for (auto& pair : scalar_evolutions_) {
-      pair.second->DumpDot(out_stream);
+    for (const std::unique_ptr<SENode>& node : node_cache_) {
+      node->DumpDot(out_stream);
     }
     out_stream << "}\n";
   }
@@ -80,12 +68,12 @@ class ScalarEvolutionAnalysis {
   SENode* CreateAddNode(SENode* operand_1, SENode* operand_2);
   SENode* CreateMultiplyNode(SENode* operand_1, SENode* operand_2);
 
+  SENode* CreateConstant(int64_t integer);
+
   SENode* AnalyzeInstruction(const ir::Instruction* inst);
 
   SENode* SimplifyExpression(SENode*);
 
-  void FlattenAddExpressions(SENode* child_node,
-                             std::vector<SENode*>* nodes_to_add) const;
   SENode* CloneGraphFromNode(SENode* node);
 
   // If the graph contains a recurrent expression, ie, an expression with the
@@ -96,19 +84,21 @@ class ScalarEvolutionAnalysis {
   bool CanProveEqual(const SENode& source, const SENode& destination);
   bool CanProveNotEqual(const SENode& source, const SENode& destination);
 
-  SENode* GetCachedOrAdd(SENode* perspective_node);
+  SENode* GetCachedOrAdd(std::unique_ptr<SENode> perspective_node);
 
  private:
   ir::IRContext* context_;
-  std::map<uint32_t, SENode*> scalar_evolutions_;
+  std::map<const ir::Instruction*, SENode*> instruction_map_;
 
   struct NodePointersEquality {
-    bool operator()(const SENode* const lhs, const SENode* const rhs) const {
+    bool operator()(const std::unique_ptr<SENode>& lhs,
+                    const std::unique_ptr<SENode>& rhs) const {
       return *lhs == *rhs;
     }
   };
 
-  std::unordered_set<SENode*, SENodeHash, NodePointersEquality> node_cache_;
+  std::unordered_set<std::unique_ptr<SENode>, SENodeHash, NodePointersEquality>
+      node_cache_;
 
   SENode* AnalyzeConstant(const ir::Instruction* inst);
   SENode* AnalyzeAddOp(const ir::Instruction* add, bool is_subtraction);

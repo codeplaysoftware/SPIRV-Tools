@@ -366,6 +366,7 @@ TEST_F(PassClassTest, SimplifySimple) {
   EXPECT_TRUE(load);
 
   analysis.AnalyzeLoop(ld.GetLoopByIndex(0));
+  //  analysis.AnalyzeInstruction(load);
   analysis.DumpAsDot(std::cout);
 
   ir::Instruction* access_chain =
