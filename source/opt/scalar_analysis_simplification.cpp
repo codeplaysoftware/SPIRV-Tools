@@ -153,7 +153,7 @@ SENode* SENodeSimplifyImpl::Simplify() {
       if (recurrent_expr) {
         multiple_recurrent_expressions = true;
       }
-      recurrent_expr = static_cast<SERecurrentNode*>(&*child);
+      recurrent_expr = child->AsSERecurrentNode();
     }
   }
 
