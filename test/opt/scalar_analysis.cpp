@@ -106,11 +106,7 @@ TEST_F(PassClassTest, BasicEvolutionTest) {
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
   const ir::Function* f = spvtest::GetFunction(module, 4);
-  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-
   opt::ScalarEvolutionAnalysis analysis{context.get()};
-  // opt::LoopDependenceAnalysis analysis {context.get(), ld.etLoopByIndex(0)};
-  // analysis.DumpIterationSpaceAsDot(std::cout);
 
   const ir::Instruction* store = nullptr;
   const ir::Instruction* load = nullptr;
@@ -126,9 +122,6 @@ TEST_F(PassClassTest, BasicEvolutionTest) {
   EXPECT_TRUE(load);
   EXPECT_TRUE(store);
 
-  analysis.AnalyzeLoop(ld.GetLoopByIndex(0));
-  analysis.DumpAsDot(std::cout);
-
   ir::Instruction* access_chain =
       context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
 
@@ -137,20 +130,44 @@ TEST_F(PassClassTest, BasicEvolutionTest) {
   const opt::SENode* node = analysis.AnalyzeInstruction(child);
 
   EXPECT_TRUE(node);
-  EXPECT_TRUE(node->CanFoldToConstant());
-  node->DumpDot(std::cout);
-  analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
 
-  analysis.DumpAsDot(std::cout);
+  // Unsimplified node should have the form of ADD(REC(0,1), 1)
+  EXPECT_TRUE(node->GetType() == opt::SENode::Add);
 
-  // EXPECT_FALSE(
-  //     analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(31)));
-  // analysis.DumpIterationSpaceAsDot(std::cout);
+  const opt::SENode* child_1 = node->GetChild(0);
+  EXPECT_TRUE(child_1->GetType() == opt::SENode::Constant ||
+              child_1->GetType() == opt::SENode::RecurrentExpr);
+
+  const opt::SENode* child_2 = node->GetChild(1);
+  EXPECT_TRUE(child_2->GetType() == opt::SENode::Constant ||
+              child_2->GetType() == opt::SENode::RecurrentExpr);
+
+  opt::SENode* simplified =
+      analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
+
+  // Simplified should be in the form of REC(1,1)
+  EXPECT_TRUE(simplified->GetType() == opt::SENode::RecurrentExpr);
+
+  EXPECT_TRUE(simplified->GetChild(0)->GetType() == opt::SENode::Constant);
+  EXPECT_TRUE(simplified->GetChild(0)->FoldToSingleValue() == 1);
+
+  EXPECT_TRUE(simplified->GetChild(1)->GetType() == opt::SENode::Constant);
+  EXPECT_TRUE(simplified->GetChild(1)->FoldToSingleValue() == 1);
+
+  EXPECT_EQ(simplified->GetChild(0), simplified->GetChild(1));
 }
 
 /*
 Generated from the following GLSL + --eliminate-local-multi-store
 
+#version 410 core
+layout (location = 1) out float array[10];
+layout (location = 2) flat in int loop_invariant;
+void main() {
+  for (int i = 0; i < 10; ++i) {
+    array[i] = array[i+loop_invariant];
+  }
+}
 
 */
 TEST_F(PassClassTest, LoadTest) {
@@ -217,8 +234,6 @@ TEST_F(PassClassTest, LoadTest) {
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
   const ir::Function* f = spvtest::GetFunction(module, 2);
-  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-
   opt::ScalarEvolutionAnalysis analysis{context.get()};
   // opt::LoopDependenceAnalysis analysis {context.get(), ld.etLoopByIndex(0)};
   // analysis.DumpIterationSpaceAsDot(std::cout);
@@ -232,9 +247,6 @@ TEST_F(PassClassTest, LoadTest) {
 
   EXPECT_TRUE(load);
 
-  analysis.AnalyzeLoop(ld.GetLoopByIndex(0));
-  analysis.DumpAsDot(std::cout);
-
   ir::Instruction* access_chain =
       context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
 
@@ -244,13 +256,47 @@ TEST_F(PassClassTest, LoadTest) {
   //  analysis.GetNodeFromInstruction(child->unique_id());
 
   const opt::SENode* node = analysis.AnalyzeInstruction(child);
+
   EXPECT_TRUE(node);
-  EXPECT_FALSE(node->CanFoldToConstant());
-  // EXPECT_FALSE(
-  //     analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(31)));
-  // analysis.DumpIterationSpaceAsDot(std::cout);
+
+  // Unsimplified node should have the form of ADD(REC(0,1), X)
+  EXPECT_TRUE(node->GetType() == opt::SENode::Add);
+
+  const opt::SENode* child_1 = node->GetChild(0);
+  EXPECT_TRUE(child_1->GetType() == opt::SENode::ValueUnknown ||
+              child_1->GetType() == opt::SENode::RecurrentExpr);
+
+  const opt::SENode* child_2 = node->GetChild(1);
+  EXPECT_TRUE(child_2->GetType() == opt::SENode::ValueUnknown ||
+              child_2->GetType() == opt::SENode::RecurrentExpr);
+
+  opt::SENode* simplified =
+      analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
+  EXPECT_TRUE(simplified->GetType() == opt::SENode::RecurrentExpr);
+
+  const opt::SERecurrentNode* rec =
+      static_cast<opt::SERecurrentNode*>(simplified);
+
+  EXPECT_NE(rec->GetChild(0), rec->GetChild(1));
+
+  EXPECT_TRUE(rec->GetOffset()->GetType() == opt::SENode::ValueUnknown);
+
+  EXPECT_TRUE(rec->GetCoefficient()->GetType() == opt::SENode::Constant);
+  EXPECT_TRUE(rec->GetCoefficient()->FoldToSingleValue() == 1);
 }
 
+/*
+Generated from the following GLSL + --eliminate-local-multi-store
+
+#version 410 core
+layout (location = 1) out float array[10];
+layout (location = 2) flat in int loop_invariant;
+void main() {
+  array[0] = array[loop_invariant * 2 + 4 + 5 - 24 - loop_invariant -
+loop_invariant+ 16 * 3];
+}
+
+*/
 TEST_F(PassClassTest, SimplifySimple) {
   const std::string text = R"(
                OpCapability Shader
@@ -267,74 +313,38 @@ TEST_F(PassClassTest, SimplifySimple) {
                OpDecorate %4 Location 2
           %5 = OpTypeVoid
           %6 = OpTypeFunction %5
-          %7 = OpTypeInt 32 1
-          %8 = OpTypePointer Function %7
-          %9 = OpConstant %7 0
-         %10 = OpConstant %7 10
-         %11 = OpTypeBool
-         %12 = OpTypeFloat 32
-         %13 = OpTypeInt 32 0
-         %14 = OpConstant %13 10
-         %15 = OpTypeArray %12 %14
-         %16 = OpTypePointer Output %15
-          %3 = OpVariable %16 Output
-         %17 = OpTypePointer Input %7
-          %4 = OpVariable %17 Input
-         %18 = OpConstant %7 4
-         %19 = OpConstant %7 48
-         %20 = OpTypePointer Output %12
-         %21 = OpConstant %7 32
-         %22 = OpConstant %7 3
-         %23 = OpConstant %7 2
-         %24 = OpConstant %7 15
-         %25 = OpConstant %7 1
+          %7 = OpTypeFloat 32
+          %8 = OpTypeInt 32 0
+          %9 = OpConstant %8 10
+         %10 = OpTypeArray %7 %9
+         %11 = OpTypePointer Output %10
+          %3 = OpVariable %11 Output
+         %12 = OpTypeInt 32 1
+         %13 = OpConstant %12 0
+         %14 = OpTypePointer Input %12
+          %4 = OpVariable %14 Input
+         %15 = OpConstant %12 2
+         %16 = OpConstant %12 4
+         %17 = OpConstant %12 5
+         %18 = OpConstant %12 24
+         %19 = OpConstant %12 48
+         %20 = OpTypePointer Output %7
           %2 = OpFunction %5 None %6
-         %26 = OpLabel
-               OpBranch %27
-         %27 = OpLabel
-         %28 = OpPhi %7 %9 %26 %29 %30
-               OpLoopMerge %31 %30 None
-               OpBranch %32
-         %32 = OpLabel
-         %33 = OpSLessThan %11 %28 %10
-               OpBranchConditional %33 %34 %31
-         %34 = OpLabel
-         %35 = OpLoad %7 %4
-         %36 = OpIMul %7 %35 %18
-         %37 = OpIAdd %7 %36 %18
-         %38 = OpIAdd %7 %37 %18
-         %39 = OpIAdd %7 %38 %19
-         %40 = OpAccessChain %20 %3 %39
-         %41 = OpLoad %12 %40
-         %42 = OpAccessChain %20 %3 %28
-               OpStore %42 %41
-         %43 = OpLoad %7 %4
-         %44 = OpIMul %7 %43 %18
-         %45 = OpIAdd %7 %44 %21
-         %46 = OpLoad %7 %4
-         %47 = OpIMul %7 %46 %22
-         %48 = OpISub %7 %45 %47
-         %49 = OpAccessChain %20 %3 %48
-         %50 = OpLoad %12 %49
-         %51 = OpAccessChain %20 %3 %28
-               OpStore %51 %50
-         %52 = OpLoad %7 %4
-         %53 = OpIMul %7 %52 %23
-         %54 = OpIAdd %7 %53 %21
-         %55 = OpLoad %7 %4
-         %56 = OpISub %7 %54 %55
-         %57 = OpLoad %7 %4
-         %58 = OpISub %7 %56 %57
-         %59 = OpISub %7 %58 %24
-         %60 = OpAccessChain %20 %3 %59
-         %61 = OpLoad %12 %60
-         %62 = OpAccessChain %20 %3 %28
-               OpStore %62 %61
-               OpBranch %30
-         %30 = OpLabel
-         %29 = OpIAdd %7 %28 %25
-               OpBranch %27
-         %31 = OpLabel
+         %21 = OpLabel
+         %22 = OpLoad %12 %4
+         %23 = OpIMul %12 %22 %15
+         %24 = OpIAdd %12 %23 %16
+         %25 = OpIAdd %12 %24 %17
+         %26 = OpISub %12 %25 %18
+         %27 = OpLoad %12 %4
+         %28 = OpISub %12 %26 %27
+         %29 = OpLoad %12 %4
+         %30 = OpISub %12 %28 %29
+         %31 = OpIAdd %12 %30 %19
+         %32 = OpAccessChain %20 %3 %31
+         %33 = OpLoad %7 %32
+         %34 = OpAccessChain %20 %3 %13
+               OpStore %34 %33
                OpReturn
                OpFunctionEnd
     )";
@@ -346,55 +356,35 @@ TEST_F(PassClassTest, SimplifySimple) {
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
   const ir::Function* f = spvtest::GetFunction(module, 2);
-  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-
   opt::ScalarEvolutionAnalysis analysis{context.get()};
-  // opt::LoopDependenceAnalysis analysis {context.get(), ld.etLoopByIndex(0)};
-  // analysis.DumpIterationSpaceAsDot(std::cout);
 
-  int count = 0;
   const ir::Instruction* load = nullptr;
-  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 34)) {
-    if (inst.opcode() == SpvOp::SpvOpLoad) {
-      count++;
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 21)) {
+    if (inst.opcode() == SpvOp::SpvOpLoad && inst.result_id() == 33) {
       load = &inst;
-
-      if (count == 5) break;
     }
   }
 
   EXPECT_TRUE(load);
-
-  analysis.AnalyzeLoop(ld.GetLoopByIndex(0));
-  //  analysis.AnalyzeInstruction(load);
-  analysis.DumpAsDot(std::cout);
 
   ir::Instruction* access_chain =
       context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
 
   ir::Instruction* child = context->get_def_use_mgr()->GetDef(
       access_chain->GetSingleWordInOperand(1));
-  //  const opt::SENode* node =
-  //  analysis.GetNodeFromInstruction(child->unique_id());
 
   const opt::SENode* node = analysis.AnalyzeInstruction(child);
+
+  // Unsimplified is a very large graph with an add at the top.
   EXPECT_TRUE(node);
-  EXPECT_FALSE(node->CanFoldToConstant());
+  EXPECT_TRUE(node->GetType() == opt::SENode::Add);
 
-  std::cout << "digraph  {\n";
-  node->DumpDot(std::cout, true);
-  std::cout << "}\n";
-
-  analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
-
-  std::cout << "digraph  {\n";
-  node->DumpDot(std::cout, true);
-  std::cout << "}\n";
-  //  analysis.DumpAsDot(std::cout);
-
-  // EXPECT_FALSE(
-  //     analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(31)));
-  // analysis.DumpIterationSpaceAsDot(std::cout);
+  // Simplified node should resolve down to a constant expression as the loads
+  // will eliminate themselves.
+  opt::SENode* simplified =
+      analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
+  EXPECT_TRUE(simplified->GetType() == opt::SENode::Constant);
+  EXPECT_TRUE(simplified->FoldToSingleValue() == 33);
 }
 
 }  // namespace

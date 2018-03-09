@@ -165,7 +165,6 @@ SENode* SENodeSimplifyImpl::Simplify() {
     return SimplifyRecurrentExpression(recurrent_expr);
   }
 
-
   return SimplifyNonRecurrent();
 }
 
@@ -228,9 +227,13 @@ SENode* SENodeSimplifyImpl::SimplifyNonRecurrent() {
       node_->AddChild(analysis_.CreateMultiplyNode(count_as_constant, term));
     }
   }
+
+  if (node_->GetChildren().size() == 1) {
+    return node_->GetChild(0);
+  }
+
   return node_;
 }
-
 
 SENode* SENodeSimplifyImpl::SimplifyRecurrentExpression(
     SERecurrentNode* recurrent_expr) {

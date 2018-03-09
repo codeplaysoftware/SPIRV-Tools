@@ -33,8 +33,6 @@ class SENode {
     CanNotCompute
   };
 
-  SENode() : can_fold_to_constant_(true) {}
-
   virtual SENodeType GetType() const = 0;
 
   virtual ~SENode() {}
@@ -43,12 +41,7 @@ class SENode {
     children_.push_back(child);
 
     std::sort(children_.begin(), children_.end());
-    if (!child->can_fold_to_constant_) {
-      this->MarkAsNonConstant();
-    }
   }
-
-  inline void MarkAsNonConstant() { can_fold_to_constant_ = false; }
 
   // Get the type as an std::string. This is used to represent the node in the
   // dot output`
@@ -74,12 +67,7 @@ class SENode {
 
   void DumpDot(std::ostream& out, bool recurse = false) const;
 
-  virtual int64_t FoldToSingleValue() const {
-    assert(can_fold_to_constant_);
-    return 0;
-  }
-
-  bool CanFoldToConstant() const { return can_fold_to_constant_; }
+  virtual int64_t FoldToSingleValue() const { return 0; }
 
   // Checks if two nodes are the same by hashing them.
   bool operator==(const SENode& other) const;
@@ -89,6 +77,7 @@ class SENode {
 
   // Return the child node at |index|.
   inline SENode* GetChild(size_t index) { return children_[index]; }
+  inline const SENode* GetChild(size_t index) const { return children_[index]; }
 
   // Iterator to iterate over the child nodes.
   using iterator = std::vector<SENode*>::iterator;
@@ -124,10 +113,6 @@ class SENode {
 
  protected:
   std::vector<SENode*> children_;
-
-  // Are all child nodes constant. Defualts to true and should be set to false
-  // when a child node is added which is not constant.
-  bool can_fold_to_constant_;
 };
 
 // Function object to handle the hashing of SENodes. Hashing algorithm hashes
@@ -215,15 +200,12 @@ class SENegative : public SENode {
 // instruction.
 class SEValueUnknown : public SENode {
  public:
-  SEValueUnknown() : SENode() { can_fold_to_constant_ = false; }
-
   SENodeType GetType() const final { return ValueUnknown; }
 };
 
 // A node which we cannot reason about at all.
 class SECantCompute : public SENode {
  public:
-  SECantCompute() : SENode() { can_fold_to_constant_ = false; }
   SENodeType GetType() const final { return CanNotCompute; }
 };
 

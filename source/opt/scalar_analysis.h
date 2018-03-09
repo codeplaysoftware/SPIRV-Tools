@@ -42,27 +42,6 @@ class ScalarEvolutionAnalysis {
     out_stream << "}\n";
   }
 
-  void AnalyzeLoop(const ir::Loop& loop) {
-    for (uint32_t id : loop.GetBlocks()) {
-      ir::BasicBlock* block = context_->cfg()->block(id);
-
-      for (ir::Instruction& inst : *block) {
-        if (inst.opcode() == SpvOp::SpvOpStore ||
-            inst.opcode() == SpvOp::SpvOpLoad) {
-          const ir::Instruction* access_chain =
-              context_->get_def_use_mgr()->GetDef(
-                  inst.GetSingleWordInOperand(0));
-
-          for (uint32_t i = 1u; i < access_chain->NumInOperands(); ++i) {
-            const ir::Instruction* index = context_->get_def_use_mgr()->GetDef(
-                access_chain->GetSingleWordInOperand(i));
-            AnalyzeInstruction(index);
-          }
-        }
-      }
-    }
-  }
-
   SENode* CreateNegation(SENode* operand);
 
   SENode* CreateAddNode(SENode* operand_1, SENode* operand_2);
