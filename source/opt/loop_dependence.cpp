@@ -57,17 +57,16 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
   // use weak crossing SIV
   if (src_coeff && dest_coeff &&
       src_coeff->IsEqual(scalar_evolution_.CreateNegation(dest_coeff))) {
-    if (WeakCrossingSIVTest(source_node, destination_node, src_coeff,
-                            dest_coeff, dv_entry))
+    if (WeakCrossingSIVTest(source_node, destination_node, src_coeff, dv_entry))
       return true;
   }
 
   // If the subscript takes the form [a1*i + c1] = [a2*i + c2] use weak SIV
-  if (src_coeff && dest_coeff && !src_coeff->IsEqual(dest_coeff)) {
-    if (WeakSIVTest(source_node, destination_node, src_coeff, dest_coeff,
-                    dv_entry))
-      return true;
-  }
+  // if (src_coeff && dest_coeff && !src_coeff->IsEqual(dest_coeff)) {
+  //  if (WeakSIVTest(source_node, destination_node, src_coeff, dest_coeff,
+  //                  dv_entry))
+  //    return true;
+  //}
   return false;
 }
 
@@ -122,12 +121,13 @@ bool LoopDependenceAnalysis::ZIVTest(SENode* source, SENode* destination,
 //              < if distance > 0
 // direction =  = if distance = 0
 //              > if distance < 0
-bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
+bool LoopDependenceAnalysis::StrongSIVTest(SERecurrentNode* source,
+                                           SERecurrentNode* destination,
                                            SENode* coefficient,
-                                           DVentry* dv_entry) {
+                                           DVEntry* dv_entry) {
   // Build an SENode for distance
-  SENode* src_const = source->GetConstant();
-  SENode* dest_const = destination->GetConstant();
+  SENode* src_const = source->GetOffset();
+  SENode* dest_const = destination->GetOffset();
   SENode* delta = scalar_evolution_.CreateSubtraction(src_const, dest_const);
 
   // Scalar evolution doesn't perform division, so we must fold to constants and
@@ -145,6 +145,13 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
     } else {
       distance = delta_val / coeff_val;
     }
+  } else {
+    // If we can't fold delta and coefficient to single values we can't produce
+    // distance.
+    // As a result we can't perform the rest of the pass and must assume
+    // dependence in all directions
+    dv_entry->distance = DVEntry::ALL;
+    return false;
   }
 
   SENode* lower_bound = GetLowerBound();
@@ -152,17 +159,16 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
   SENode* bounds =
       scalar_evolution_.CreateSubtraction(upper_bound, lower_bound);
 
-  int64_t bounds_val = 0;
   if (bounds->CanFoldToConstant()) {
-    bounds_val = bounds->FoldToSingleValue();
-  }
+    int64_t bounds_val = bounds->FoldToSingleValue();
 
-  // If the absolute value of the distance is > upper bound - lower bound then
-  // we prove independence
-  if (distance->IsGreater(bounds)) {
-    dv_entry->direction = DVEntry::NONE;
-    dv_entry->distance = distance;
-    return true;
+    // If the absolute value of the distance is > upper bound - lower bound then
+    // we prove independence
+    if (distance > bounds_val) {
+      dv_entry->direction = DVEntry::NONE;
+      dv_entry->distance = distance;
+      return true;
+    }
   }
 
   // Otherwise we can get a direction as follows
@@ -196,15 +202,15 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
 
 // Takes the form a1*i + c1, a2*i + c2
 // when a1 = 0
-// distance = (c2 - c1) / a2
+// distance = (c1 - c2) / a2
 bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(SENode* source,
-                                                   SENode* destination,
+                                                   SERecurrentNode* destination,
                                                    SENode* coefficient,
-                                                   DVentry* dv_entry) {
+                                                   DVEntry* dv_entry) {
   // Build an SENode for distance
-  SENode* src_const = source->GetConstant();
-  SENode* dest_const = destination->GetConstant();
-  SENode* delta = scalar_evolution_.CreateSubtraction(dest_const, src_const);
+  SENode* src_const = source->GetOffset();
+  SENode* dest_const = destination->GetOffset();
+  SENode* delta = scalar_evolution_.CreateSubtraction(src_const, dest_const);
 
   // Scalar evolution doesn't perform division, so we must fold to constants and
   // do it manually.
@@ -288,13 +294,13 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(SENode* source,
 // Takes the form a1*i + c1, a2*i + c2
 // when a2 = 0
 // distance = (c2 - c1) / a1
-bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(SENode* source,
+bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(SERecurrentNode* source,
                                                         SENode* destination,
                                                         SENode* coefficient,
-                                                        DVentry* dv_entry) {
+                                                        DVEntry* dv_entry) {
   // Build an SENode for distance
-  SENode* src_const = source->GetConstant();
-  SENode* dest_const = destination->GetConstant();
+  SENode* src_const = source->GetOffset();
+  SENode* dest_const = destination->GetOffset();
   SENode* delta = scalar_evolution_.CreateSubtraction(dest_const, src_const);
 
   // Scalar evolution doesn't perform division, so we must fold to constants and
@@ -337,7 +343,7 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(SENode* source,
   SENode* induction_first_trip_value_SENode = GetFirstTripInductionNode();
   SENode* induction_first_trip_mult_coeff_SENode =
       scalar_evolution_.CreateMultiplyNode(induction_first_trip_value_SENode,
-                                           coefficient_);
+                                           coefficient);
   SENode* induction_first_trip_SENode = scalar_evolution_.CreateAddNode(
       induction_first_trip_mult_coeff_SENode, dest_const);
 
@@ -379,13 +385,13 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(SENode* source,
 // Takes the form a1*i + c1, a2*i + c2
 // When a1 = -a2
 // distance = (c2 - c1) / 2*a1
-bool LoopDependenceAnalysis::WeakCrossingSIVTest(SENode* source,
-                                                 SENode* destination,
+bool LoopDependenceAnalysis::WeakCrossingSIVTest(SERecurrentNode* source,
+                                                 SERecurrentNode* destination,
                                                  SENode* coefficient,
-                                                 DVentry* dv_entry) {
+                                                 DVEntry* dv_entry) {
   // Build an SENode for distance
-  SENode* src_const = source->GetConstant();
-  SENode* dest_const = destination->GetConstant();
+  SENode* src_const = source->GetOffset();
+  SENode* dest_const = destination->GetOffset();
   SENode* delta = scalar_evolution_.CreateSubtraction(dest_const, src_const);
 
   // Scalar evolution doesn't perform division, so we must fold to constants and
@@ -398,17 +404,17 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(SENode* source,
     coeff_val = delta->FoldToSingleValue();
     // Check if the distance is not integral or if it has a non-integral part
     // equal to 1/2
-    if (delta_val % (2*coeff_val) != 0 ||
-        (delta_val % (2*coeff_val)) / (2*coeff_val) != 0.5) {
+    if (delta_val % (2 * coeff_val) != 0 ||
+        (delta_val % (2 * coeff_val)) / (2 * coeff_val) != 0.5) {
       dv_entry->direction = DVEntry::NONE;
       return true;
     } else {
-      distance = delta_val / (2*coeff_val);
+      distance = delta_val / (2 * coeff_val);
     }
   }
 
   if (distance == 0) {
-    dv_entry->direciton = DVEntry::EQ;
+    dv_entry->direction = DVEntry::EQ;
     dv_entry->distance = 0;
     return false;
   }
@@ -440,8 +446,7 @@ bool LoopDependenceAnalysis::IsWithinBounds(int64_t value, int64_t bound_one,
                                             int64_t bound_two) {
   if (bound_one < bound_two) {
     // If |bound_one| is the lower bound
-    return (value >= bound_one) &&
-            value <= bound_two);
+    return (value >= bound_one && value <= bound_two);
   } else if (bound_one > bound_two) {
     // If |bound_two| is the lower bound
     return (value >= bound_two && value <= bound_one);
@@ -453,21 +458,12 @@ bool LoopDependenceAnalysis::IsWithinBounds(int64_t value, int64_t bound_one,
 
 // Takes the form a1*i + c1, a2*i + c2
 // Where a1 and a2 are constant and different
-bool LoopDependenceAnalysis::WeakSIVTest(SENode* source, SENode* destination,
-                                         SENode* src_coeff, SENode* dest_coeff,
-                                         DVEntry* dv_entry) {
-  return false;
-}
-
-bool LoopDependenceAnalysis::BannerjeeGCDtest(SENode* source,
-                                              SENode* destination,
-                                              DVEntry* dv_entry) {
-  return false;
-}
-
-bool LoopDependenceAnalysis::DeltaTest(SENode* source, SENode* direction) {
-  return false;
-}
+// bool LoopDependenceAnalysis::WeakSIVTest(SENode* source, SENode* destination,
+//                                         SENode* src_coeff, SENode*
+//                                         dest_coeff,
+//                                         DVEntry* dv_entry) {
+//  return false;
+//}
 
 SENode* LoopDependenceAnalysis::GetLowerBound() {
   ir::Instruction* lower_bound_inst = loop_.GetLowerBoundInst();
@@ -519,12 +515,9 @@ SENode* LoopDependenceAnalysis::GetUpperBound() {
   return nullptr;
 }
 
-SENode* LoopDependenceAnalysis::GetLoopLowerUpperBounds() {
+std::pair<SENode*, SENode*> LoopDependenceAnalysis::GetLoopLowerUpperBounds() {
   SENode* lower_bound_SENode = GetLowerBound();
   SENode* upper_bound_SENode = GetUpperBound();
-  if (!lower_bound_SENode || !upper_bound_SENode) {
-    return nullptr;
-  }
 
   return std::make_pair(lower_bound_SENode, upper_bound_SENode);
 }
@@ -534,7 +527,8 @@ SENode* LoopDependenceAnalysis::GetTripCount() {
   if (!condition_block) {
     return nullptr;
   }
-  ir::Instruction* induction_instr = loop_.FindConditionVariable(condition);
+  ir::Instruction* induction_instr =
+      loop_.FindConditionVariable(condition_block);
   if (!induction_instr) {
     return nullptr;
   }
@@ -543,7 +537,7 @@ SENode* LoopDependenceAnalysis::GetTripCount() {
     return nullptr;
   }
 
-  int64_t iteration_count = 0;
+  size_t iteration_count = 0;
 
   // We have to check the instruction type here. If the condition instruction
   // isn't of one of the below types we can't calculate the trip count.
@@ -556,9 +550,10 @@ SENode* LoopDependenceAnalysis::GetTripCount() {
     case SpvOpSGreaterThan:
     case SpvOpUGreaterThanEqual:
     case SpvOpSGreaterThanEqual:
-      if (!loop_.FindNumberOfIterations(induction_instr, condition_instr,
-                                        &iteration_count)) {
-        return nullptr;
+      if (loop_.FindNumberOfIterations(induction_instr, cond_instr,
+                                       &iteration_count)) {
+        return scalar_evolution_.CreateConstant(
+            static_cast<int64_t>(iteration_count));
       }
       break;
     default:
@@ -568,12 +563,13 @@ SENode* LoopDependenceAnalysis::GetTripCount() {
   return nullptr;
 }
 
-SENode* LoopDependenceAnalysis::GetFirstTripInductionValue() {
+SENode* LoopDependenceAnalysis::GetFirstTripInductionNode() {
   ir::BasicBlock* condition_block = loop_.FindConditionBlock();
   if (!condition_block) {
     return nullptr;
   }
-  ir::Instruction* induction_instr = loop_.FindConditionVariable(condition);
+  ir::Instruction* induction_instr =
+      loop_.FindConditionVariable(condition_block);
   if (!induction_instr) {
     return nullptr;
   }
@@ -583,16 +579,17 @@ SENode* LoopDependenceAnalysis::GetFirstTripInductionValue() {
   }
 
   SENode* induction_init_SENode =
-      scalar_evolution_.CreateNode(induction_initial_value);
+      scalar_evolution_.CreateConstant(induction_initial_value);
   return induction_init_SENode;
 }
 
-SENode* LoopDependenceAnalysis::GetFinalTripInductionValue() {
+SENode* LoopDependenceAnalysis::GetFinalTripInductionNode() {
   ir::BasicBlock* condition_block = loop_.FindConditionBlock();
   if (!condition_block) {
     return nullptr;
   }
-  ir::Instruction* induction_instr = loop_.FindConditionVariable(condition);
+  ir::Instruction* induction_instr =
+      loop_.FindConditionVariable(condition_block);
   if (!induction_instr) {
     return nullptr;
   }
@@ -610,17 +607,17 @@ SENode* LoopDependenceAnalysis::GetFinalTripInductionValue() {
   // leakage
 
   SENode* induction_init_SENode =
-      scalar_evolution_.CreateNode(induction_initial_value);
+      scalar_evolution_.CreateConstant(induction_initial_value);
   SENode* step_SENode = scalar_evolution_.AnalyzeInstruction(step_instr);
   SENode* total_change_SENode =
-      scalar_evolution_.CreateMultiplication(step_SENode, trip_count);
+      scalar_evolution_.CreateMultiplyNode(step_SENode, trip_count);
   SENode* final_iteration = scalar_evolution_.CreateAddNode(
       induction_init_SENode, total_change_SENode);
 
   return final_iteration;
 }
 
-LoopDescriptor* LoopDependenceAnalysis::GetLoopDescriptor() {
+ir::LoopDescriptor* LoopDependenceAnalysis::GetLoopDescriptor() {
   return context_->GetLoopDescriptor(loop_.GetHeaderBlock()->GetParent());
 }
 
