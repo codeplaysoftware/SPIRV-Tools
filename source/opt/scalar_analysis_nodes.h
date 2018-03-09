@@ -20,6 +20,14 @@
 namespace spvtools {
 namespace opt {
 
+class SEConstantNode;
+class SERecurrentNode;
+class SEAddNode;
+class SEMultiplyNode;
+class SENegative;
+class SEValueUnknown;
+class SECantCompute;
+
 // ScalarEvolution
 class SENode {
  public:
@@ -45,25 +53,7 @@ class SENode {
 
   // Get the type as an std::string. This is used to represent the node in the
   // dot output`
-  std::string AsString() const {
-    switch (GetType()) {
-      case Constant:
-        return "Constant";
-      case RecurrentExpr:
-        return "RecurrentExpr";
-      case Add:
-        return "Add";
-      case Negative:
-        return "Negative";
-      case Multiply:
-        return "Multiply";
-      case ValueUnknown:
-        return "Value Unknown";
-      case CanNotCompute:
-        return "Can not compute";
-    }
-    return "NULL";
-  }
+  std::string AsString() const;
 
   void DumpDot(std::ostream& out, bool recurse = false) const;
 
@@ -111,6 +101,18 @@ class SENode {
   const std::vector<SENode*>& GetChildren() const { return children_; }
   std::vector<SENode*>& GetChildren() { return children_; }
 
+#define DeclareCastMethod(target)                  \
+  virtual target* As##target() { return nullptr; } \
+  virtual const target* As##target() const { return nullptr; }
+  DeclareCastMethod(SEConstantNode);
+  DeclareCastMethod(SERecurrentNode);
+  DeclareCastMethod(SEAddNode);
+  DeclareCastMethod(SEMultiplyNode);
+  DeclareCastMethod(SENegative);
+  DeclareCastMethod(SEValueUnknown);
+  DeclareCastMethod(SECantCompute);
+#undef DeclareCastMethod
+
  protected:
   std::vector<SENode*> children_;
 };
@@ -131,6 +133,9 @@ class SEConstantNode : public SENode {
   SENodeType GetType() const final { return Constant; }
 
   int64_t FoldToSingleValue() const override { return literal_value_; }
+
+  SEConstantNode* AsSEConstantNode() override { return this; }
+  const SEConstantNode* AsSEConstantNode() const override { return this; }
 
  protected:
   int64_t literal_value_;
@@ -164,6 +169,9 @@ class SERecurrentNode : public SENode {
   // Return the loop which this recurrent expression is recurring within.
   const ir::Loop* GetLoop() const { return loop_; }
 
+  SERecurrentNode* AsSERecurrentNode() override { return this; }
+  const SERecurrentNode* AsSERecurrentNode() const override { return this; }
+
  private:
   SENode* coefficient_;
   SENode* step_operation_;
@@ -176,6 +184,9 @@ class SEAddNode : public SENode {
   SENodeType GetType() const final { return Add; }
 
   int64_t FoldToSingleValue() const override;
+
+  SEAddNode* AsSEAddNode() override { return this; }
+  const SEAddNode* AsSEAddNode() const override { return this; }
 };
 
 // A node representing a multiply operation between child nodes.
@@ -184,6 +195,9 @@ class SEMultiplyNode : public SENode {
   SENodeType GetType() const final { return Multiply; }
 
   int64_t FoldToSingleValue() const override;
+
+  SEMultiplyNode* AsSEMultiplyNode() override { return this; }
+  const SEMultiplyNode* AsSEMultiplyNode() const override { return this; }
 };
 
 // A node representing a unary negative operation.
@@ -194,6 +208,9 @@ class SENegative : public SENode {
   }
 
   SENodeType GetType() const final { return Negative; }
+
+  SENegative* AsSENegative() override { return this; }
+  const SENegative* AsSENegative() const override { return this; }
 };
 
 // A node representing a value which we do not know the value of, such as a load
@@ -201,12 +218,18 @@ class SENegative : public SENode {
 class SEValueUnknown : public SENode {
  public:
   SENodeType GetType() const final { return ValueUnknown; }
+
+  SEValueUnknown* AsSEValueUnknown() override { return this; }
+  const SEValueUnknown* AsSEValueUnknown() const override { return this; }
 };
 
 // A node which we cannot reason about at all.
 class SECantCompute : public SENode {
  public:
   SENodeType GetType() const final { return CanNotCompute; }
+
+  SECantCompute* AsSECantCompute() override { return this; }
+  const SECantCompute* AsSECantCompute() const override { return this; }
 };
 
 }  // namespace opt

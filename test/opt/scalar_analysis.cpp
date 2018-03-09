@@ -274,8 +274,7 @@ TEST_F(PassClassTest, LoadTest) {
       analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
   EXPECT_TRUE(simplified->GetType() == opt::SENode::RecurrentExpr);
 
-  const opt::SERecurrentNode* rec =
-      static_cast<opt::SERecurrentNode*>(simplified);
+  const opt::SERecurrentNode* rec = simplified->AsSERecurrentNode();
 
   EXPECT_NE(rec->GetChild(0), rec->GetChild(1));
 
