@@ -131,12 +131,18 @@ macro(spvtools_extinst_lang_headers NAME GRAMMAR_FILE)
 endmacro(spvtools_extinst_lang_headers)
 
 
+# SPIR-V 1.3 support is in SPIRV-Headers include/spirv/unified1
+# Temporarily assume that's the last SPIR-V version in 'unified1'.
+# TODO(dneto): Build a single set of tables that embeds versioning
+# differences on a per-item basis.  That must happen before SPIR-V 1.4, etc.
+# https://github.com/KhronosGroup/SPIRV-Tools/issues/1195
 spvtools_core_tables("1.0")
 spvtools_core_tables("1.1")
 spvtools_core_tables("1.2")
-spvtools_enum_string_mapping("1.2")
-spvtools_opencl_tables("1.2")
-spvtools_glsl_tables("1.2")
+spvtools_core_tables("unified1")
+spvtools_enum_string_mapping("unified1")
+spvtools_opencl_tables("unified1")
+spvtools_glsl_tables("unified1")
 spvtools_vendor_tables("spv-amd-shader-explicit-vertex-parameter")
 spvtools_vendor_tables("spv-amd-shader-trinary-minmax")
 spvtools_vendor_tables("spv-amd-gcn-shader")
@@ -144,7 +150,7 @@ spvtools_vendor_tables("spv-amd-shader-ballot")
 spvtools_vendor_tables("debuginfo")
 spvtools_extinst_lang_headers("DebugInfo" ${DEBUGINFO_GRAMMAR_JSON_FILE})
 
-spvtools_vimsyntax("1.2" "1.0")
+spvtools_vimsyntax("unified1" "1.0")
 add_custom_target(spirv-tools-vimsyntax DEPENDS ${VIMSYNTAX_FILE})
 set_property(TARGET spirv-tools-vimsyntax PROPERTY FOLDER "SPIRV-Tools utilities")
 

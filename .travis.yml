@@ -45,7 +45,7 @@ git:
 
 branches:
   only:
-    - master
+    - /^testing.*$/
 
 before_install:
   - if [[ "$BUILD_ANDROID_CMAKE" == "ON" ]] || [[ "$BUILD_ANDROID_MK" == "ON" ]]; then
@@ -101,33 +101,3 @@ after_success:
       export TARBALL=SPIRV-Tools-master-${TRAVIS_OS_NAME}-${BUILD_TYPE}.zip;
       find . -print | zip -@ ${TARBALL};
     fi
-
-before_deploy:
-  # Tag the current master top of the tree as "master-tot".
-  # Travis CI relies on the tag name to push to the correct release.
-  - git config --global user.name "Travis CI"
-  - git config --global user.email "builds@travis-ci.org"
-  - git tag -f master-tot
-  - git push -q -f https://${spirvtoken}@github.com/KhronosGroup/SPIRV-Tools --tags
-
-deploy:
-  provider: releases
-  api_key: ${spirvtoken}
-  on:
-    branch: master
-    condition: ${CC} == clang && ${BUILD_ANDROID_MK} != ON && ${BUILD_ANDROID_CMAKE} != ON && ${CHECK_FORMAT} != ON
-  file: ${TARBALL}
-  skip_cleanup: true
-  overwrite: true
-
-notifications:
-  email:
-    recipients:
-      - andreyt@google.com
-      - antiagainst@google.com
-      - awoloszyn@google.com
-      - dneto@google.com
-      - ehsann@google.com
-      - qining@google.com
-    on_success: change
-    on_failure: always
