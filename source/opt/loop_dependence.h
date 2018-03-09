@@ -103,6 +103,9 @@ class LoopDependenceAnalysis {
   // Returns true if |value| is between |bound_one| and |bound_two| (inclusive)
   bool IsWithinBounds(SENode* value, SENode* bound_one, SENode* bound_two);
 
+  // Returns true if |value| is between |bound_one| and |bound_two| (inclusive)
+  bool IsWithinBounds(int64_t value, int64_t bound_one, int64_t bound_two);
+
   // Finds the lower bound of the loop as an SENode* and returns the resulting
   // SENode. The lower bound is evaluated as the bound with the lesser signed
   // value.
@@ -125,10 +128,15 @@ class LoopDependenceAnalysis {
   // If the operations can not be completed a nullptr is returned
   SENode* GetTripCount();
 
+  // Finds the value of the induction variable at the first trip of the loop and
+  // returns the resulting SENode
+  // If the operation can not be completed a nullptr is returned
+  SENode* GetFirstTripInductionNode();
+
   // Finds the value of the induction variable at the final trip of the loop and
   // returns the resulting SENode
-  // If the operations can not be completed a nullptr is returned
-  SENode* GetFinalTripValue();
+  // If the operation can not be completed a nullptr is returned
+  SENode* GetFinalTripInductionNode();
 
   // Finds and returns the loop descriptor for the loop stored by this analysis
   LoopDescriptor* GetLoopDescriptor();

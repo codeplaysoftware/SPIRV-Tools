@@ -109,6 +109,10 @@ bool LoopDependenceAnalysis::ZIVTest(SENode* source, SENode* destination,
     dv_entry->direction = DVEntry::NONE;
     return true;
   }
+
+  // We were unable to prove independence or discern any additional information
+  // Must assume <=> direction
+  dv_entry->direction = DVEntry::ALL;
   return false;
 }
 
@@ -124,26 +128,40 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
   // Build an SENode for distance
   SENode* src_const = source->GetConstant();
   SENode* dest_const = destination->GetConstant();
-
   SENode* delta = scalar_evolution_.CreateSubtraction(src_const, dest_const);
-  SENode* distance = scalar_evolution_.CreateDivision(delta, coefficient);
 
-  // If the distance is not an integer we prove independence
-  if (distance->IsFoldable() && !IsIntegral(distance)) {
-    dv_entry->direction = DVEntry::NONE;
-    return true;
+  // Scalar evolution doesn't perform division, so we must fold to constants and
+  // do it manually.
+  int64_t delta_val = 0;
+  int64_t coeff_val = 0;
+  int64_t distance = 0;
+  if (delta->CanFoldToConstant() && coefficient->CanFoldToConstant()) {
+    delta_val = delta->FoldToSingleValue();
+    coeff_val = delta->FoldToSingleValue();
+    // Check if the distance is not integral to try to prove independence
+    if (delta_val % coeff_val != 0) {
+      dv_entry->direction = DVEntry::NONE;
+      return true;
+    } else {
+      distance = delta_val / coeff_val;
+    }
   }
 
   SENode* lower_bound = GetLowerBound();
   SENode* upper_bound = GetUpperBound();
   SENode* bounds =
       scalar_evolution_.CreateSubtraction(upper_bound, lower_bound);
+
+  int64_t bounds_val = 0;
+  if (bounds->CanFoldToConstant()) {
+    bounds_val = bounds->FoldToSingleValue();
+  }
+
   // If the absolute value of the distance is > upper bound - lower bound then
   // we prove independence
-  // This can work for symbolics in which we have the same symbols in the
-  // subscript as in the loop bounds, allowing us to prove distance
   if (distance->IsGreater(bounds)) {
     dv_entry->direction = DVEntry::NONE;
+    dv_entry->distance = distance;
     return true;
   }
 
@@ -152,27 +170,27 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
   // direction = { = if distance == 0
   //             { > if distance < 0
 
-  if (distance->IsGreater(0)) {
+  if (distance > 0) {
     dv_entry->direction = DVEntry::LT;
-    if (distance->IsFoldable()) {
-      dv_entry->distance = distance->FoldToSingleValue();
-    }
+    dv_entry->distance = distance;
+
     return false;
   }
-  if (distance->IsEqual(0)) {
+  if (distance == 0) {
     dv_entry->direction = DVEntry::EQ;
     dv_entry->distance = 0;
     return false;
   }
-  if (distance->IsLess(0)) {
+  if (distance < 0) {
     dv_entry->direction = DVEntry::GT;
-    if (distance->IsFoldable()) {
-      dv_entry->distance = distance->FoldToSingleValue();
-    }
+    dv_entry->distance = distance;
+
     return false;
   }
 
-  // We were unable to prove independence
+  // We were unable to prove independence or discern any additional information
+  // Must assume <=> direction
+  dv_entry->direction = DVEntry::ALL;
   return false;
 }
 
@@ -183,159 +201,222 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(SENode* source,
                                                    SENode* destination,
                                                    SENode* coefficient,
                                                    DVentry* dv_entry) {
-  // Build an SENode for i
+  // Build an SENode for distance
   SENode* src_const = source->GetConstant();
   SENode* dest_const = destination->GetConstant();
+  SENode* delta = scalar_evolution_.CreateSubtraction(dest_const, src_const);
 
-  SENode* const_sub = scalar_evolution_.CreateNegation(src_const, dest_const);
-  SENode* distance = scalar_evolution_.CreateDivision(const_sub, coefficient);
-
-  // If distance is not an integer, we prove independence
-  if (distance->IsFoldable() && !distance->IsIntegral()) {
-    dv_entry->direction = DVEntry::NONE;
-    return true;
+  // Scalar evolution doesn't perform division, so we must fold to constants and
+  // do it manually.
+  int64_t delta_val = 0;
+  int64_t coeff_val = 0;
+  int64_t distance = 0;
+  if (delta->CanFoldToConstant() && coefficient->CanFoldToConstant()) {
+    delta_val = delta->FoldToSingleValue();
+    coeff_val = delta->FoldToSingleValue();
+    // Check if the distance is not integral or if it has a non-integral part
+    // equal to 1/2
+    if (delta_val % coeff_val != 0) {
+      dv_entry->direction = DVEntry::NONE;
+      return true;
+    } else {
+      distance = delta_val / coeff_val;
+    }
   }
 
-  // If the distance is not within the loop bounds, we prove independence
-  if (distance->IsFoldable() &&
-      !IsWithinBounds(distance, GetLowerBound(), GetUpperBound())) {
-    dv_entry->direction = DVEntry::NONE;
-    return true;
+  int64_t lower_bound_val = 0;
+  int64_t upper_bound_val = 0;
+  SENode* lower_bound = GetLowerBound();
+  SENode* upper_bound = GetUpperBound();
+  // If we can prove the distance is outside the bounds we prove independence
+  if (lower_bound->CanFoldToConstant() && upper_bound->CanFoldToConstant()) {
+    lower_bound_val = lower_bound->FoldToSingleValue();
+    upper_bound_val = upper_bound->FoldToSingleValue();
+    if (!IsWithinBounds(distance, lower_bound_val, upper_bound_val)) {
+      dv_entry->direction = DVEntry::NONE;
+      dv_entry->distance = distance;
+      return true;
+    }
   }
 
-  // If i is not an integer, there is no dependence
-  if (!i->isIntegral()) {
-    dv_entry->direction = NONE;
-    return true;
+  // Now we want to see if we can detect to peel the first or last iterations
+
+  // We build the value of the first trip value as an SENode and fold it down to
+  // a constant value if possible.
+  SENode* induction_first_trip_value_SENode = GetFirstTripInductionNode();
+  SENode* induction_first_trip_mult_coeff_SENode =
+      scalar_evolution_.CreateMultiplyNode(induction_first_trip_value_SENode,
+                                           coefficient_);
+  SENode* induction_first_trip_SENode = scalar_evolution_.CreateAddNode(
+      induction_first_trip_mult_coeff_SENode, src_const);
+
+  // If src_const == FirstTripValue, peel_first
+  if (induction_first_trip_SENode->CanFoldToConstant()) {
+    int64_t first_trip_value = induction_first_trip_SENode->FoldToSingleValue();
+    if (distance == first_trip_value) {
+      // We have found that peeling the first iteration will break dependency
+      dv_entry->peel_first = true;
+      return false;
+    }
   }
 
-  SENode* upper_bound = nullptr;
-  if (!GetUpperBound(&upper_bound)) {
-    return false;
+  // We build the value of the final trip value as an SENode and fold it down to
+  // a constant value if possible.
+  SENode* induction_final_trip_value_SENode = GetFinalTripInductionNode();
+  SENode* induction_final_trip_mult_coeff_SENode =
+      scalar_evolution_.CreateMultiplyNode(induction_final_trip_value_SENode,
+                                           coefficient_);
+  SENode* induction_final_trip_SENode = scalar_evolution_.CreateAddNode(
+      induction_final_trip_mult_coeff_SENode, src_const);
+
+  // If src_const == LastTripValue, peel_last
+  if (induction_final_trip_SENode->CanFoldToConstant()) {
+    int64_t final_trip_value = induction_final_trip_SENode->FoldToSingleValue();
+    if (distance == final_trip_value) {
+      // We have found that peeling the last iteration will break dependency
+      dv_entry->peel_last = true;
+      return false;
+    }
   }
 
-  // If i < 0 or > upper_bound, there is no dependence
-  if (i->LessThan(0) || i->GreaterThan(upper_bound)) {
-    dv_entry->direction = NONE;
-    return true;
-  }
-
-  // If i = 0, the direction is <= and peeling the 1st iteration will break the
-  // dependence
-  if (i->IsZero()) {
-    dv_entry->direction = DVEntry::LE;
-    dv_entry->peel_first = true;
-    return false;
-  }
-
-  // If i = upper_bound, the dependence is >= and peeling the last iteration
-  // will break the dependence
-  if (i->IsEqual(upper_bound)) {
-    dv_entry->direction = DVEntry::GE;
-    dv_entry->peel_last = true;
-    return false;
-  }
-
-  // Otherwise we can't prove an independence or dependence direction so assume
-  // <=>
+  // We were unable to prove independence or discern any additional information
+  // Must assume <=> direction
+  dv_entry->direction = DVEntry::ALL;
   return false;
 }
 
 // Takes the form a1*i + c1, a2*i + c2
 // when a2 = 0
-// i = (c2 - c1) / a1
+// distance = (c2 - c1) / a1
 bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(SENode* source,
                                                         SENode* destination,
                                                         SENode* coefficient,
                                                         DVentry* dv_entry) {
-  // Build an SENode for i
+  // Build an SENode for distance
   SENode* src_const = source->GetConstant();
   SENode* dest_const = destination->GetConstant();
+  SENode* delta = scalar_evolution_.CreateSubtraction(dest_const, src_const);
 
-  SENode* const_sub = scalar_evolution_.CreateNegation(dest_const, src_const);
-  SENode* i = scalar_evolution_.CreateDivision(const_sub, coefficient);
-
-  // If i is not an integer, there is no dependence
-  if (!i->IsIntegral()) {
-    dv_entry->direction = DVEntry::NONE;
-    return true;
+  // Scalar evolution doesn't perform division, so we must fold to constants and
+  // do it manually.
+  int64_t delta_val = 0;
+  int64_t coeff_val = 0;
+  int64_t distance = 0;
+  if (delta->CanFoldToConstant() && coefficient->CanFoldToConstant()) {
+    delta_val = delta->FoldToSingleValue();
+    coeff_val = delta->FoldToSingleValue();
+    // Check if the distance is not integral or if it has a non-integral part
+    // equal to 1/2
+    if (delta_val % coeff_val != 0) {
+      dv_entry->direction = DVEntry::NONE;
+      return true;
+    } else {
+      distance = delta_val / coeff_val;
+    }
   }
 
-  SENode* upper_bound = nullptr;
-  if (!GetUpperBound(&upper_bound)) {
-    return false;
+  int64_t lower_bound_val = 0;
+  int64_t upper_bound_val = 0;
+  SENode* lower_bound = GetLowerBound();
+  SENode* upper_bound = GetUpperBound();
+  // If we can prove the distance is outside the bounds we prove independence
+  if (lower_bound->CanFoldToConstant() && upper_bound->CanFoldToConstant()) {
+    lower_bound_val = lower_bound->FoldToSingleValue();
+    upper_bound_val = upper_bound->FoldToSingleValue();
+    if (!IsWithinBounds(distance, lower_bound_val, upper_bound_val)) {
+      dv_entry->direction = DVEntry::NONE;
+      dv_entry->distance = distance;
+      return true;
+    }
   }
 
-  // If i < 0 or > upper_bound, there is no dependence
-  if (i->LessThan(0) || i->GreaterThan(upper_bound)) {
-    dv_entry->direction = DVEntry::NONE;
-    return true;
+  // Now we want to see if we can detect to peel the first or last iterations
+
+  // We build the value of the first trip value as an SENode and fold it down to
+  // a constant value if possible.
+  SENode* induction_first_trip_value_SENode = GetFirstTripInductionNode();
+  SENode* induction_first_trip_mult_coeff_SENode =
+      scalar_evolution_.CreateMultiplyNode(induction_first_trip_value_SENode,
+                                           coefficient_);
+  SENode* induction_first_trip_SENode = scalar_evolution_.CreateAddNode(
+      induction_first_trip_mult_coeff_SENode, dest_const);
+
+  // If dest_const == FirstTripValue, peel_first
+  if (induction_first_trip_SENode->CanFoldToConstant()) {
+    int64_t first_trip_value = induction_first_trip_SENode->FoldToSingleValue();
+    if (distance == first_trip_value) {
+      // We have found that peeling the first iteration will break dependency
+      dv_entry->peel_first = true;
+      return false;
+    }
   }
 
-  // If i == 0, the direction is <= and peeling the first iteration will break
-  // the dependence
-  if (i->IsZero()) {
-    dv_entry->peel_first = true;
-    return false;
+  // We build the value of the final trip value as an SENode and fold it down to
+  // a constant value if possible.
+  SENode* induction_final_trip_value_SENode = GetFinalTripInductionNode();
+  SENode* induction_final_trip_mult_coeff_SENode =
+      scalar_evolution_.CreateMultiplyNode(induction_final_trip_value_SENode,
+                                           coefficient_);
+  SENode* induction_final_trip_SENode = scalar_evolution_.CreateAddNode(
+      induction_final_trip_mult_coeff_SENode, dest_const);
+
+  // If dest_const == LastTripValue, peel_last
+  if (induction_final_trip_SENode->CanFoldToConstant()) {
+    int64_t final_trip_value = induction_final_trip_SENode->FoldToSingleValue();
+    if (distance == final_trip_value) {
+      // We have found that peeling the last iteration will break dependency
+      dv_entry->peel_last = true;
+      return false;
+    }
   }
 
-  // If i == upper_bound, the direction is >= and peeling the last iteration
-  // will break the dependence
-  if (i->IsEqual(upper_bound)) {
-    dv_entry->peel_last = true;
-    return false;
-  }
-
-  // Otherwise we can't prove an independence or dependence direction so assume
-  // <=>
+  // We were unable to prove independence or discern any additional information
+  // Must assume <=> direction
   dv_entry->direction = DVEntry::ALL;
   return false;
 }
 
 // Takes the form a1*i + c1, a2*i + c2
 // When a1 = -a2
-// i = (c2 - c1) / 2*a1
+// distance = (c2 - c1) / 2*a1
 bool LoopDependenceAnalysis::WeakCrossingSIVTest(SENode* source,
                                                  SENode* destination,
                                                  SENode* coefficient,
                                                  DVentry* dv_entry) {
+  // Build an SENode for distance
   SENode* src_const = source->GetConstant();
   SENode* dest_const = destination->GetConstant();
+  SENode* delta = scalar_evolution_.CreateSubtraction(dest_const, src_const);
 
-  SENode* const_sub = scalar_evolution_.CreateNegation(dest_const, src_const);
-  SENode* const_2 = scalar_evolution_.CreateConstant(2);
-  SENode* mult_coeff =
-      scalar_evolution_.CreateMultiplication(const_2, coefficient);
-  SENode* i = scalar_evolution_.CreateDivision(const_sub, mult_coeff);
+  // Scalar evolution doesn't perform division, so we must fold to constants and
+  // do it manually.
+  int64_t delta_val = 0;
+  int64_t coeff_val = 0;
+  int64_t distance = 0;
+  if (delta->CanFoldToConstant() && coefficient->CanFoldToConstant()) {
+    delta_val = delta->FoldToSingleValue();
+    coeff_val = delta->FoldToSingleValue();
+    // Check if the distance is not integral or if it has a non-integral part
+    // equal to 1/2
+    if (delta_val % (2*coeff_val) != 0 ||
+        (delta_val % (2*coeff_val)) / (2*coeff_val) != 0.5) {
+      dv_entry->direction = DVEntry::NONE;
+      return true;
+    } else {
+      distance = delta_val / (2*coeff_val);
+    }
+  }
 
-  // If i = 0, there is a dependence of distance 0
-  if (i->IsZero()) {
-    dv_entry->direction = DVEntry::EQ;
+  if (distance == 0) {
+    dv_entry->direciton = DVEntry::EQ;
     dv_entry->distance = 0;
-  }
-
-  // If i < 0, there is no dependence
-  if (i->LessThan(0)) {
-    dv_entry->direction = DVEntry::NONE;
-    return true;
-  }
-
-  SENode* upper_bound = nullptr;
-  if (!GetUpperBound(&upper_bound)) {
     return false;
   }
 
-  // If i > upper_bound, there is no dependence
-  if (i->GreaterThan(upper_bound)) {
-    dv_entry->direction = DVEntry::NONE;
-    return true;
-  }
-
-  // If i == upper_bound, there is a dependence with distance = 0
-  if (i->IsEqual(upper_bound)) {
-    dv_entry->direction = DVEntry::EQ;
-    dv_entry->distance = 0;
-  }
+  // We were unable to prove independence or discern any additional information
+  // Must assume <=> direction
+  dv_entry->direction = DVEntry::ALL;
+  return false;
 }
 
 bool LoopDependenceAnalysis::IsWithinBounds(SENode* value, SENode* bound_one,
@@ -352,6 +433,21 @@ bool LoopDependenceAnalysis::IsWithinBounds(SENode* value, SENode* bound_one,
   } else {
     // Both bounds have the same value
     return value->IsEqual(bound_one);
+  }
+}
+
+bool LoopDependenceAnalysis::IsWithinBounds(int64_t value, int64_t bound_one,
+                                            int64_t bound_two) {
+  if (bound_one < bound_two) {
+    // If |bound_one| is the lower bound
+    return (value >= bound_one) &&
+            value <= bound_two);
+  } else if (bound_one > bound_two) {
+    // If |bound_two| is the lower bound
+    return (value >= bound_two && value <= bound_one);
+  } else {
+    // Both bounds have the same value
+    return value == bound_one;
   }
 }
 
@@ -472,7 +568,26 @@ SENode* LoopDependenceAnalysis::GetTripCount() {
   return nullptr;
 }
 
-SENode* LoopDependenceAnalysis::GetFinalTripValue() {
+SENode* LoopDependenceAnalysis::GetFirstTripInductionValue() {
+  ir::BasicBlock* condition_block = loop_.FindConditionBlock();
+  if (!condition_block) {
+    return nullptr;
+  }
+  ir::Instruction* induction_instr = loop_.FindConditionVariable(condition);
+  if (!induction_instr) {
+    return nullptr;
+  }
+  int64_t induction_initial_value = 0;
+  if (!loop_.GetInductionInitValue(induction_instr, &induction_initial_value)) {
+    return nullptr;
+  }
+
+  SENode* induction_init_SENode =
+      scalar_evolution_.CreateNode(induction_initial_value);
+  return induction_init_SENode;
+}
+
+SENode* LoopDependenceAnalysis::GetFinalTripInductionValue() {
   ir::BasicBlock* condition_block = loop_.FindConditionBlock();
   if (!condition_block) {
     return nullptr;
