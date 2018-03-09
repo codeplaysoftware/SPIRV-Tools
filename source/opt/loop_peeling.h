@@ -24,6 +24,8 @@
 #include "opt/ir_context.h"
 #include "opt/loop_descriptor.h"
 #include "opt/loop_utils.h"
+#include "opt/pass.h"
+#include "opt/scalar_analysis.h"
 
 namespace spvtools {
 namespace opt {
@@ -31,9 +33,9 @@ namespace opt {
 // Utility class to perform the actual peeling of a given loop.
 class LoopPeeling {
  public:
-  LoopPeeling(ir::IRContext* context, ir::Loop* loop)
-      : context_(context),
-        loop_utils_(context, loop),
+  explicit LoopPeeling(ir::Loop* loop)
+      : context_(loop->GetContext()),
+        loop_utils_(loop->GetContext(), loop),
         loop_(loop),
         extra_induction_variable_(nullptr) {
     assert(loop_->IsLCSSA() && "Loop is not in LCSSA form");
@@ -151,6 +153,74 @@ class LoopPeeling {
   // SSA value when it exit the loop. If no exit value can be accurately found,
   // it is map to nullptr (see comment on CanPeelLoop).
   void GetIteratingExitValue();
+};
+
+// Implements a loop peeling optimization.
+// For each loop, the pass will try to peel it if there is conditions that
+// are true for the "N" first or last iterations of the loop.
+// To avoid code size explosion, too large loops will not be peeled.
+class LoopPeelingPass : public Pass {
+  enum class PeelDirection {
+    None,    // Cannot be peeled
+    Before,  // Can be peeled before
+    Last     // Can be peeled last
+  };
+
+  class LoopPeelingInfo {
+   public:
+    using LoopPeelDirection = std::pair<PeelDirection, uint32_t>;
+
+    LoopPeelingInfo(ir::Loop* loop, size_t loop_max_iterations,
+                    opt::ScalarEvolutionAnalysis* scev_analysis)
+        : context_(loop->GetContext()),
+          loop_(loop),
+          scev_analysis_(scev_analysis),
+          loop_max_iterations_(loop_max_iterations) {}
+
+    LoopPeelDirection GetPeelingInfo(ir::BasicBlock* bb);
+
+   private:
+    ir::IRContext* context_;
+    ir::Loop* loop_;
+    opt::ScalarEvolutionAnalysis* scev_analysis_;
+    // SENode* max_iterations_;
+    // SENode* rec_expr_;
+    size_t loop_max_iterations_;
+
+    uint32_t GetFirstLoopInvariantOperand(ir::Instruction* condition) const;
+    uint32_t GetFirstNonLoopInvariantOperand(ir::Instruction* condition) const;
+
+    bool DivideNodes(SENode* lhs, SENode* rhs, int64_t* result) const;
+    SENode* GetLastIterationValue(SERecurrentNode* rec) const;
+
+    SENode* GetIterationValueAt(SERecurrentNode* rec, SENode* x) const;
+
+    LoopPeelDirection HandleEqual(SpvOp opcode, SENode* lhs, SENode* rhs) const;
+    LoopPeelDirection HandleGreaterThan(SpvOp opcode, bool handle_ge,
+                                        SENode* lhs, SENode* rhs) const;
+    LoopPeelDirection HandleLessThan(SpvOp opcode, bool handle_le, SENode* lhs,
+                                     SENode* rhs) const;
+
+    static LoopPeelDirection GetNoneDirection() {
+      return LoopPeelDirection{LoopPeelingPass::PeelDirection::None, 0};
+    }
+  };
+
+ public:
+  const char* name() const override { return "loop-peeling"; }
+
+  // Processes the given |module|. Returns Status::Failure if errors occur when
+  // processing. Returns the corresponding Status::Success if processing is
+  // succesful to indicate whether changes have been made to the modue.
+  Pass::Status Process(ir::IRContext* context) override;
+
+ private:
+  unsigned code_grow_threshold_;
+
+  // Peel profitable loops in |f|.
+  bool ProcessFunction(ir::Function* f);
+  // Peel |loop| if profitable.
+  bool ProcessLoop(ir::Loop* loop);
 };
 
 }  // namespace opt

@@ -28,7 +28,7 @@ namespace opt {
 // So far it counts the number of instructions in a RIO (excluding debug
 // and label instructions) per basic block and in total.
 struct CodeMetrics {
-  void Analyze(ir::IRContext* context, const ir::Loop& loop);
+  void Analyze(const ir::Loop& loop);
 
   // The number of instructions per basic block in the ROI.
   std::unordered_map<uint32_t, size_t> block_sizes_;

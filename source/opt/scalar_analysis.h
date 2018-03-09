@@ -110,6 +110,58 @@ class ScalarEvolutionAnalysis {
   SENode* AnalyzePhiInstruction(const ir::Instruction* phi);
 };
 
+// Wrapping class for composability.
+struct SENodeDSL {
+ public:
+  SENodeDSL(SENode* node, ScalarEvolutionAnalysis* scev)
+      : node_(node), scev_(scev) {}
+
+  SENodeDSL operator+(SENode* rhs) const {
+    return SENodeDSL{scev_->CreateAddNode(node_, rhs), scev_};
+  }
+  SENodeDSL operator+(int64_t integer) const {
+    return *this + scev_->CreateConstant(integer);
+  }
+  SENodeDSL operator+(SENodeDSL rhs) const { return *this + rhs.node_; }
+
+  SENodeDSL operator-() const {
+    return SENodeDSL{scev_->CreateNegation(node_), scev_};
+  }
+  SENodeDSL operator-(SENode* rhs) const {
+    return *this + scev_->CreateNegation(rhs);
+  }
+  SENodeDSL operator-(int64_t integer) const {
+    return *this - scev_->CreateConstant(integer);
+  }
+  SENodeDSL operator-(SENodeDSL rhs) const { return *this - rhs.node_; }
+
+  SENodeDSL operator*(SENode* rhs) const {
+    return SENodeDSL{scev_->CreateMultiplyNode(node_, rhs), scev_};
+  }
+  SENodeDSL operator*(int64_t integer) const {
+    return *this * scev_->CreateConstant(integer);
+  }
+  SENodeDSL operator*(SENodeDSL rhs) const { return *this * rhs.node_; }
+
+  operator SENode*() const { return scev_->SimplifyExpression(node_); }
+
+  SENode* node_;
+  ScalarEvolutionAnalysis* scev_;
+};
+
+SENodeDSL operator+(int64_t lhs, SENodeDSL rhs) { return rhs + lhs; }
+SENodeDSL operator+(SENode* lhs, SENodeDSL rhs) { return rhs + lhs; }
+
+SENodeDSL operator-(int64_t lhs, SENodeDSL rhs) {
+  return SENodeDSL{rhs.scev_->CreateConstant(lhs), rhs.scev_} - rhs;
+}
+SENodeDSL operator-(SENode* lhs, SENodeDSL rhs) {
+  return SENodeDSL{lhs, rhs.scev_} - rhs;
+}
+
+SENodeDSL operator*(int64_t lhs, SENodeDSL rhs) { return rhs * lhs; }
+SENodeDSL operator*(SENode* lhs, SENodeDSL rhs) { return rhs * lhs; }
+
 }  // namespace opt
 }  // namespace spvtools
 

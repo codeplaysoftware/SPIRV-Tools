@@ -599,8 +599,8 @@ void LoopUtils::PopulateLoopDesc(
 }
 
 // Class to gather some metrics about a ROI.
-void CodeMetrics::Analyze(ir::IRContext* ctx, const ir::Loop& loop) {
-  ir::CFG& cfg = *ctx->cfg();
+void CodeMetrics::Analyze(const ir::Loop& loop) {
+  ir::CFG& cfg = *loop.GetContext()->cfg();
 
   roi_size_ = 0;
   block_sizes_.clear();

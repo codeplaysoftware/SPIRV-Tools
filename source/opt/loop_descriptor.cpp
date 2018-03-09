@@ -623,12 +623,27 @@ void LoopDescriptor::PopulateList(const Function* f) {
 }
 
 ir::BasicBlock* Loop::FindConditionBlock() const {
-  const ir::Function& function = *loop_merge_->GetParent();
+  if (!loop_merge_) {
+    return nullptr;
+  }
   ir::BasicBlock* condition_block = nullptr;
 
-  const opt::DominatorAnalysis* dom_analysis =
-      context_->GetDominatorAnalysis(&function, *context_->cfg());
-  ir::BasicBlock* bb = dom_analysis->ImmediateDominator(loop_merge_);
+  uint32_t in_loop_pred = 0;
+  for (uint32_t p : context_->cfg()->preds(loop_merge_->id())) {
+    if (IsInsideLoop(p)) {
+      if (in_loop_pred) {
+        // 2 in-loop predecessors.
+        return nullptr;
+      }
+      in_loop_pred = p;
+    }
+  }
+  if (!in_loop_pred) {
+    // Merge block is unreachable.
+    return nullptr;
+  }
+
+  ir::BasicBlock* bb = context_->cfg()->block(in_loop_pred);
 
   if (!bb) return nullptr;
 

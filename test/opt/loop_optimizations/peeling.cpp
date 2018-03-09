@@ -138,7 +138,7 @@ TEST_F(PeelingTest, CannotPeel) {
 
     opt::InstructionBuilder builder(context.get(), &*f.begin());
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin());
+    opt::LoopPeeling peel(&*ld.begin());
     EXPECT_FALSE(peel.CanPeelLoop());
   }
 
@@ -194,7 +194,7 @@ TEST_F(PeelingTest, CannotPeel) {
 
     opt::InstructionBuilder builder(context.get(), &*f.begin());
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin());
+    opt::LoopPeeling peel(&*ld.begin());
     EXPECT_FALSE(peel.CanPeelLoop());
   }
 }
@@ -263,7 +263,7 @@ TEST_F(PeelingTest, SimplePeeling) {
     opt::InstructionBuilder builder(context.get(), &*f.begin());
     ir::Instruction* two_cst = builder.Add32BitSignedIntegerConstant(2);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin());
+    opt::LoopPeeling peel(&*ld.begin());
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelBefore(two_cst);
 
@@ -309,7 +309,7 @@ CHECK-NEXT: OpLoopMerge
     ir::Instruction* two_cst = builder.Add32BitSignedIntegerConstant(2);
     ir::Instruction* loop_count = builder.Add32BitSignedIntegerConstant(10);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin());
+    opt::LoopPeeling peel(&*ld.begin());
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelAfter(two_cst, loop_count);
 
@@ -402,7 +402,7 @@ TEST_F(PeelingTest, DoWhilePeeling) {
     opt::InstructionBuilder builder(context.get(), &*f.begin());
     ir::Instruction* two_cst = builder.Add32BitSignedIntegerConstant(2);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin());
+    opt::LoopPeeling peel(&*ld.begin());
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelBefore(two_cst);
 
@@ -446,7 +446,7 @@ CHECK-NEXT: OpLoopMerge
     ir::Instruction* two_cst = builder.Add32BitSignedIntegerConstant(2);
     ir::Instruction* loop_count = builder.Add32BitSignedIntegerConstant(10);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin());
+    opt::LoopPeeling peel(&*ld.begin());
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelAfter(two_cst, loop_count);
 

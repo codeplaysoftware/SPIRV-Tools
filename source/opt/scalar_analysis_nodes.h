@@ -20,6 +20,14 @@
 namespace spvtools {
 namespace opt {
 
+class SEConstantNode;
+class SERecurrentNode;
+class SEAddNode;
+class SEMultiplyNode;
+class SENegative;
+class SEValueUnknown;
+class SECantCompute;
+
 // ScalarEvolution
 class SENode {
  public:
@@ -134,6 +142,18 @@ class SENode {
   const std::vector<SENode*>& GetChildren() const { return children_; }
   std::vector<SENode*>& GetChildren() { return children_; }
 
+#define DeclareCastMethod(target)                  \
+  virtual target* As##target() { return nullptr; } \
+  virtual const target* As##target() const { return nullptr; }
+  DeclareCastMethod(SEConstantNode);
+  DeclareCastMethod(SERecurrentNode);
+  DeclareCastMethod(SEAddNode);
+  DeclareCastMethod(SEMultiplyNode);
+  DeclareCastMethod(SENegative);
+  DeclareCastMethod(SEValueUnknown);
+  DeclareCastMethod(SECantCompute);
+#undef DeclareCastMethod
+
  protected:
   // Each node is assigned a unique id.
   uint32_t unique_id_;
@@ -156,6 +176,9 @@ class SEConstantNode : public SENode {
   SENodeType GetType() const final { return Constant; }
 
   int64_t FoldToSingleValue() const override { return literal_value_; }
+
+  SEConstantNode* AsSEConstantNode() override { return this; }
+  const SEConstantNode* AsSEConstantNode() const override { return this; }
 
  protected:
   int64_t literal_value_;
@@ -186,6 +209,9 @@ class SERecurrentNode : public SENode {
   inline const SENode* GetOffset() const { return step_operation_; }
   inline SENode* GetOffset() { return step_operation_; }
 
+  SERecurrentNode* AsSERecurrentNode() override { return this; }
+  const SERecurrentNode* AsSERecurrentNode() const override { return this; }
+
  private:
   SENode* coefficient_;
   SENode* step_operation_;
@@ -196,6 +222,9 @@ class SEAddNode : public SENode {
   SENodeType GetType() const final { return Add; }
 
   int64_t FoldToSingleValue() const override;
+
+  SEAddNode* AsSEAddNode() override { return this; }
+  const SEAddNode* AsSEAddNode() const override { return this; }
 };
 
 class SEMultiplyNode : public SENode {
@@ -203,6 +232,9 @@ class SEMultiplyNode : public SENode {
   SENodeType GetType() const final { return Multiply; }
 
   int64_t FoldToSingleValue() const override;
+
+  SEMultiplyNode* AsSEMultiplyNode() override { return this; }
+  const SEMultiplyNode* AsSEMultiplyNode() const override { return this; }
 };
 
 class SENegative : public SENode {
@@ -212,6 +244,9 @@ class SENegative : public SENode {
   }
 
   SENodeType GetType() const final { return Negative; }
+
+  SENegative* AsSENegative() override { return this; }
+  const SENegative* AsSENegative() const override { return this; }
 };
 
 class SEValueUnknown : public SENode {
@@ -219,12 +254,18 @@ class SEValueUnknown : public SENode {
   SEValueUnknown() : SENode() { can_fold_to_constant_ = false; }
 
   SENodeType GetType() const final { return ValueUnknown; }
+
+  SEValueUnknown* AsSEValueUnknown() override { return this; }
+  const SEValueUnknown* AsSEValueUnknown() const override { return this; }
 };
 
 class SECantCompute : public SENode {
  public:
   SECantCompute() : SENode() { can_fold_to_constant_ = false; }
   SENodeType GetType() const final { return CanNotCompute; }
+
+  SECantCompute* AsSECantCompute() override { return this; }
+  const SECantCompute* AsSECantCompute() const override { return this; }
 };
 
 }  // namespace opt

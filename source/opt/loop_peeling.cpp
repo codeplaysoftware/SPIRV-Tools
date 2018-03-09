@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -182,18 +183,22 @@ void LoopPeeling::GetIteratingExitValue() {
   }
   opt::analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
 
-  uint32_t condition_block_id = cfg.preds(loop_->GetMergeBlock()->id())[0];
+  ir::BasicBlock* condition_block = loop_->FindConditionBlock();
+  assert(condition_block);
+  if (condition_block->terminator()->opcode() != SpvOpBranchConditional) {
+    return;
+  }
 
   auto& header_pred = cfg.preds(loop_->GetHeaderBlock()->id());
   do_while_form_ = std::find(header_pred.begin(), header_pred.end(),
-                             condition_block_id) != header_pred.end();
+                             condition_block->id()) != header_pred.end();
   if (do_while_form_) {
     loop_->GetHeaderBlock()->ForEachPhiInst(
-        [condition_block_id, def_use_mgr, this](ir::Instruction* phi) {
+        [condition_block, def_use_mgr, this](ir::Instruction* phi) {
           std::unordered_set<ir::Instruction*> operations;
 
           for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
-            if (condition_block_id == phi->GetSingleWordInOperand(i + 1)) {
+            if (condition_block->id() == phi->GetSingleWordInOperand(i + 1)) {
               exit_value_[phi->result_id()] =
                   def_use_mgr->GetDef(phi->GetSingleWordInOperand(i));
             }
@@ -203,7 +208,6 @@ void LoopPeeling::GetIteratingExitValue() {
     DominatorTree* dom_tree =
         &context_->GetDominatorAnalysis(loop_utils_.GetFunction(), cfg)
              ->GetDomTree();
-    ir::BasicBlock* condition_block = cfg.block(condition_block_id);
 
     loop_->GetHeaderBlock()->ForEachPhiInst(
         [dom_tree, condition_block, this](ir::Instruction* phi) {
@@ -229,17 +233,9 @@ void LoopPeeling::GetIteratingExitValue() {
 
 void LoopPeeling::FixExitCondition(
     const std::function<uint32_t(ir::BasicBlock*)>& condition_builder) {
-  ir::CFG& cfg = *context_->cfg();
+  ir::BasicBlock* condition_block = GetBeforeLoop()->FindConditionBlock();
+  assert(condition_block);
 
-  uint32_t condition_block_id = 0;
-  for (uint32_t id : cfg.preds(GetAfterLoop()->GetHeaderBlock()->id())) {
-    if (!GetAfterLoop()->IsInsideLoop(id)) {
-      condition_block_id = id;
-    }
-  }
-  assert(condition_block_id != 0 && "2nd loop in improperly connected");
-
-  ir::BasicBlock* condition_block = cfg.block(condition_block_id);
   assert(condition_block->terminator()->opcode() == SpvOpBranchConditional);
   InstructionBuilder builder(context_, &*condition_block->tail(),
                              ir::IRContext::kAnalysisDefUse |
@@ -297,6 +293,306 @@ void LoopPeeling::PeelAfter(ir::Instruction* factor,
                      iteration_count->result_id())
         ->result_id();
   });
+}
+
+Pass::Status LoopPeelingPass::Process(ir::IRContext* c) {
+  InitializeProcessing(c);
+
+  bool modified = false;
+  ir::Module* module = c->module();
+
+  // Process each function in the module
+  for (ir::Function& f : *module) {
+    modified |= ProcessFunction(&f);
+  }
+
+  return modified ? Status::SuccessWithChange : Status::SuccessWithoutChange;
+}
+
+bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
+  bool modified = false;
+  ir::LoopDescriptor& loop_descriptor = *context()->GetLoopDescriptor(f);
+
+  std::vector<ir::Loop*> to_process_loop;
+  to_process_loop.reserve(loop_descriptor.NumLoops());
+  for (ir::Loop& l : loop_descriptor) {
+    to_process_loop.push_back(&l);
+  }
+
+  opt::ScalarEvolutionAnalysis scev_analysis(context());
+
+  for (ir::Loop* loop : to_process_loop) {
+    CodeMetrics loop_size;
+    loop_size.Analyze(*loop);
+
+    // This does not take into account branch elimination opportunities and the
+    // unrolling.
+    if (loop_size.roi_size_ * 2 < code_grow_threshold_) {
+      continue;
+    }
+    LoopPeeling peeler(loop);
+
+    if (!peeler.CanPeelLoop()) {
+      continue;
+    }
+
+    std::unordered_map<ir::BasicBlock*, std::pair<PeelDirection, uint32_t> >
+        CanPeelConditions;
+
+    ir::BasicBlock* exit_block = loop->FindConditionBlock();
+
+    ir::Instruction* exiting_iv = loop->FindConditionVariable(exit_block);
+    size_t iterations = 0;
+    if (!loop->FindNumberOfIterations(exiting_iv, &*exit_block->tail(),
+                                      &iterations)) {
+      continue;
+    }
+    if (!iterations) continue;
+
+    for (uint32_t block : loop->GetBlocks()) {
+      if (block != exit_block->id()) continue;
+    }
+  }
+
+  return modified;
+}
+
+uint32_t LoopPeelingPass::LoopPeelingInfo::GetFirstLoopInvariantOperand(
+    ir::Instruction* condition) const {
+  for (uint32_t i = 0; i < condition->NumInOperands(); i++) {
+    if (loop_->IsInsideLoop(
+            context_->get_instr_block(condition->GetSingleWordInOperand(i)))) {
+      return condition->GetSingleWordInOperand(i);
+    }
+  }
+
+  return 0;
+}
+
+uint32_t LoopPeelingPass::LoopPeelingInfo::GetFirstNonLoopInvariantOperand(
+    ir::Instruction* condition) const {
+  for (uint32_t i = 0; i < condition->NumInOperands(); i++) {
+    if (!loop_->IsInsideLoop(
+            context_->get_instr_block(condition->GetSingleWordInOperand(i)))) {
+      return condition->GetSingleWordInOperand(i);
+    }
+  }
+
+  return 0;
+}
+
+static bool IsHandledCondition(SpvOp opcode) {
+  switch (opcode) {
+    case SpvOpIEqual:
+    case SpvOpUGreaterThan:
+    case SpvOpSGreaterThan:
+    case SpvOpUGreaterThanEqual:
+    case SpvOpSGreaterThanEqual:
+    case SpvOpULessThan:
+    case SpvOpSLessThan:
+    case SpvOpULessThanEqual:
+    case SpvOpSLessThanEqual:
+      return true;
+    default:
+      return false;
+  }
+}
+
+LoopPeelingPass::LoopPeelingInfo::LoopPeelDirection
+LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) {
+  if (bb->terminator()->opcode() != SpvOpBranchConditional) {
+    return GetNoneDirection();
+  }
+
+  opt::analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
+
+  ir::Instruction* condition =
+      def_use_mgr->GetDef(bb->terminator()->GetSingleWordInOperand(0));
+
+  if (!IsHandledCondition(condition->opcode())) {
+    return GetNoneDirection();
+  }
+
+  uint32_t invariant_op = GetFirstLoopInvariantOperand(condition);
+  if (!invariant_op) {
+    // No loop invariant, it cannot be peeled by this pass.
+    return GetNoneDirection();
+  }
+  uint32_t iv_op = GetFirstNonLoopInvariantOperand(condition);
+  if (!iv_op) {
+    // Seems to be a job for the unswitch pass.
+    return GetNoneDirection();
+  }
+
+  SENode* invariant_scev =
+      scev_analysis_->AnalyzeInstruction(def_use_mgr->GetDef(invariant_op));
+  if (invariant_scev->GetType() == SENode::CanNotCompute) {
+    // Can't make any conclusion.
+    return GetNoneDirection();
+  }
+
+  SENode* iv_scev =
+      scev_analysis_->AnalyzeInstruction(def_use_mgr->GetDef(iv_op));
+  if (iv_scev->GetType() == SENode::CanNotCompute) {
+    // Can't make any conclusion.
+    return GetNoneDirection();
+  }
+
+  switch (condition->opcode()) {
+    case SpvOpIEqual:
+    case SpvOpUGreaterThan:
+    case SpvOpSGreaterThan:
+    case SpvOpUGreaterThanEqual:
+    case SpvOpSGreaterThanEqual:
+    case SpvOpULessThan:
+    case SpvOpSLessThan:
+    case SpvOpULessThanEqual:
+    case SpvOpSLessThanEqual:
+    default:
+      return GetNoneDirection();
+  }
+}
+
+bool LoopPeelingPass::LoopPeelingInfo::DivideNodes(SENode* lhs, SENode* rhs,
+                                                   int64_t* result) const {
+  if (SEConstantNode* rhs_cst = rhs->GetCoefficient()->AsSEConstantNode()) {
+    int64_t rhs_val = rhs_cst->FoldToSingleValue();
+    if (!rhs_val) return false;
+    if (SEConstantNode* lhs_cst = lhs->GetCoefficient()->AsSEConstantNode()) {
+      *result = lhs_cst->FoldToSingleValue() / rhs_val;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+SENode* LoopPeelingPass::LoopPeelingInfo::GetLastIterationValue(
+    SERecurrentNode* rec) const {
+  return (SENodeDSL(rec->GetCoefficient(), scev_analysis_) *
+          (loop_max_iterations_ - 1)) +
+         rec->GetOffset();
+}
+
+SENode* LoopPeelingPass::LoopPeelingInfo::GetIterationValueAt(
+    SERecurrentNode* rec, SENode* x) const {
+  return (SENodeDSL(rec->GetCoefficient(), scev_analysis_) * x) +
+         rec->GetOffset();
+}
+
+LoopPeelingPass::LoopPeelingInfo::LoopPeelDirection
+LoopPeelingPass::LoopPeelingInfo::HandleEqual(SpvOp opcode, SENode* lhs,
+                                              SENode* rhs) const {
+  // FIXME: check the current loop for scev nodes
+  {
+    // Try peel before opportunity.
+    SENode* lhs_cst = lhs;
+    if (SERecurrentNode* rec_node = lhs->AsSERecurrentNode()) {
+      lhs_cst = rec_node->GetOffset();
+    }
+    SENode* rhs_cst = rhs;
+    if (SERecurrentNode* rec_node = rhs->AsSERecurrentNode()) {
+      rhs_cst = rec_node->GetOffset();
+    }
+
+    if (lhs_cst == rhs_cst) {
+      return LoopPeelDirection{LoopPeelingPass::PeelDirection::Before, 1};
+    }
+  }
+
+  {
+    // Try peel after opportunity.
+    SENode* lhs_cst = lhs;
+    if (SERecurrentNode* rec_node = lhs->AsSERecurrentNode()) {
+      // rec_node(x) = a * x + b
+      // assign to lhs: a * (loop_max_iterations_ - 1) + b
+      lhs_cst = GetLastIterationValue(rec_node);
+    }
+    SENode* rhs_cst = rhs;
+    if (SERecurrentNode* rec_node = rhs->AsSERecurrentNode()) {
+      // rec_node(x) = a * x + b
+      // assign to lhs: a * (loop_max_iterations_ - 1) + b
+      rhs_cst = GetLastIterationValue(rec_node);
+    }
+
+    if (lhs_cst == rhs_cst) {
+      return LoopPeelDirection{LoopPeelingPass::PeelDirection::After, 1};
+    }
+  }
+
+  return GetNoneDirection();
+}
+
+LoopPeelingPass::LoopPeelingInfo::LoopPeelDirection
+LoopPeelingPass::LoopPeelingInfo::HandleLessThan(SpvOp opcode, bool handle_ge,
+                                                 SENode* lhs,
+                                                 SENode* rhs) const {
+  // FIXME: check the current loop for scev nodes
+  assert(rhs->AsSERecurrentNode() == nullptr);
+  SENode* last_value = GetLastIterationValue(rec_node);
+  // FIXME: Get iteration for cross point:
+  // rec: a X + b
+  // rhs: c
+  // iteration: (c - b) / a
+  SENode* cross_point /* wrong */ = GetIterationValueAt(rec_node, rhs);
+  SENode* distance_to_end =
+      cross_point - SENodeDSL(last_value->GetCoefficient(), scev_analysis_);
+
+  bool has_value = false;
+
+  size_t factor = 0;
+  LoopPeelingPass::PeelDirection direction =
+      LoopPeelingPass::PeelDirection::None;
+
+  if (SEConstantNode* dist = distance_to_end->AsSEConstantNode()) {
+    assert(dist->FoldToSingleValue() >= 0);
+    factor = dist->FoldToSingleValue();
+    direction = LoopPeelingPass::PeelDirection::After;
+  }
+
+  if (SEConstantNode* dist = cross_point->AsSEConstantNode()) {
+    assert(dist->FoldToSingleValue() >= 0);
+    factor = dist->FoldToSingleValue();
+    direction = LoopPeelingPass::PeelDirection::Before;
+  }
+
+  if (has_value) {
+    if (factor >)
+      return LoopPeelDirection{LoopPeelingPass::PeelDirection::Before, factor};
+  }
+
+  return GetNoneDirection();
+}
+
+LoopPeelingPass::LoopPeelingInfo::LoopPeelDirection
+LoopPeelingPass::LoopPeelingInfo::HandleGreaterThan(SpvOp opcode,
+                                                    bool handle_ge, SENode* lhs,
+                                                    SENode* rhs) const {
+  // FIXME: check the current loop for scev nodes
+  assert(rhs->AsSERecurrentNode() == nullptr);
+  {
+    // Try peel before opportunity.
+    size_t factor = 0;
+    bool has_value = false;
+    if (SERecurrentNode* rec_node = lhs->AsSERecurrentNode()) {
+      has_value =
+          DivideNodes(SENodeDSL(rhs, scev_analysis_) - rec_node->GetOffset(),
+                      rec_node->GetCoefficient(), &factor);
+      if (has_value) {
+        factor += 1;
+        if (handle_ge) {
+          factor += 1;
+        }
+      }
+    }
+
+    if (has_value)
+      return LoopPeelDirection{LoopPeelingPass::PeelDirection::After, factor};
+    else
+      return GetNoneDirection();
+  }
+
+  return GetNoneDirection();
 }
 
 }  // namespace opt
