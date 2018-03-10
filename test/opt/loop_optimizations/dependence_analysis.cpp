@@ -25,10 +25,10 @@
 #include "../pass_utils.h"
 
 #include "opt/iterator.h"
+#include "opt/loop_dependence.h"
 #include "opt/loop_descriptor.h"
 #include "opt/pass.h"
 #include "opt/tree_iterator.h"
-#include "opt/loop_dependence.h"
 
 namespace {
 
@@ -36,7 +36,6 @@ using namespace spvtools;
 using ::testing::UnorderedElementsAre;
 
 using PassClassTest = PassTest<::testing::Test>;
-
 
 /*
 Generated from the following GLSL + --eliminate-local-multi-store
@@ -109,11 +108,11 @@ TEST_F(PassClassTest, BasicDependenceTest) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  opt::LoopDependenceAnalysis analysis {context.get(), ld.GetLoopByIndex(0)};
+  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
   analysis.DumpIterationSpaceAsDot(std::cout);
 
   const ir::Instruction* store = nullptr;
-  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f,11)) {
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 11)) {
     if (inst.opcode() == SpvOp::SpvOpStore) {
       store = &inst;
     }
@@ -121,12 +120,10 @@ TEST_F(PassClassTest, BasicDependenceTest) {
 
   EXPECT_TRUE(store);
 
-
-  EXPECT_FALSE(
-      analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(31)));
+  opt::DVEntry dv_entry{};
+  EXPECT_FALSE(analysis.GetDependence(
+      store, context->get_def_use_mgr()->GetDef(31), &dv_entry));
   analysis.DumpIterationSpaceAsDot(std::cout);
-
-
 }
 
 /*
@@ -200,19 +197,20 @@ TEST_F(PassClassTest, BasicZIV) {
   const ir::Function* f = spvtest::GetFunction(module, 2);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  opt::LoopDependenceAnalysis analysis {context.get(), ld.GetLoopByIndex(0)};
+  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
   analysis.DumpIterationSpaceAsDot(std::cout);
 
   const ir::Instruction* store = nullptr;
-  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f,28)) {
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 28)) {
     if (inst.opcode() == SpvOp::SpvOpStore) {
       store = &inst;
     }
   }
 
   EXPECT_TRUE(store);
-//  EXPECT_FALSE(
-//      analysis.GetDependence(store, context->get_def_use_mgr()->GetDef(30)));
+  //  EXPECT_FALSE(
+  //      analysis.GetDependence(store,
+  //      context->get_def_use_mgr()->GetDef(30)));
 }
 
 }  // namespace

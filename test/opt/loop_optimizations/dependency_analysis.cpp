@@ -426,34 +426,42 @@ TEST(DependencyAnalysis, SIV) {
 
   // = dependence
   // 29 -> 30 tests looking at SIV in same array
-  opt::DVEntry dv_entry{};
-  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(29),
-                                      store[0], &dv_entry));
-  EXPECT_TRUE(dv_entry->direction == opt::DVEntry::EQ);
-  EXPECT_TRUE(dv_entry->distance == 0);
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(29),
+                                        store[0], &dv_entry));
+    EXPECT_TRUE(dv_entry.direction == opt::DVDirections::EQ);
+    EXPECT_TRUE(dv_entry.distance == 0);
+  }
 
   // < -1 dependence
   // 40 -> 41 tests looking at SIV in same array with addition
-  opt::DVEntry dv_entry{};
-  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(40),
-                                      store[1], &dv_entry));
-  EXPECT_TRUE(dv_entry->direction == opt::DVEntry::LT);
-  EXPECT_TRUE(dv_entry->distance == -1);
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(40),
+                                        store[1], &dv_entry));
+    EXPECT_TRUE(dv_entry.direction == opt::DVDirections::LT);
+    EXPECT_TRUE(dv_entry.distance == -1);
+  }
 
   // > 1 dependence
   // 50 -> 51 tests looking at SIV in same array with subtraction
-  opt::DVEntry dv_entry{};
-  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(50),
-                                      store[2], &dv_entry));
-  EXPECT_TRUE(dv_entry->direction == opt::DVEntry::GT);
-  EXPECT_TRUE(dv_entry->distance == 1);
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(50),
+                                        store[2], &dv_entry));
+    EXPECT_TRUE(dv_entry.direction == opt::DVDirections::GT);
+    EXPECT_TRUE(dv_entry.distance == 1);
+  }
 
   // =,> dependence
   // 57 -> 58 tests looking at SIV in same array with multiplication
-  opt::DVEntry dv_entry{};
-  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(57),
-                                      store[3], &dv_entry));
-  EXPECT_TRUE(dv_entry->direction == opt::DVEntry::EQ | opt::DVEntry::GT);
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(57),
+                                        store[3], &dv_entry));
+    EXPECT_TRUE(dv_entry.direction == opt::DVDirections::GE);
+  }
 }
 
 /*
@@ -604,24 +612,32 @@ TEST(DependencyAnalysis, SymbolicSIV) {
 
   // independent due to loop bounds (won't enter when N <= 0)
   // 45 -> 46 tests looking through SIV and symbols with multiplication
-  opt::DVEntry dv_entry{};
-  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(45),
-                                     store[0], &dv_entry));
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(45),
+                                       store[0], &dv_entry));
+  }
 
   // 59 -> 62 tests looking through SIV and symbols with multiplication and + C
-  opt::DVEntry dv_entry{};
-  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(59),
-                                     store[1], &dv_entry));
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(59),
+                                       store[1], &dv_entry));
+  }
 
   // 80 -> 81 tests looking through arithmetic on SIV and symbols
-  opt::DVEntry dv_entry{};
-  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(80),
-                                     store[2], &dv_entry));
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(80),
+                                       store[2], &dv_entry));
+  }
 
   // 97 -> 98 tests looking through symbol arithmetic on SIV and symbols
-  opt::DVEntry dv_entry{};
-  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(97),
-                                     store[3], &dv_entry));
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(97),
+                                       store[3], &dv_entry));
+  }
 }
 
 /*
@@ -807,67 +823,88 @@ TEST(DependencyAnalysis, Crossing) {
   ir::Module* module = context->module();
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
-  const ir::Function* f = spvtest::GetFunction(module, 6);
-  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
-
-  const ir::Instruction* store;
-  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 21)) {
-    if (inst.opcode() == SpvOp::SpvOpStore) {
-      store = &inst;
-    }
-  }
   // First two tests can be split into two loops
   // Tests even crossing subscripts from low to high indexes
   // 39 -> 40
-  opt::DVEntry dv_entry{};
-  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(39),
-                                      store, &dv_entry));
-  EXPECT_TRUE(dv_entry->splitable == true);
+  {
+    const ir::Function* f = spvtest::GetFunction(module, 6);
+    ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  f = spvtest::GetFunction(module, 8);
-  ld = *context->GetLoopDescriptor(f);
+    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
 
-  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
-
-  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 46)) {
-    if (inst.opcode() == SpvOp::SpvOpStore) {
-      store = &inst;
+    const ir::Instruction* store;
+    for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 21)) {
+      if (inst.opcode() == SpvOp::SpvOpStore) {
+        store = &inst;
+      }
     }
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(39),
+                                        store, &dv_entry));
+    EXPECT_TRUE(dv_entry.splitable == true);
   }
+
   // Tests even crossing subscripts from high to low indexes
   // 59 -> 60
-  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(59),
-                                      store, &dv_entry));
-  EXPECT_TRUE(dv_entry->splitable == true);
+  {
+    const ir::Function* f = spvtest::GetFunction(module, 8);
+    ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  f = spvtest::GetFunction(module, 10);
-  ld = *context->GetLoopDescriptor(f);
+    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
 
-  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
-
-  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 67)) {
-    if (inst.opcode() == SpvOp::SpvOpStore) {
-      store = &inst;
+    const ir::Instruction* store;
+    for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 46)) {
+      if (inst.opcode() == SpvOp::SpvOpStore) {
+        store = &inst;
+      }
     }
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(59),
+                                        store, &dv_entry));
+    EXPECT_TRUE(dv_entry.splitable == true);
   }
+
   // Next two tests can have an end peeled, then be split
   // Tests uneven crossing subscripts from low to high indexes
   // 84 -> 85
+  {
+    const ir::Function* f = spvtest::GetFunction(module, 10);
+    ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  f = spvtest::GetFunction(module, 12);
-  ld = *context->GetLoopDescriptor(f);
+    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
 
-  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
-
-  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 91)) {
-    if (inst.opcode() == SpvOp::SpvOpStore) {
-      store = &inst;
+    const ir::Instruction* store;
+    for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 67)) {
+      if (inst.opcode() == SpvOp::SpvOpStore) {
+        store = &inst;
+      }
     }
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(84),
+                                        store, &dv_entry));
+    EXPECT_TRUE(dv_entry.splitable == true);
   }
+
   // Tests uneven crossing subscripts from high to low indexes
   // 105 -> 106
+  {
+    const ir::Function* f = spvtest::GetFunction(module, 12);
+    ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+
+    const ir::Instruction* store;
+    for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 91)) {
+      if (inst.opcode() == SpvOp::SpvOpStore) {
+        store = &inst;
+      }
+    }
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(105),
+                                        store, &dv_entry));
+    EXPECT_TRUE(dv_entry.splitable == true);
+  }
 }
 
 /*
@@ -978,31 +1015,39 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
 
   // Tests identifying peel first with weak zero with destination as zero index.
   // 26 -> 27
-  opt::DVEntry dv_entry{};
-  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(26),
-                                      store[0], &dv_entry));
-  EXPECT_TRUE(dv_entry->peel_first);
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(26),
+                                        store[0], &dv_entry));
+    EXPECT_TRUE(dv_entry.peel_first);
+  }
 
   // Tests identifying peel first with weak zero with source as zero index.
   // 31 -> 32
-  opt::DVEntry dv_entry{};
-  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(31),
-                                      store[1], &dv_entry));
-  EXPECT_TRUE(dv_entry->peel_first);
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(31),
+                                        store[1], &dv_entry));
+    EXPECT_TRUE(dv_entry.peel_first);
+  }
 
   // Tests identifying peel first with weak zero with destination as zero index.
   // 37 -> 38
-  opt::DVEntry dv_entry{};
-  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(37),
-                                      store[2], &dv_entry));
-  EXPECT_TRUE(dv_entry->peel_last);
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(37),
+                                        store[2], &dv_entry));
+    EXPECT_TRUE(dv_entry.peel_last);
+  }
 
   // Tests identifying peel first with weak zero with source as zero index.
   // 42 -> 43
-  opt::DVEntry dv_entry{};
-  EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(42),
-                                      store[3], &dv_entry));
-  EXPECT_TRUE(dv_entry->peel_last);
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(42),
+                                        store[3], &dv_entry));
+    EXPECT_TRUE(dv_entry.peel_last);
+  }
 }
 
 /*

@@ -25,23 +25,24 @@
 namespace spvtools {
 namespace opt {
 
+enum DVDirections {
+  NONE = 0,
+  LT = 1,
+  EQ = 2,
+  LE = 3,
+  GT = 4,
+  NE = 5,
+  GE = 6,
+  ALL = 7
+};
+
 struct DVEntry {
-  enum directions {
-    NONE = 0,
-    LT = 1,
-    EQ = 2,
-    LE = 3,
-    GT = 4,
-    NE = 5,
-    GE = 6,
-    ALL = 7
-  };
-  directions direction : 3;
+  DVDirections direction : 3;
   bool peel_first : 1;
   bool peel_last : 1;
   bool splitable : 1;
   int64_t distance;
-  DVEntry() : direction(ALL), distance(0) {}
+  DVEntry() : direction(DVDirections::ALL), distance(0) {}
 };
 
 class LoopDependenceAnalysis {
@@ -107,28 +108,25 @@ class LoopDependenceAnalysis {
   //                 SENode* dest_coeff, DVEntry* dv_entry);
 
   // Returns true if |value| is between |bound_one| and |bound_two| (inclusive)
-  bool IsWithinBounds(SENode* value, SENode* bound_one, SENode* bound_two);
-
-  // Returns true if |value| is between |bound_one| and |bound_two| (inclusive)
   bool IsWithinBounds(int64_t value, int64_t bound_one, int64_t bound_two);
 
   // Finds the lower bound of the loop as an SENode* and returns the resulting
   // SENode. The lower bound is evaluated as the bound with the lesser signed
   // value.
   // If the operations can not be completed a nullptr is returned
-  SENode* GetLowerBound();
+  SEConstantNode* GetLowerBound();
 
   // Finds the upper bound of the loop as an SENode* and returns the resulting
   // SEnode. The upper bound is evaluated as the bound with the greater signed
   // value.
   // If the operations can not be completed a nullptr is returned
-  SENode* GetUpperBound();
+  SEConstantNode* GetUpperBound();
 
   // Finds the lower and upper bounds of the loop as SENode* and returns a pair
   // of the resulting SENodes
   // Either or both of the pointers in the std::pair may be nullptr if the
   // bounds could not be found
-  std::pair<SENode*, SENode*> GetLoopLowerUpperBounds();
+  std::pair<SEConstantNode*, SEConstantNode*> GetLoopLowerUpperBounds();
 
   // Finds the loop bounds as upper_bound - lower_bound and returns the
   // resulting SENode

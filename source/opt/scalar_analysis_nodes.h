@@ -28,11 +28,15 @@ class SENegative;
 class SEValueUnknown;
 class SECantCompute;
 
-// ScalarEvolution
+// Abstract class representing a node in the scalar evolution DAG. Each node
+// contains a vector of pointers to its children and each subclass of SENode
+// implements GetType and an As method to allow casting. SENodes can be hashed
+// using the SENodeHash functor. The vector of children is sorted when a node is
+// added. This is important as it allows the hash of X+Y to be the same as Y+X.
 class SENode {
  public:
   enum SENodeType {
-    Constant = 1,
+    Constant,
     RecurrentExpr,
     Add,
     Multiply,
@@ -48,13 +52,17 @@ class SENode {
   inline void AddChild(SENode* child) {
     children_.push_back(child);
 
+    // Children are sorted so the hashing
     std::sort(children_.begin(), children_.end());
   }
 
   // Get the type as an std::string. This is used to represent the node in the
-  // dot output`
+  // dot output and is used to hash the type as well.
   std::string AsString() const;
 
+  // Dump the SENode and its immediate children, if |recurse| is true then it
+  // will recurse through all children to print the DAG starting from this node
+  // as a root.
   void DumpDot(std::ostream& out, bool recurse = false) const;
 
   virtual int64_t FoldToSingleValue() const { return 0; }
@@ -101,6 +109,7 @@ class SENode {
   const std::vector<SENode*>& GetChildren() const { return children_; }
   std::vector<SENode*>& GetChildren() { return children_; }
 
+    // Implements a casting method for each type.
 #define DeclareCastMethod(target)                  \
   virtual target* As##target() { return nullptr; } \
   virtual const target* As##target() const { return nullptr; }

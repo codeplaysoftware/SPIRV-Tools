@@ -165,10 +165,6 @@ SENode* SENodeSimplifyImpl::Simplify() {
     return SimplifyRecurrentExpression(recurrent_expr);
   }
 
-<<<<<<< HEAD
-
-=======
->>>>>>> scalar_analysis_release
   return SimplifyNonRecurrent();
 }
 

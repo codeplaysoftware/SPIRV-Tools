@@ -44,6 +44,7 @@ class ScalarEvolutionAnalysis {
 
   SENode* CreateNegation(SENode* operand);
 
+  SENode* CreateSubtraction(SENode* operand_1, SENode* operand_2);
   SENode* CreateAddNode(SENode* operand_1, SENode* operand_2);
   SENode* CreateMultiplyNode(SENode* operand_1, SENode* operand_2);
 

@@ -56,6 +56,11 @@ SENode* ScalarEvolutionAnalysis::CreateMultiplyNode(SENode* operand_1,
   return GetCachedOrAdd(std::move(add_node));
 }
 
+SENode* ScalarEvolutionAnalysis::CreateSubtraction(SENode* operand_1,
+                                                   SENode* operand_2) {
+  return CreateAddNode(operand_1, CreateNegation(operand_2));
+}
+
 SENode* ScalarEvolutionAnalysis::CreateAddNode(SENode* operand_1,
                                                SENode* operand_2) {
   std::unique_ptr<SENode> add_node{new SEAddNode()};
