@@ -113,6 +113,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzeConstant(const ir::Instruction* inst) {
 
   int64_t value = 0;
 
+  // Look up the instruction in the constant manager.
   const opt::analysis::Constant* constant =
       context_->get_constant_mgr()->FindDeclaredConstant(inst->result_id());
 
@@ -125,6 +126,8 @@ SENode* ScalarEvolutionAnalysis::AnalyzeConstant(const ir::Instruction* inst) {
   return CreateConstant(value);
 }
 
+// Handles both addition and subtraction. If the |sub| flag is set then the
+// addition will be op1+(-op2) otherwise op1+op2.
 SENode* ScalarEvolutionAnalysis::AnalyzeAddOp(const ir::Instruction* add,
                                               bool sub) {
   opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
@@ -135,6 +138,8 @@ SENode* ScalarEvolutionAnalysis::AnalyzeAddOp(const ir::Instruction* add,
 
   SENode* op2 =
       AnalyzeInstruction(def_use->GetDef(add->GetSingleWordInOperand(1)));
+
+  // To handle subtraction we wrap the second operand in a unary negation node.
   if (sub) {
     op2 = CreateNegation(op2);
   }
@@ -147,11 +152,21 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     const ir::Instruction* phi) {
   opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
 
+  // Get the basic block this instruction belongs to.
   ir::BasicBlock* basic_block =
       context_->get_instr_block(const_cast<ir::Instruction*>(phi));
+
+  // And then the function that the basic blocks belongs to.
   ir::Function* function = basic_block->GetParent();
 
-  ir::Loop* loop = (*context_->GetLoopDescriptor(function))[basic_block->id()];
+  // Use the function to get the loop descriptor.
+  ir::LoopDescriptor* loop_descriptor = context_->GetLoopDescriptor(function);
+
+  // We only handle phis in loops at the moment.
+  if (!loop_descriptor) return CreateCantComputeNode();
+
+  // Get the innermost loop which this block belongs to.
+  ir::Loop* loop = (*loop_descriptor)[basic_block->id()];
   if (!loop) return CreateCantComputeNode();
 
   std::unique_ptr<SERecurrentNode> phi_node{new SERecurrentNode(loop)};
@@ -167,8 +182,31 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     if (incoming_label_id == loop->GetPreHeaderBlock()->id()) {
       phi_node->AddOffset(value_node);
     } else if (incoming_label_id == loop->GetLatchBlock()->id()) {
-      SENode* just_child = value_node->GetChild(1);
-      phi_node->AddCoefficient(just_child);
+      // Assumed to be in the form of step + phi.
+      SENode* constant_node = nullptr;
+      SENode* phi_operand = nullptr;
+      SENode* operand_1 = value_node->GetChild(0);
+      SENode* operand_2 = value_node->GetChild(1);
+
+      // Find which node is the constant.
+      if (operand_1->AsSEConstantNode())
+        constant_node = operand_1;
+      else if (operand_2->AsSEConstantNode())
+        constant_node = operand_2;
+
+      // Find which node is the recurrent expression.
+      if (operand_1->AsSERecurrentNode())
+        phi_operand = operand_1;
+      else if (operand_2->AsSERecurrentNode())
+        phi_operand = operand_2;
+
+      // If it is not in the form step + phi exit out.
+      if (!(constant_node && phi_operand)) return CreateCantComputeNode();
+
+      // If the phi operand is not the same phi node exit out.
+      if (phi_operand != phi_node.get()) return CreateCantComputeNode();
+
+      phi_node->AddCoefficient(constant_node);
     }
   }
 
@@ -212,14 +250,14 @@ int64_t SEAddNode::FoldToSingleValue() const {
 
 // Add the created node into the cache of nodes. If it already exists return it.
 SENode* ScalarEvolutionAnalysis::GetCachedOrAdd(
-    std::unique_ptr<SENode> perspective_node) {
-  auto itr = node_cache_.find(perspective_node);
+    std::unique_ptr<SENode> prospective_node) {
+  auto itr = node_cache_.find(prospective_node);
   if (itr != node_cache_.end()) {
     return (*itr).get();
   }
 
-  SENode* raw_ptr_to_node = perspective_node.get();
-  node_cache_.insert(std::move(perspective_node));
+  SENode* raw_ptr_to_node = prospective_node.get();
+  node_cache_.insert(std::move(prospective_node));
   return raw_ptr_to_node;
 }
 
