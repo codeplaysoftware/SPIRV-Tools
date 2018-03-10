@@ -223,6 +223,26 @@ SENode* ScalarEvolutionAnalysis::GetCachedOrAdd(
   return raw_ptr_to_node;
 }
 
+std::string SENode::AsString() const {
+  switch (GetType()) {
+    case Constant:
+      return "Constant";
+    case RecurrentExpr:
+      return "RecurrentExpr";
+    case Add:
+      return "Add";
+    case Negative:
+      return "Negative";
+    case Multiply:
+      return "Multiply";
+    case ValueUnknown:
+      return "Value Unknown";
+    case CanNotCompute:
+      return "Can not compute";
+  }
+  return "NULL";
+}
+
 bool SENode::operator==(const SENode& other) const {
   return SENodeHash{}(this) == SENodeHash{}(&other);
 }

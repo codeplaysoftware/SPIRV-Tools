@@ -153,7 +153,7 @@ SENode* SENodeSimplifyImpl::Simplify() {
       if (recurrent_expr) {
         multiple_recurrent_expressions = true;
       }
-      recurrent_expr = static_cast<SERecurrentNode*>(&*child);
+      recurrent_expr = child->AsSERecurrentNode();
     }
   }
 
@@ -165,7 +165,10 @@ SENode* SENodeSimplifyImpl::Simplify() {
     return SimplifyRecurrentExpression(recurrent_expr);
   }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> scalar_analysis_release
   return SimplifyNonRecurrent();
 }
 
@@ -228,9 +231,13 @@ SENode* SENodeSimplifyImpl::SimplifyNonRecurrent() {
       node_->AddChild(analysis_.CreateMultiplyNode(count_as_constant, term));
     }
   }
+
+  if (node_->GetChildren().size() == 1) {
+    return node_->GetChild(0);
+  }
+
   return node_;
 }
-
 
 SENode* SENodeSimplifyImpl::SimplifyRecurrentExpression(
     SERecurrentNode* recurrent_expr) {

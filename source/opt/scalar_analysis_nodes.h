@@ -20,6 +20,14 @@
 namespace spvtools {
 namespace opt {
 
+class SEConstantNode;
+class SERecurrentNode;
+class SEAddNode;
+class SEMultiplyNode;
+class SENegative;
+class SEValueUnknown;
+class SECantCompute;
+
 // ScalarEvolution
 class SENode {
  public:
@@ -33,8 +41,6 @@ class SENode {
     CanNotCompute
   };
 
-  SENode() : can_fold_to_constant_(true) {}
-
   virtual SENodeType GetType() const = 0;
 
   virtual ~SENode() {}
@@ -43,43 +49,15 @@ class SENode {
     children_.push_back(child);
 
     std::sort(children_.begin(), children_.end());
-    if (!child->can_fold_to_constant_) {
-      this->MarkAsNonConstant();
-    }
   }
-
-  inline void MarkAsNonConstant() { can_fold_to_constant_ = false; }
 
   // Get the type as an std::string. This is used to represent the node in the
   // dot output`
-  std::string AsString() const {
-    switch (GetType()) {
-      case Constant:
-        return "Constant";
-      case RecurrentExpr:
-        return "RecurrentExpr";
-      case Add:
-        return "Add";
-      case Negative:
-        return "Negative";
-      case Multiply:
-        return "Multiply";
-      case ValueUnknown:
-        return "Value Unknown";
-      case CanNotCompute:
-        return "Can not compute";
-    }
-    return "NULL";
-  }
+  std::string AsString() const;
 
   void DumpDot(std::ostream& out, bool recurse = false) const;
 
-  virtual int64_t FoldToSingleValue() const {
-    assert(can_fold_to_constant_);
-    return 0;
-  }
-
-  bool CanFoldToConstant() const { return can_fold_to_constant_; }
+  virtual int64_t FoldToSingleValue() const { return 0; }
 
   // Checks if two nodes are the same by hashing them.
   bool operator==(const SENode& other) const;
@@ -89,6 +67,7 @@ class SENode {
 
   // Return the child node at |index|.
   inline SENode* GetChild(size_t index) { return children_[index]; }
+  inline const SENode* GetChild(size_t index) const { return children_[index]; }
 
   // Iterator to iterate over the child nodes.
   using iterator = std::vector<SENode*>::iterator;
@@ -122,12 +101,20 @@ class SENode {
   const std::vector<SENode*>& GetChildren() const { return children_; }
   std::vector<SENode*>& GetChildren() { return children_; }
 
+#define DeclareCastMethod(target)                  \
+  virtual target* As##target() { return nullptr; } \
+  virtual const target* As##target() const { return nullptr; }
+  DeclareCastMethod(SEConstantNode);
+  DeclareCastMethod(SERecurrentNode);
+  DeclareCastMethod(SEAddNode);
+  DeclareCastMethod(SEMultiplyNode);
+  DeclareCastMethod(SENegative);
+  DeclareCastMethod(SEValueUnknown);
+  DeclareCastMethod(SECantCompute);
+#undef DeclareCastMethod
+
  protected:
   std::vector<SENode*> children_;
-
-  // Are all child nodes constant. Defualts to true and should be set to false
-  // when a child node is added which is not constant.
-  bool can_fold_to_constant_;
 };
 
 // Function object to handle the hashing of SENodes. Hashing algorithm hashes
@@ -146,6 +133,9 @@ class SEConstantNode : public SENode {
   SENodeType GetType() const final { return Constant; }
 
   int64_t FoldToSingleValue() const override { return literal_value_; }
+
+  SEConstantNode* AsSEConstantNode() override { return this; }
+  const SEConstantNode* AsSEConstantNode() const override { return this; }
 
  protected:
   int64_t literal_value_;
@@ -179,6 +169,9 @@ class SERecurrentNode : public SENode {
   // Return the loop which this recurrent expression is recurring within.
   const ir::Loop* GetLoop() const { return loop_; }
 
+  SERecurrentNode* AsSERecurrentNode() override { return this; }
+  const SERecurrentNode* AsSERecurrentNode() const override { return this; }
+
  private:
   SENode* coefficient_;
   SENode* step_operation_;
@@ -191,6 +184,9 @@ class SEAddNode : public SENode {
   SENodeType GetType() const final { return Add; }
 
   int64_t FoldToSingleValue() const override;
+
+  SEAddNode* AsSEAddNode() override { return this; }
+  const SEAddNode* AsSEAddNode() const override { return this; }
 };
 
 // A node representing a multiply operation between child nodes.
@@ -199,6 +195,9 @@ class SEMultiplyNode : public SENode {
   SENodeType GetType() const final { return Multiply; }
 
   int64_t FoldToSingleValue() const override;
+
+  SEMultiplyNode* AsSEMultiplyNode() override { return this; }
+  const SEMultiplyNode* AsSEMultiplyNode() const override { return this; }
 };
 
 // A node representing a unary negative operation.
@@ -209,22 +208,28 @@ class SENegative : public SENode {
   }
 
   SENodeType GetType() const final { return Negative; }
+
+  SENegative* AsSENegative() override { return this; }
+  const SENegative* AsSENegative() const override { return this; }
 };
 
 // A node representing a value which we do not know the value of, such as a load
 // instruction.
 class SEValueUnknown : public SENode {
  public:
-  SEValueUnknown() : SENode() { can_fold_to_constant_ = false; }
-
   SENodeType GetType() const final { return ValueUnknown; }
+
+  SEValueUnknown* AsSEValueUnknown() override { return this; }
+  const SEValueUnknown* AsSEValueUnknown() const override { return this; }
 };
 
 // A node which we cannot reason about at all.
 class SECantCompute : public SENode {
  public:
-  SECantCompute() : SENode() { can_fold_to_constant_ = false; }
   SENodeType GetType() const final { return CanNotCompute; }
+
+  SECantCompute* AsSECantCompute() override { return this; }
+  const SECantCompute* AsSECantCompute() const override { return this; }
 };
 
 }  // namespace opt
