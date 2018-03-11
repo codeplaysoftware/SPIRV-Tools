@@ -42,7 +42,12 @@ struct DVEntry {
   bool peel_last : 1;
   bool splitable : 1;
   int64_t distance;
-  DVEntry() : direction(DVDirections::ALL), distance(0) {}
+  DVEntry()
+      : direction(DVDirections::ALL),
+        peel_first(false),
+        peel_last(false),
+        splitable(false),
+        distance(0) {}
 };
 
 class LoopDependenceAnalysis {

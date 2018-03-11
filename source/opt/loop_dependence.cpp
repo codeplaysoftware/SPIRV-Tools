@@ -19,13 +19,29 @@ namespace opt {
 bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
                                            const ir::Instruction* destination,
                                            DVEntry* dv_entry) {
-  // TODO(Alexander): Check source and destination are loading and storing from
-  // the same variables. If not, there is no dependence
+  ir::Instruction* src_access_chain =
+      context_->get_def_use_mgr()->GetDef(source->GetSingleWordInOperand(0));
+  ir::Instruction* dest_access_chain = context_->get_def_use_mgr()->GetDef(
+      destination->GetSingleWordInOperand(0));
 
-  SENode* src_node = scalar_evolution_.SimplifyExpression(
-      scalar_evolution_.AnalyzeInstruction(source));
-  SENode* dest_node = scalar_evolution_.SimplifyExpression(
-      scalar_evolution_.AnalyzeInstruction(destination));
+  // If the access chains aren't collecting from the same structure there is no
+  // dependence
+  ir::Instruction* src_arr = context_->get_def_use_mgr()->GetDef(
+      src_access_chain->GetSingleWordInOperand(0));
+  ir::Instruction* dest_arr = context_->get_def_use_mgr()->GetDef(
+      dest_access_chain->GetSingleWordInOperand(0));
+  if (src_arr != dest_arr) {
+    dv_entry->direction = DVDirections::NONE;
+    return true;
+  }
+
+  ir::Instruction* src_expr = context_->get_def_use_mgr()->GetDef(
+      src_access_chain->GetSingleWordInOperand(1));
+  ir::Instruction* dest_expr = context_->get_def_use_mgr()->GetDef(
+      dest_access_chain->GetSingleWordInOperand(1));
+
+  SENode* src_node = scalar_evolution_.AnalyzeInstruction(src_expr);
+  SENode* dest_node = scalar_evolution_.AnalyzeInstruction(dest_expr);
 
   // If either node is simplified to a CanNotCompute we can't perform any
   // analysis so must assume <=> dependence and return
@@ -549,8 +565,8 @@ SENode* LoopDependenceAnalysis::GetTripCount() {
     case SpvOpSGreaterThan:
     case SpvOpUGreaterThanEqual:
     case SpvOpSGreaterThanEqual:
-      if (loop_.FindNumberOfIterations(induction_instr, cond_instr,
-                                       &iteration_count)) {
+      if (loop_.FindNumberOfIterations(
+              induction_instr, &*condition_block->tail(), &iteration_count)) {
         return scalar_evolution_.CreateConstant(
             static_cast<int64_t>(iteration_count));
       }
