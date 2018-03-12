@@ -66,9 +66,9 @@ namespace opt {
 // iterating values rather than using the exit value of the first loop.
 class LoopPeeling {
  public:
-  LoopPeeling(ir::IRContext* context, ir::Loop* loop)
-      : context_(context),
-        loop_utils_(context, loop),
+  explicit LoopPeeling(ir::Loop* loop)
+      : context_(loop->GetContext()),
+        loop_utils_(loop->GetContext(), loop),
         loop_(loop),
         canonical_induction_variable_(nullptr) {
     GetIteratingExitValues();
