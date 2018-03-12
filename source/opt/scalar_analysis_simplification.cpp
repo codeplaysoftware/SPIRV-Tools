@@ -262,8 +262,8 @@ SENode* SENodeSimplifyImpl::SimplifyRecurrentExpression(
   // If the recurrent expression is not a child of the node being simplified.
   if (!is_immediate_child) return analysis_.CreateCantComputeNode();
 
-  std::unique_ptr<SERecurrentNode> recurrent_node{
-      new SERecurrentNode(recurrent_expr->GetLoop())};
+  std::unique_ptr<SERecurrentNode> recurrent_node{new SERecurrentNode(
+      recurrent_expr->GetSCEVAnalysis(), recurrent_expr->GetLoop())};
 
   // Create and simplify the new offset node.
   SENode* new_offset = analysis_.CreateAddNode(

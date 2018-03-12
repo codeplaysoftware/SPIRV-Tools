@@ -20,6 +20,7 @@
 namespace spvtools {
 namespace opt {
 
+class ScalarEvolutionAnalysis;
 class SEConstantNode;
 class SERecurrentNode;
 class SEAddNode;
@@ -44,6 +45,9 @@ class SENode {
     ValueUnknown,
     CanNotCompute
   };
+
+  explicit SENode(opt::ScalarEvolutionAnalysis* scev_analysis)
+      : scev_analysis_(scev_analysis) {}
 
   virtual SENodeType GetType() const = 0;
 
@@ -122,7 +126,12 @@ class SENode {
   DeclareCastMethod(SECantCompute);
 #undef DeclareCastMethod
 
+  opt::ScalarEvolutionAnalysis* GetSCEVAnalysis() const {
+    return scev_analysis_;
+  }
+
  protected:
+  opt::ScalarEvolutionAnalysis* scev_analysis_;
   std::vector<SENode*> children_;
 };
 
@@ -137,7 +146,8 @@ struct SENodeHash {
 // A node representing a constant integer.
 class SEConstantNode : public SENode {
  public:
-  explicit SEConstantNode(int64_t value) : literal_value_(value) {}
+  SEConstantNode(opt::ScalarEvolutionAnalysis* scev_analysis, int64_t value)
+      : SENode(scev_analysis), literal_value_(value) {}
 
   SENodeType GetType() const final { return Constant; }
 
@@ -155,7 +165,9 @@ class SEConstantNode : public SENode {
 // induction variable.
 class SERecurrentNode : public SENode {
  public:
-  SERecurrentNode(const ir::Loop* loop) : SENode(), loop_(loop) {}
+  SERecurrentNode(opt::ScalarEvolutionAnalysis* scev_analysis,
+                  const ir::Loop* loop)
+      : SENode(scev_analysis), loop_(loop) {}
 
   SENodeType GetType() const final { return RecurrentExpr; }
 
@@ -190,6 +202,9 @@ class SERecurrentNode : public SENode {
 // A node representing an addition operation between child nodes.
 class SEAddNode : public SENode {
  public:
+  SEAddNode(opt::ScalarEvolutionAnalysis* scev_analysis)
+      : SENode(scev_analysis) {}
+
   SENodeType GetType() const final { return Add; }
 
   int64_t FoldToSingleValue() const override;
@@ -201,6 +216,9 @@ class SEAddNode : public SENode {
 // A node representing a multiply operation between child nodes.
 class SEMultiplyNode : public SENode {
  public:
+  SEMultiplyNode(opt::ScalarEvolutionAnalysis* scev_analysis)
+      : SENode(scev_analysis) {}
+
   SENodeType GetType() const final { return Multiply; }
 
   int64_t FoldToSingleValue() const override;
@@ -212,6 +230,9 @@ class SEMultiplyNode : public SENode {
 // A node representing a unary negative operation.
 class SENegative : public SENode {
  public:
+  SENegative(opt::ScalarEvolutionAnalysis* scev_analysis)
+      : SENode(scev_analysis) {}
+
   int64_t FoldToSingleValue() const override {
     return -children_[0]->FoldToSingleValue();
   }
@@ -226,6 +247,9 @@ class SENegative : public SENode {
 // instruction.
 class SEValueUnknown : public SENode {
  public:
+  SEValueUnknown(opt::ScalarEvolutionAnalysis* scev_analysis)
+      : SENode(scev_analysis) {}
+
   SENodeType GetType() const final { return ValueUnknown; }
 
   SEValueUnknown* AsSEValueUnknown() override { return this; }
@@ -235,6 +259,9 @@ class SEValueUnknown : public SENode {
 // A node which we cannot reason about at all.
 class SECantCompute : public SENode {
  public:
+  SECantCompute(opt::ScalarEvolutionAnalysis* scev_analysis)
+      : SENode(scev_analysis) {}
+
   SENodeType GetType() const final { return CanNotCompute; }
 
   SECantCompute* AsSECantCompute() override { return this; }
