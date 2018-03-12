@@ -218,18 +218,21 @@ bool LoopDependenceAnalysis::StrongSIVTest(SERecurrentNode* source,
   // distance > upper_bound - lower_bound we prove independence
   SEConstantNode* lower_bound = GetLowerBound();
   SEConstantNode* upper_bound = GetUpperBound();
-  SENode* bounds = scalar_evolution_.SimplifyExpression(
-      scalar_evolution_.CreateSubtraction(upper_bound, lower_bound));
+  if (lower_bound && upper_bound) {
+    SENode* bounds = scalar_evolution_.SimplifyExpression(
+        scalar_evolution_.CreateSubtraction(upper_bound, lower_bound));
 
-  if (bounds->GetType() == SENode::SENodeType::Constant) {
-    int64_t bounds_val = bounds->AsSEConstantNode()->FoldToSingleValue();
+    if (bounds->GetType() == SENode::SENodeType::Constant) {
+      int64_t bounds_val = bounds->AsSEConstantNode()->FoldToSingleValue();
 
-    // If the absolute value of the distance is > upper bound - lower bound then
-    // we prove independence
-    if (llabs(distance) > bounds_val) {
-      dv_entry->direction = DVDirections::NONE;
-      dv_entry->distance = distance;
-      return true;
+      // If the absolute value of the distance is > upper bound - lower bound
+      // then
+      // we prove independence
+      if (llabs(distance) > bounds_val) {
+        dv_entry->direction = DVDirections::NONE;
+        dv_entry->distance = distance;
+        return true;
+      }
     }
   }
 
@@ -523,12 +526,12 @@ SEConstantNode* LoopDependenceAnalysis::GetLowerBound() {
   SEConstantNode* lower_SENode =
       scalar_evolution_
           .SimplifyExpression(
-              scalar_evolution_.AnalyzeInstruction(loop_.GetLowerBoundInst()))
+              scalar_evolution_.AnalyzeInstruction(lower_bound_inst))
           ->AsSEConstantNode();
   SEConstantNode* upper_SENode =
       scalar_evolution_
           .SimplifyExpression(
-              scalar_evolution_.AnalyzeInstruction(loop_.GetUpperBoundInst()))
+              scalar_evolution_.AnalyzeInstruction(upper_bound_inst))
           ->AsSEConstantNode();
   if (!lower_SENode || !upper_SENode) {
     return nullptr;
@@ -559,12 +562,12 @@ SEConstantNode* LoopDependenceAnalysis::GetUpperBound() {
   SEConstantNode* lower_SENode =
       scalar_evolution_
           .SimplifyExpression(
-              scalar_evolution_.AnalyzeInstruction(loop_.GetLowerBoundInst()))
+              scalar_evolution_.AnalyzeInstruction(lower_bound_inst))
           ->AsSEConstantNode();
   SEConstantNode* upper_SENode =
       scalar_evolution_
           .SimplifyExpression(
-              scalar_evolution_.AnalyzeInstruction(loop_.GetUpperBoundInst()))
+              scalar_evolution_.AnalyzeInstruction(upper_bound_inst))
           ->AsSEConstantNode();
   if (!lower_SENode || !upper_SENode) {
     return nullptr;

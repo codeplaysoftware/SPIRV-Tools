@@ -430,8 +430,8 @@ TEST(DependencyAnalysis, SIV) {
     opt::DVEntry dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(29),
                                         store[0], &dv_entry));
-    EXPECT_TRUE(dv_entry.direction == opt::DVDirections::EQ);
-    EXPECT_TRUE(dv_entry.distance == 0);
+    EXPECT_EQ(dv_entry.direction, opt::DVDirections::EQ);
+    EXPECT_EQ(dv_entry.distance, 0);
   }
 
   // < -1 dependence
@@ -440,8 +440,8 @@ TEST(DependencyAnalysis, SIV) {
     opt::DVEntry dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(40),
                                         store[1], &dv_entry));
-    EXPECT_TRUE(dv_entry.direction == opt::DVDirections::LT);
-    EXPECT_TRUE(dv_entry.distance == -1);
+    EXPECT_EQ(dv_entry.direction, opt::DVDirections::LT);
+    EXPECT_EQ(dv_entry.distance, -1);
   }
 
   // > 1 dependence
@@ -450,8 +450,8 @@ TEST(DependencyAnalysis, SIV) {
     opt::DVEntry dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(50),
                                         store[2], &dv_entry));
-    EXPECT_TRUE(dv_entry.direction == opt::DVDirections::GT);
-    EXPECT_TRUE(dv_entry.distance == 1);
+    EXPECT_EQ(dv_entry.direction, opt::DVDirections::GT);
+    EXPECT_EQ(dv_entry.distance, 1);
   }
 
   // =,> dependence
@@ -460,7 +460,7 @@ TEST(DependencyAnalysis, SIV) {
     opt::DVEntry dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(57),
                                         store[3], &dv_entry));
-    EXPECT_TRUE(dv_entry.direction == opt::DVDirections::GE);
+    EXPECT_EQ(dv_entry.direction, opt::DVDirections::GE);
   }
 }
 
