@@ -57,6 +57,7 @@ add_library(SPIRV-Tools-opt
   local_single_store_elim_pass.h
   local_ssa_elim_pass.h
   log.h
+  loop_dependence.h
   loop_descriptor.h
   loop_peeling.h
   loop_unroller.h
@@ -77,6 +78,7 @@ add_library(SPIRV-Tools-opt
   remove_duplicates_pass.h
   replace_invalid_opc.h
   scalar_analysis.h
+  scalar_analysis_nodes.h
   scalar_replacement_pass.h
   set_spec_constant_default_value_pass.h
   simplification_pass.h
@@ -132,6 +134,7 @@ add_library(SPIRV-Tools-opt
   local_single_block_elim_pass.cpp
   local_single_store_elim_pass.cpp
   local_ssa_elim_pass.cpp
+  loop_dependence.cpp
   loop_descriptor.cpp
   loop_peeling.cpp
   loop_utils.cpp

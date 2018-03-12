@@ -142,6 +142,28 @@ int64_t Loop::GetResidualConditionValue(SpvOp condition, int64_t initial_value,
   return remainder;
 }
 
+ir::Instruction* Loop::GetConditionInst() const {
+  return &*--FindConditionBlock()->tail();
+}
+
+ir::Instruction* Loop::GetLowerBoundInst() const {
+  ir::Instruction* cond_inst = GetConditionInst();
+  opt::analysis::DefUseManager* def_use_manager = context_->get_def_use_mgr();
+
+  ir::Instruction* lower_bound =
+      def_use_manager->GetDef(cond_inst->GetSingleWordInOperand(0));
+  return lower_bound;
+}
+
+ir::Instruction* Loop::GetUpperBoundInst() const {
+  ir::Instruction* cond_inst = GetConditionInst();
+  opt::analysis::DefUseManager* def_use_manager = context_->get_def_use_mgr();
+
+  ir::Instruction* upper_bound =
+      def_use_manager->GetDef(cond_inst->GetSingleWordInOperand(1));
+  return upper_bound;
+}
+
 // Extract the initial value from the |induction| OpPhi instruction and store it
 // in |value|. If the function couldn't find the initial value of |induction|
 // return false.
