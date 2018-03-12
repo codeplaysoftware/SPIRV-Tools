@@ -842,7 +842,6 @@ TEST(DependencyAnalysis, Crossing) {
     opt::DVEntry dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(39),
                                         store, &dv_entry));
-    EXPECT_TRUE(dv_entry.splitable == true);
   }
 
   // Tests even crossing subscripts from high to low indexes
@@ -862,7 +861,6 @@ TEST(DependencyAnalysis, Crossing) {
     opt::DVEntry dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(59),
                                         store, &dv_entry));
-    EXPECT_TRUE(dv_entry.splitable == true);
   }
 
   // Next two tests can have an end peeled, then be split
@@ -883,7 +881,6 @@ TEST(DependencyAnalysis, Crossing) {
     opt::DVEntry dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(84),
                                         store, &dv_entry));
-    EXPECT_TRUE(dv_entry.splitable == true);
   }
 
   // Tests uneven crossing subscripts from high to low indexes
@@ -903,7 +900,6 @@ TEST(DependencyAnalysis, Crossing) {
     opt::DVEntry dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(105),
                                         store, &dv_entry));
-    EXPECT_TRUE(dv_entry.splitable == true);
   }
 }
 
@@ -1047,6 +1043,167 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(42),
                                         store[3], &dv_entry));
     EXPECT_TRUE(dv_entry.peel_last);
+  }
+}
+
+/*
+  Generated from the following GLSL fragment shader
+  with --eliminate-local-multi-store
+#version 440 core
+void main(){
+  int[10][10] arr;
+  for (int i = 0; i < 10; i++) {
+    arr[i][i] = arr[i][i];
+    arr[0][i] = arr[1][i];
+    arr[1][i] = arr[0][i];
+    arr[i][0] = arr[i][1];
+    arr[i][1] = arr[i][0];
+    arr[0][1] = arr[1][0];
+  }
+}
+*/
+TEST(DependencyAnalysis, MultipleSubscript) {
+  const std::string text = R"(               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %4 "main"
+               OpExecutionMode %4 OriginUpperLeft
+               OpSource GLSL 440
+               OpName %4 "main"
+               OpName %8 "i"
+               OpName %24 "arr"
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeInt 32 1
+          %7 = OpTypePointer Function %6
+          %9 = OpConstant %6 0
+         %16 = OpConstant %6 10
+         %17 = OpTypeBool
+         %19 = OpTypeInt 32 0
+         %20 = OpConstant %19 10
+         %21 = OpTypeArray %6 %20
+         %22 = OpTypeArray %21 %20
+         %23 = OpTypePointer Function %22
+         %33 = OpConstant %6 1
+          %4 = OpFunction %2 None %3
+          %5 = OpLabel
+          %8 = OpVariable %7 Function
+         %24 = OpVariable %23 Function
+               OpStore %8 %9
+               OpBranch %10
+         %10 = OpLabel
+         %58 = OpPhi %6 %9 %5 %57 %13
+               OpLoopMerge %12 %13 None
+               OpBranch %14
+         %14 = OpLabel
+         %18 = OpSLessThan %17 %58 %16
+               OpBranchConditional %18 %11 %12
+         %11 = OpLabel
+         %29 = OpAccessChain %7 %24 %58 %58
+         %30 = OpLoad %6 %29
+         %31 = OpAccessChain %7 %24 %58 %58
+               OpStore %31 %30
+         %35 = OpAccessChain %7 %24 %33 %58
+         %36 = OpLoad %6 %35
+         %37 = OpAccessChain %7 %24 %9 %58
+               OpStore %37 %36
+         %40 = OpAccessChain %7 %24 %9 %58
+         %41 = OpLoad %6 %40
+         %42 = OpAccessChain %7 %24 %33 %58
+               OpStore %42 %41
+         %45 = OpAccessChain %7 %24 %58 %33
+         %46 = OpLoad %6 %45
+         %47 = OpAccessChain %7 %24 %58 %9
+               OpStore %47 %46
+         %50 = OpAccessChain %7 %24 %58 %9
+         %51 = OpLoad %6 %50
+         %52 = OpAccessChain %7 %24 %58 %33
+               OpStore %52 %51
+         %53 = OpAccessChain %7 %24 %33 %9
+         %54 = OpLoad %6 %53
+         %55 = OpAccessChain %7 %24 %9 %33
+               OpStore %55 %54
+               OpBranch %13
+         %13 = OpLabel
+         %57 = OpIAdd %6 %58 %33
+               OpStore %8 %57
+               OpBranch %10
+         %12 = OpLabel
+               OpReturn
+               OpFunctionEnd
+)";
+
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 4);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+
+  const ir::Instruction* store[6];
+  int stores_found = 0;
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 11)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store[stores_found] = &inst;
+      ++stores_found;
+    }
+  }
+
+  for (int i = 0; i < 6; ++i) {
+    EXPECT_TRUE(store[i]);
+  }
+
+  // 30 -> 31
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(30),
+                                        store[0], &dv_entry));
+    EXPECT_EQ(dv_entry.direction, opt::DVDirections::EQ);
+    EXPECT_EQ(dv_entry.distance, 0);
+  }
+
+  // 36 -> 37
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(36),
+                                        store[1], &dv_entry));
+    EXPECT_EQ(dv_entry.direction, opt::DVDirections::NONE);
+  }
+
+  // 41 -> 42
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(41),
+                                        store[2], &dv_entry));
+    EXPECT_EQ(dv_entry.direction, opt::DVDirections::NONE);
+  }
+
+  // 46 -> 47
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(46),
+                                        store[3], &dv_entry));
+    EXPECT_EQ(dv_entry.direction, opt::DVDirections::NONE);
+  }
+
+  // 51 -> 52
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(51),
+                                        store[4], &dv_entry));
+    EXPECT_EQ(dv_entry.direction, opt::DVDirections::NONE);
+  }
+
+  // 54 -> 55
+  {
+    opt::DVEntry dv_entry{};
+    EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(54),
+                                        store[5], &dv_entry));
+    EXPECT_EQ(dv_entry.direction, opt::DVDirections::NONE);
   }
 }
 

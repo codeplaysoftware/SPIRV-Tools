@@ -35,71 +35,127 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     return true;
   }
 
-  ir::Instruction* src_expr = context_->get_def_use_mgr()->GetDef(
-      src_access_chain->GetSingleWordInOperand(1));
-  ir::Instruction* dest_expr = context_->get_def_use_mgr()->GetDef(
-      dest_access_chain->GetSingleWordInOperand(1));
-
-  SENode* src_node = scalar_evolution_.AnalyzeInstruction(src_expr);
-  SENode* dest_node = scalar_evolution_.AnalyzeInstruction(dest_expr);
-
-  // If either node is simplified to a CanNotCompute we can't perform any
-  // analysis so must assume <=> dependence and return
-  if (src_node->GetType() == SENode::CanNotCompute ||
-      dest_node->GetType() == SENode::CanNotCompute) {
-    dv_entry->direction = DVDirections::ALL;
-    return false;
+  // If the access chains somehow have a different number of operands they store
+  // and load must be independent
+  if (src_access_chain->NumOperands() != dest_access_chain->NumOperands()) {
+    dv_entry->direction = DVDirections::NONE;
+    return true;
   }
 
-  // Neither node is a recurrent expr so we use a ZIV test
-  if (src_node->GetType() != SENode::RecurrentExpr &&
-      dest_node->GetType() != SENode::RecurrentExpr) {
-    return ZIVTest(src_node, dest_node, dv_entry);
+  // To handle multiple subscripts we must get every operand in the access
+  // chains past the first
+  std::vector<ir::Instruction*> src_subscripts{};
+  std::vector<ir::Instruction*> dest_subscripts{};
+  std::vector<DVEntry> dv_entries{};
+  for (int i = 1; i < static_cast<int>(src_access_chain->NumInOperandWords());
+       ++i) {
+    src_subscripts.push_back(context_->get_def_use_mgr()->GetDef(
+        src_access_chain->GetSingleWordInOperand(i)));
+    dest_subscripts.push_back(context_->get_def_use_mgr()->GetDef(
+        dest_access_chain->GetSingleWordInOperand(i)));
+    dv_entries.push_back(DVEntry{});
   }
 
-  // src is not a recurrent expr but dest is, so we can try a WeakZeroSrcTest
-  if (src_node->GetType() != SENode::RecurrentExpr &&
-      dest_node->GetType() == SENode::RecurrentExpr) {
-    return WeakZeroSourceSIVTest(
-        src_node, dest_node->AsSERecurrentNode(),
-        dest_node->AsSERecurrentNode()->GetCoefficient(), dv_entry);
-  }
+  // Go through each subscript testing for independence.
+  // If any subscript results in independence, we prove independence between the
+  // load and store.
+  // If we can't prove independence we store what information we can gather in
+  // a DVEntry
+  for (size_t subscript = 0; subscript < src_subscripts.size(); ++subscript) {
+    SENode* src_node =
+        scalar_evolution_.AnalyzeInstruction(src_subscripts[subscript]);
+    SENode* dest_node =
+        scalar_evolution_.AnalyzeInstruction(dest_subscripts[subscript]);
 
-  // src is a recurrent expr but dest is not, so we can try a WeakZeroDestTest
-  if (src_node->GetType() == SENode::RecurrentExpr &&
-      dest_node->GetType() != SENode::RecurrentExpr) {
-    return WeakZeroDestinationSIVTest(
-        src_node->AsSERecurrentNode(), dest_node,
-        src_node->AsSERecurrentNode()->GetCoefficient(), dv_entry);
-  }
-
-  // Both src and dest are recurrent exprs. We should narrow down to StrongSIV
-  // or WeakCrossingSIV tests.
-  if (src_node->GetType() == SENode::RecurrentExpr &&
-      dest_node->GetType() == SENode::RecurrentExpr) {
-    SERecurrentNode* src_rec = src_node->AsSERecurrentNode();
-    SERecurrentNode* dest_rec = dest_node->AsSERecurrentNode();
-
-    // If the coefficients are identical we can use StrongSIV
-    if (src_rec->GetCoefficient() == dest_rec->GetCoefficient()) {
-      return StrongSIVTest(
-          src_rec->AsSERecurrentNode(), dest_rec->AsSERecurrentNode(),
-          src_rec->AsSERecurrentNode()->GetCoefficient(), dv_entry);
+    // If either node is simplified to a CanNotCompute we can't perform any
+    // analysis so must assume <=> dependence and return
+    if (src_node->GetType() == SENode::CanNotCompute ||
+        dest_node->GetType() == SENode::CanNotCompute) {
+      dv_entry->direction = DVDirections::ALL;
+      break;
     }
 
-    // If the coefficients are opposite (coeff_1 == -coeff_2) we can use a
-    // WeakCrossingSIV test.
-    if (src_rec->GetCoefficient() ==
-        scalar_evolution_.CreateNegation(dest_rec->GetCoefficient())) {
-      return WeakCrossingSIVTest(
-          src_rec->AsSERecurrentNode(), dest_rec->AsSERecurrentNode(),
-          src_rec->AsSERecurrentNode()->GetCoefficient(), dv_entry);
+    // Neither node is a recurrent expr so we use a ZIV test
+    if (src_node->GetType() != SENode::RecurrentExpr &&
+        dest_node->GetType() != SENode::RecurrentExpr) {
+      if (ZIVTest(src_node, dest_node, &dv_entries[subscript])) {
+        dv_entry->direction = DVDirections::NONE;
+        return true;
+      }
+    }
+
+    // src is not a recurrent expr but dest is, so we can try a WeakZeroSrcTest
+    if (src_node->GetType() != SENode::RecurrentExpr &&
+        dest_node->GetType() == SENode::RecurrentExpr) {
+      if (WeakZeroSourceSIVTest(
+              src_node, dest_node->AsSERecurrentNode(),
+              dest_node->AsSERecurrentNode()->GetCoefficient(),
+              &dv_entries[subscript])) {
+        dv_entry->direction = DVDirections::NONE;
+        return true;
+      }
+    }
+
+    // src is a recurrent expr but dest is not, so we can try a WeakZeroDestTest
+    if (src_node->GetType() == SENode::RecurrentExpr &&
+        dest_node->GetType() != SENode::RecurrentExpr) {
+      if (WeakZeroDestinationSIVTest(
+              src_node->AsSERecurrentNode(), dest_node,
+              src_node->AsSERecurrentNode()->GetCoefficient(),
+              &dv_entries[subscript])) {
+        dv_entry->direction = DVDirections::NONE;
+        return true;
+      }
+    }
+
+    // Both src and dest are recurrent exprs. We should narrow down to StrongSIV
+    // or WeakCrossingSIV tests.
+    if (src_node->GetType() == SENode::RecurrentExpr &&
+        dest_node->GetType() == SENode::RecurrentExpr) {
+      SERecurrentNode* src_rec = src_node->AsSERecurrentNode();
+      SERecurrentNode* dest_rec = dest_node->AsSERecurrentNode();
+
+      // If the coefficients are identical we can use StrongSIV
+      if (src_rec->GetCoefficient() == dest_rec->GetCoefficient()) {
+        if (StrongSIVTest(src_rec->AsSERecurrentNode(),
+                          dest_rec->AsSERecurrentNode(),
+                          src_rec->AsSERecurrentNode()->GetCoefficient(),
+                          &dv_entries[subscript])) {
+          dv_entry->direction = DVDirections::NONE;
+          return true;
+        }
+      }
+
+      // If the coefficients are opposite (coeff_1 == -coeff_2) we can use a
+      // WeakCrossingSIV test.
+      if (src_rec->GetCoefficient() ==
+          scalar_evolution_.CreateNegation(dest_rec->GetCoefficient())) {
+        if (WeakCrossingSIVTest(src_rec->AsSERecurrentNode(),
+                                dest_rec->AsSERecurrentNode(),
+                                src_rec->AsSERecurrentNode()->GetCoefficient(),
+                                &dv_entries[subscript])) {
+          dv_entry->direction = DVDirections::NONE;
+          return true;
+        }
+      }
     }
   }
 
-  // We couldn't perform any analysis, so must assume dependence in all
-  // directions
-  dv_entry->direction = DVDirections::ALL;
+  // We were unable to prove independence so must gather all of the direction
+  // information we found
+
+  dv_entry->direction = DVDirections::NONE;
+  for (size_t subscript = 0; subscript < dv_entries.size(); ++subscript) {
+    dv_entry->direction = static_cast<DVDirections>(
+        dv_entry->direction | dv_entries[subscript].direction);
+    if (dv_entries[subscript].peel_first) {
+      dv_entry->peel_first = true;
+    }
+    if (dv_entries[subscript].peel_last) {
+      dv_entry->peel_last = true;
+    }
+  }
+
   return false;
 }
 
