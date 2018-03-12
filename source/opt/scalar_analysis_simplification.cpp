@@ -66,12 +66,6 @@ class SENodeSimplifyImpl {
   // operation was preceded by a unary negative.
   bool AccumulatorsFromMultiply(SENode* multiply, bool negation);
 
-  // Flatten a graph with an add at its root to be a broader graph with a single
-  // add with multiple children, folding constants where possible.
-  // E.G X+ X*2 + Y - Y*3 + 4 - 1 =  X*3 - Y*2 + 3
-  void FlattenAddExpressions(SENode* child_node,
-                             std::vector<SENode*>* nodes_to_add) const;
-
   SERecurrentNode* UpdateCoefficent(SERecurrentNode* recurrent,
                                     int64_t coefficent_update) const;
 
@@ -131,23 +125,10 @@ bool SENodeSimplifyImpl::AccumulatorsFromMultiply(SENode* multiply,
   return true;
 }
 
-void SENodeSimplifyImpl::FlattenAddExpressions(
-    SENode* child_node, std::vector<SENode*>* nodes_to_add) const {
-  for (SENode* child : *child_node) {
-    if (child->GetType() == SENode::Add) {
-      FlattenAddExpressions(child, nodes_to_add);
-    } else {
-      // It is easier to just remove and re add the non addition node
-      // children with the rest of the nodes. As the vector is sorted when we
-      // add a child it is problematic to keep track of the indexes.
-      nodes_to_add->push_back(child);
-    }
-  }
-}
-
 SENode* SENodeSimplifyImpl::Simplify() {
   // We only handle graphs with an addition at the root.
-  if (node_->GetType() != SENode::Add) return node_;
+  if (node_->GetType() != SENode::Add && node_->GetType() != SENode::Multiply)
+    return node_;
 
   SENode* simplified_polynomial = SimplifyPolynomial();
 
@@ -234,17 +215,10 @@ SERecurrentNode* SENodeSimplifyImpl::UpdateCoefficent(
 
 // Simplify all the terms in the polynomial function.
 SENode* SENodeSimplifyImpl::SimplifyPolynomial() {
-  std::vector<SENode*> nodes_to_add;
-
-  FlattenAddExpressions(node_, &nodes_to_add);
-
   std::unique_ptr<SENode> new_add{new SEAddNode(node_->GetParentAnalysis())};
 
-  node_->GetChildren().clear();
-
-  for (SENode* new_child : nodes_to_add) {
-    GatherAccumulatorsFromChildNodes(new_child, false);
-  }
+  // Traverse the graph and gather the accumulators from it.
+  GatherAccumulatorsFromChildNodes(node_, false);
 
   // Fold all the constants into a single constant node.
   if (constant_accumulator_ != 0) {

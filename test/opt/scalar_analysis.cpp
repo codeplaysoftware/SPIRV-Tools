@@ -656,4 +656,134 @@ TEST_F(PassClassTest, Simplify) {
   //              opt::SENode::ValueUnknown);
 }
 
+TEST_F(PassClassTest, SimplifyMultiplyInductions) {
+  const std::string text = R"( 
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %2 "main" %3 %4
+               OpExecutionMode %2 OriginUpperLeft
+               OpSource GLSL 430
+               OpName %2 "main"
+               OpName %5 "i"
+               OpName %3 "array"
+               OpName %4 "loop_invariant"
+               OpDecorate %3 Location 1
+               OpDecorate %4 Flat
+               OpDecorate %4 Location 2
+          %6 = OpTypeVoid
+          %7 = OpTypeFunction %6
+          %8 = OpTypeInt 32 1
+          %9 = OpTypePointer Function %8
+         %10 = OpConstant %8 0
+         %11 = OpConstant %8 10
+         %12 = OpTypeBool
+         %13 = OpTypeFloat 32
+         %14 = OpTypeInt 32 0
+         %15 = OpConstant %14 10
+         %16 = OpTypeArray %13 %15
+         %17 = OpTypePointer Output %16
+          %3 = OpVariable %17 Output
+         %18 = OpConstant %8 2
+         %19 = OpConstant %8 5
+         %20 = OpTypePointer Output %13
+         %21 = OpConstant %8 1
+         %22 = OpTypePointer Input %8
+          %4 = OpVariable %22 Input
+          %2 = OpFunction %6 None %7
+         %23 = OpLabel
+          %5 = OpVariable %9 Function
+               OpStore %5 %10
+               OpBranch %24
+         %24 = OpLabel
+         %25 = OpPhi %8 %10 %23 %26 %27
+               OpLoopMerge %28 %27 None
+               OpBranch %29
+         %29 = OpLabel
+         %30 = OpSLessThan %12 %25 %11
+               OpBranchConditional %30 %31 %28
+         %31 = OpLabel
+         %32 = OpIMul %8 %25 %18
+         %33 = OpIAdd %8 %32 %19
+         %34 = OpIMul %8 %25 %18
+         %35 = OpAccessChain %20 %3 %34
+         %36 = OpLoad %13 %35
+         %37 = OpAccessChain %20 %3 %33
+               OpStore %37 %36
+               OpBranch %27
+         %27 = OpLabel
+         %26 = OpIAdd %8 %25 %21
+               OpStore %5 %26
+               OpBranch %24
+         %28 = OpLabel
+               OpReturn
+               OpFunctionEnd
+  )";
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 2);
+  opt::ScalarEvolutionAnalysis analysis{context.get()};
+
+  const ir::Instruction* loads[1];
+  const ir::Instruction* stores[1];
+  int load_count = 0;
+  int store_count = 0;
+
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 31)) {
+    if (inst.opcode() == SpvOp::SpvOpLoad) {
+      loads[load_count] = &inst;
+      ++load_count;
+    }
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      stores[store_count] = &inst;
+      ++store_count;
+    }
+  }
+
+  EXPECT_EQ(load_count, 1);
+  EXPECT_EQ(store_count, 1);
+
+  // Testing [i] - [i] == 0
+  ir::Instruction* load_access_chain =
+      context->get_def_use_mgr()->GetDef(loads[0]->GetSingleWordInOperand(0));
+  ir::Instruction* store_access_chain =
+      context->get_def_use_mgr()->GetDef(stores[0]->GetSingleWordInOperand(0));
+
+  ir::Instruction* load_child = context->get_def_use_mgr()->GetDef(
+      load_access_chain->GetSingleWordInOperand(1));
+  ir::Instruction* store_child = context->get_def_use_mgr()->GetDef(
+      store_access_chain->GetSingleWordInOperand(1));
+
+  opt::SENode* load_node = analysis.AnalyzeInstruction(load_child);
+
+  // Check that Rec(0,1)*2 has been simplified into Rec(0,3).
+  opt::SERecurrentNode* load_simplified =
+      analysis.SimplifyExpression(load_node)->AsSERecurrentNode();
+  EXPECT_TRUE(load_simplified);
+  EXPECT_TRUE(load_simplified->GetType() == opt::SENode::RecurrentExpr);
+  EXPECT_TRUE(
+      load_simplified->GetOffset()->AsSEConstantNode()->FoldToSingleValue() ==
+      0);
+  EXPECT_TRUE(load_simplified->GetCoefficient()
+                  ->AsSEConstantNode()
+                  ->FoldToSingleValue() == 3);
+
+  opt::SENode* store_node = analysis.AnalyzeInstruction(store_child);
+  opt::SERecurrentNode* store_simplified =
+      analysis.SimplifyExpression(store_node)->AsSERecurrentNode();
+
+  // Check that Rec(0,1)*2 + 5 has been simplified into Rec(5,3).
+  EXPECT_TRUE(store_simplified->GetType() == opt::SENode::RecurrentExpr);
+  EXPECT_TRUE(
+      store_simplified->GetOffset()->AsSEConstantNode()->FoldToSingleValue() ==
+      5);
+  EXPECT_TRUE(store_simplified->GetCoefficient()
+                  ->AsSEConstantNode()
+                  ->FoldToSingleValue() == 3);
+}
+
 }  // namespace
