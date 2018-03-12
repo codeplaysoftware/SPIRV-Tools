@@ -291,21 +291,21 @@ TEST(DependencyAnalysis, SymbolicZIV) {
 
   // independent due to loop bounds (won't enter if N <= 0)
   // 39 -> 40 tests looking through symbols and multiplicaiton
-  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(40),
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(39),
                                      store[0], &dv_entry));
 
   // 48 -> 49 tests looking through symbols and multiplication + addition
-  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(49),
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(48),
                                      store[1], &dv_entry));
 
   // 56 -> 57 tests looking through symbols and arithmetic on load and store
-  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(57),
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(56),
                                      store[2], &dv_entry));
 
   // independent as different arrays
   // 63 -> 64 tests looking through symbols and load/store from/to different
   // arrays
-  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(64),
+  EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(63),
                                      store[3], &dv_entry));
 }
 

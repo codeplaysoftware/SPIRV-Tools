@@ -62,10 +62,10 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
   // If we can't prove independence we store what information we can gather in
   // a DVEntry
   for (size_t subscript = 0; subscript < src_subscripts.size(); ++subscript) {
-    SENode* src_node =
-        scalar_evolution_.AnalyzeInstruction(src_subscripts[subscript]);
-    SENode* dest_node =
-        scalar_evolution_.AnalyzeInstruction(dest_subscripts[subscript]);
+    SENode* src_node = scalar_evolution_.SimplifyExpression(
+        scalar_evolution_.AnalyzeInstruction(src_subscripts[subscript]));
+    SENode* dest_node = scalar_evolution_.SimplifyExpression(
+        scalar_evolution_.AnalyzeInstruction(dest_subscripts[subscript]));
 
     // If either node is simplified to a CanNotCompute we can't perform any
     // analysis so must assume <=> dependence and return
@@ -517,6 +517,162 @@ bool LoopDependenceAnalysis::IsWithinBounds(int64_t value, int64_t bound_one,
 }
 
 SEConstantNode* LoopDependenceAnalysis::GetLowerBound() {
+  ir::Instruction* cond_inst = loop_.GetConditionInst();
+  if (!cond_inst) {
+    return nullptr;
+  }
+  switch (cond_inst->opcode()) {
+    case SpvOpULessThan:
+    case SpvOpSLessThan:
+    case SpvOpULessThanEqual:
+    case SpvOpSLessThanEqual: {
+      ir::Instruction* lower_inst = context_->get_def_use_mgr()->GetDef(
+          cond_inst->GetSingleWordInOperand(0));
+      if (lower_inst->opcode() == SpvOpPhi) {
+        lower_inst = context_->get_def_use_mgr()->GetDef(
+            lower_inst->GetSingleWordInOperand(0));
+        // We don't handle looking through multiple phis
+        if (lower_inst->opcode() == SpvOpPhi) {
+          return nullptr;
+        }
+      }
+      SEConstantNode* lower_bound =
+          scalar_evolution_
+              .SimplifyExpression(
+                  scalar_evolution_.AnalyzeInstruction(lower_inst))
+              ->AsSEConstantNode();
+      return lower_bound;
+      break;
+    }
+    case SpvOpUGreaterThan:
+    case SpvOpSGreaterThan: {
+      ir::Instruction* lower_inst = context_->get_def_use_mgr()->GetDef(
+          cond_inst->GetSingleWordInOperand(1));
+      if (lower_inst->opcode() == SpvOpPhi) {
+        lower_inst = context_->get_def_use_mgr()->GetDef(
+            lower_inst->GetSingleWordInOperand(0));
+        // We don't handle looking through multiple phis
+        if (lower_inst->opcode() == SpvOpPhi) {
+          return nullptr;
+        }
+      }
+      SEConstantNode* lower_bound =
+          scalar_evolution_
+              .SimplifyExpression(
+                  scalar_evolution_.AnalyzeInstruction(lower_inst))
+              ->AsSEConstantNode();
+      if (lower_bound) {
+        return scalar_evolution_
+            .SimplifyExpression(scalar_evolution_.CreateAddNode(
+                lower_bound, scalar_evolution_.CreateConstant(1)))
+            ->AsSEConstantNode();
+      }
+      break;
+    }
+    case SpvOpUGreaterThanEqual:
+    case SpvOpSGreaterThanEqual: {
+      ir::Instruction* lower_inst = context_->get_def_use_mgr()->GetDef(
+          cond_inst->GetSingleWordInOperand(1));
+      if (lower_inst->opcode() == SpvOpPhi) {
+        lower_inst = context_->get_def_use_mgr()->GetDef(
+            lower_inst->GetSingleWordInOperand(0));
+        // We don't handle looking through multiple phis
+        if (lower_inst->opcode() == SpvOpPhi) {
+          return nullptr;
+        }
+      }
+      SEConstantNode* lower_bound =
+          scalar_evolution_
+              .SimplifyExpression(
+                  scalar_evolution_.AnalyzeInstruction(lower_inst))
+              ->AsSEConstantNode();
+      return lower_bound;
+    } break;
+    default:
+      return nullptr;
+  }
+  return nullptr;
+}
+
+SEConstantNode* LoopDependenceAnalysis::GetUpperBound() {
+  ir::Instruction* cond_inst = loop_.GetConditionInst();
+  if (!cond_inst) {
+    return nullptr;
+  }
+  switch (cond_inst->opcode()) {
+    case SpvOpULessThan:
+    case SpvOpSLessThan: {
+      ir::Instruction* upper_inst = context_->get_def_use_mgr()->GetDef(
+          cond_inst->GetSingleWordInOperand(1));
+      if (upper_inst->opcode() == SpvOpPhi) {
+        upper_inst = context_->get_def_use_mgr()->GetDef(
+            upper_inst->GetSingleWordInOperand(0));
+        // We don't handle looking through multiple phis
+        if (upper_inst->opcode() == SpvOpPhi) {
+          return nullptr;
+        }
+      }
+      SEConstantNode* upper_bound =
+          scalar_evolution_
+              .SimplifyExpression(
+                  scalar_evolution_.AnalyzeInstruction(upper_inst))
+              ->AsSEConstantNode();
+      if (upper_bound) {
+        return scalar_evolution_
+            .SimplifyExpression(scalar_evolution_.CreateSubtraction(
+                upper_bound, scalar_evolution_.CreateConstant(1)))
+            ->AsSEConstantNode();
+      }
+    }
+    case SpvOpULessThanEqual:
+    case SpvOpSLessThanEqual: {
+      ir::Instruction* upper_inst = context_->get_def_use_mgr()->GetDef(
+          cond_inst->GetSingleWordInOperand(1));
+      if (upper_inst->opcode() == SpvOpPhi) {
+        upper_inst = context_->get_def_use_mgr()->GetDef(
+            upper_inst->GetSingleWordInOperand(0));
+        // We don't handle looking through multiple phis
+        if (upper_inst->opcode() == SpvOpPhi) {
+          return nullptr;
+        }
+      }
+      SEConstantNode* upper_bound =
+          scalar_evolution_
+              .SimplifyExpression(
+                  scalar_evolution_.AnalyzeInstruction(upper_inst))
+              ->AsSEConstantNode();
+      return upper_bound;
+    } break;
+    case SpvOpUGreaterThan:
+    case SpvOpSGreaterThan:
+    case SpvOpUGreaterThanEqual:
+    case SpvOpSGreaterThanEqual: {
+      ir::Instruction* upper_inst = context_->get_def_use_mgr()->GetDef(
+          cond_inst->GetSingleWordInOperand(0));
+      if (upper_inst->opcode() == SpvOpPhi) {
+        upper_inst = context_->get_def_use_mgr()->GetDef(
+            upper_inst->GetSingleWordInOperand(0));
+        // We don't handle looking through multiple phis
+        if (upper_inst->opcode() == SpvOpPhi) {
+          return nullptr;
+        }
+      }
+      SEConstantNode* upper_bound =
+          scalar_evolution_
+              .SimplifyExpression(
+                  scalar_evolution_.AnalyzeInstruction(upper_inst))
+              ->AsSEConstantNode();
+      return upper_bound;
+      break;
+    }
+    default:
+      return nullptr;
+  }
+  return nullptr;
+}
+
+/*
+SEConstantNode* LoopDependenceAnalysis::GetLowerBound() {
   ir::Instruction* lower_bound_inst = loop_.GetLowerBoundInst();
   ir::Instruction* upper_bound_inst = loop_.GetUpperBoundInst();
   if (!lower_bound_inst || !upper_bound_inst) {
@@ -587,6 +743,8 @@ SEConstantNode* LoopDependenceAnalysis::GetUpperBound() {
   // are equal. As a result it is not safe to return either bound
   return nullptr;
 }
+
+*/
 
 std::pair<SEConstantNode*, SEConstantNode*>
 LoopDependenceAnalysis::GetLoopLowerUpperBounds() {
