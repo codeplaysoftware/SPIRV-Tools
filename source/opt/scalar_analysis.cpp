@@ -19,13 +19,14 @@ namespace spvtools {
 namespace opt {
 
 SENode* ScalarEvolutionAnalysis::CreateNegation(SENode* operand) {
-  std::unique_ptr<SENode> negation_node{new SENegative()};
+  std::unique_ptr<SENode> negation_node{new SENegative(this)};
   negation_node->AddChild(operand);
   return GetCachedOrAdd(std::move(negation_node));
 }
 
 SENode* ScalarEvolutionAnalysis::CreateConstant(int64_t integer) {
-  return GetCachedOrAdd(std::unique_ptr<SENode>(new SEConstantNode(integer)));
+  return GetCachedOrAdd(
+      std::unique_ptr<SENode>(new SEConstantNode(this, integer)));
 }
 
 SENode* ScalarEvolutionAnalysis::AnalyzeMultiplyOp(
@@ -48,7 +49,7 @@ SENode* ScalarEvolutionAnalysis::CreateMultiplyNode(SENode* operand_1,
                           operand_2->AsSEConstantNode()->FoldToSingleValue());
   }
 
-  std::unique_ptr<SENode> add_node{new SEMultiplyNode()};
+  std::unique_ptr<SENode> add_node{new SEMultiplyNode(this)};
 
   add_node->AddChild(operand_1);
   add_node->AddChild(operand_2);
@@ -63,7 +64,7 @@ SENode* ScalarEvolutionAnalysis::CreateSubtraction(SENode* operand_1,
 
 SENode* ScalarEvolutionAnalysis::CreateAddNode(SENode* operand_1,
                                                SENode* operand_2) {
-  std::unique_ptr<SENode> add_node{new SEAddNode()};
+  std::unique_ptr<SENode> add_node{new SEAddNode(this)};
 
   add_node->AddChild(operand_1);
   add_node->AddChild(operand_2);
@@ -132,7 +133,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzeConstant(const ir::Instruction* inst) {
 SENode* ScalarEvolutionAnalysis::AnalyzeAddOp(const ir::Instruction* add,
                                               bool sub) {
   opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
-  std::unique_ptr<SENode> add_node{new SEAddNode()};
+  std::unique_ptr<SENode> add_node{new SEAddNode(this)};
 
   add_node->AddChild(
       AnalyzeInstruction(def_use->GetDef(add->GetSingleWordInOperand(0))));
@@ -170,7 +171,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
   ir::Loop* loop = (*loop_descriptor)[basic_block->id()];
   if (!loop) return CreateCantComputeNode();
 
-  std::unique_ptr<SERecurrentNode> phi_node{new SERecurrentNode(loop)};
+  std::unique_ptr<SERecurrentNode> phi_node{new SERecurrentNode(this, loop)};
   instruction_map_[phi] = phi_node.get();
 
   for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
@@ -215,12 +216,13 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
 }
 
 SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode() {
-  std::unique_ptr<SEValueUnknown> load_node{new SEValueUnknown()};
+  std::unique_ptr<SEValueUnknown> load_node{new SEValueUnknown(this)};
   return GetCachedOrAdd(std::move(load_node));
 }
 
 SENode* ScalarEvolutionAnalysis::CreateCantComputeNode() {
-  return GetCachedOrAdd(std::unique_ptr<SECantCompute>(new SECantCompute));
+  return GetCachedOrAdd(
+      std::unique_ptr<SECantCompute>(new SECantCompute(this)));
 }
 
 // Add the created node into the cache of nodes. If it already exists return it.

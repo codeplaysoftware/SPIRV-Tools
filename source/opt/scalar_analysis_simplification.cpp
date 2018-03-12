@@ -147,7 +147,7 @@ void SENodeSimplifyImpl::FlattenAddExpressions(
 
 SENode* SENodeSimplifyImpl::Simplify() {
   // We only handle graphs with an addition at the root.
-  if (node_->GetType() != SENode::Add) return analysis_.CreateCantComputeNode();
+  if (node_->GetType() != SENode::Add) return node_;
 
   SENode* simplified_polynomial = SimplifyPolynomial();
 
@@ -215,7 +215,7 @@ void SENodeSimplifyImpl::GatherAccumulatorsFromChildNodes(SENode* new_child,
 SERecurrentNode* SENodeSimplifyImpl::UpdateCoefficent(
     SERecurrentNode* recurrent, int64_t coefficent_update) const {
   std::unique_ptr<SERecurrentNode> new_recurrent_node{
-      new SERecurrentNode(recurrent->GetLoop())};
+      new SERecurrentNode(recurrent->GetParentAnalysis(), recurrent->GetLoop())};
 
   SENode* new_coefficent = analysis_.CreateAddNode(
       recurrent->GetCoefficient(), analysis_.CreateConstant(coefficent_update));
@@ -238,7 +238,7 @@ SENode* SENodeSimplifyImpl::SimplifyPolynomial() {
 
   FlattenAddExpressions(node_, &nodes_to_add);
 
-  std::unique_ptr<SENode> new_add{new SEAddNode};
+  std::unique_ptr<SENode> new_add{new SEAddNode(node_->GetParentAnalysis())};
 
   node_->GetChildren().clear();
 
@@ -296,7 +296,7 @@ SENode* SENodeSimplifyImpl::SimplifyRecurrentExpression(
   const std::vector<SENode*>& children = node_->GetChildren();
 
   std::unique_ptr<SERecurrentNode> recurrent_node{
-      new SERecurrentNode(recurrent_expr->GetLoop())};
+      new SERecurrentNode(recurrent_expr->GetParentAnalysis(), recurrent_expr->GetLoop())};
 
   // Create and simplify the new offset node.
   SENode* new_offset = analysis_.CreateAddNode(recurrent_expr->GetOffset(),
