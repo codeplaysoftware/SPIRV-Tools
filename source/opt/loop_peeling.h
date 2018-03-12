@@ -174,12 +174,12 @@ class LoopPeelingPass : public Pass {
   enum class PeelDirection {
     None,    // Cannot be peeled
     Before,  // Can be peeled before
-    Last     // Can be peeled last
+    After    // Can be peeled last
   };
 
   class LoopPeelingInfo {
    public:
-    using LoopPeelDirection = std::pair<PeelDirection, uint32_t>;
+    using Direction = std::pair<PeelDirection, uint32_t>;
 
     LoopPeelingInfo(ir::Loop* loop, size_t loop_max_iterations,
                     opt::ScalarEvolutionAnalysis* scev_analysis)
@@ -188,32 +188,38 @@ class LoopPeelingPass : public Pass {
           scev_analysis_(scev_analysis),
           loop_max_iterations_(loop_max_iterations) {}
 
-    LoopPeelDirection GetPeelingInfo(ir::BasicBlock* bb);
+    Direction GetPeelingInfo(ir::BasicBlock* bb);
 
    private:
+    // Abstraction of <, >, <= and >=
+    enum class CompareOp {
+      None,  // default/invalid
+      LT,    // <
+      GT,    // >
+      LE,    // <=
+      GE     // >=
+    };
+
     ir::IRContext* context_;
     ir::Loop* loop_;
     opt::ScalarEvolutionAnalysis* scev_analysis_;
-    // SENode* max_iterations_;
-    // SENode* rec_expr_;
     size_t loop_max_iterations_;
 
     uint32_t GetFirstLoopInvariantOperand(ir::Instruction* condition) const;
     uint32_t GetFirstNonLoopInvariantOperand(ir::Instruction* condition) const;
 
-    bool DivideNodes(SENode* lhs, SENode* rhs, int64_t* result) const;
+    SEConstantNode* Divide(SENode* dividend, SENode* divisor) const;
+
     SENode* GetLastIterationValue(SERecurrentNode* rec) const;
 
     SENode* GetIterationValueAt(SERecurrentNode* rec, SENode* x) const;
 
-    LoopPeelDirection HandleEqual(SpvOp opcode, SENode* lhs, SENode* rhs) const;
-    LoopPeelDirection HandleGreaterThan(SpvOp opcode, bool handle_ge,
-                                        SENode* lhs, SENode* rhs) const;
-    LoopPeelDirection HandleLessThan(SpvOp opcode, bool handle_le, SENode* lhs,
-                                     SENode* rhs) const;
+    Direction HandleEqual(SENode* lhs, SENode* rhs) const;
+    Direction HandleInequality(CompareOp cmp_op, SENode* lhs,
+                               SERecurrentNode* rhs) const;
 
-    static LoopPeelDirection GetNoneDirection() {
-      return LoopPeelDirection{LoopPeelingPass::PeelDirection::None, 0};
+    static Direction GetNoneDirection() {
+      return Direction{LoopPeelingPass::PeelDirection::None, 0};
     }
   };
 

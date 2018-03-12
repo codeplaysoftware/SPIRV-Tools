@@ -24,6 +24,8 @@
 #include "loop_descriptor.h"
 #include "loop_peeling.h"
 #include "loop_utils.h"
+#include "scalar_analysis.h"
+#include "scalar_analysis_nodes.h"
 
 namespace spvtools {
 namespace opt {
@@ -367,6 +369,7 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
   opt::ScalarEvolutionAnalysis scev_analysis(context());
 
   for (ir::Loop* loop : to_process_loop) {
+    ir::CFG& cfg = *context()->cfg();
     CodeMetrics loop_size;
     loop_size.Analyze(*loop);
 
@@ -381,9 +384,6 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
       continue;
     }
 
-    std::unordered_map<ir::BasicBlock*, std::pair<PeelDirection, uint32_t> >
-        CanPeelConditions;
-
     ir::BasicBlock* exit_block = loop->FindConditionBlock();
 
     ir::Instruction* exiting_iv = loop->FindConditionVariable(exit_block);
@@ -394,8 +394,45 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
     }
     if (!iterations) continue;
 
+    // For each basic block in the loop, check if it is can be peeled. If it
+    // can, get the direction (before/after) and by which factor.
+    LoopPeelingInfo peel_info(loop, iterations, &scev_analysis);
+
+    uint32_t peel_before_factor = 0;
+    uint32_t peel_after_factor = 0;
+
     for (uint32_t block : loop->GetBlocks()) {
       if (block != exit_block->id()) continue;
+      ir::BasicBlock* bb = cfg.block(block);
+      PeelDirection direction;
+      uint32_t factor;
+      std::tie(direction, factor) = peel_info.GetPeelingInfo(bb);
+
+      if (direction == PeelDirection::Before) {
+        peel_before_factor = std::max(peel_before_factor, factor);
+      } else {
+        assert(direction == PeelDirection::After);
+        peel_after_factor = std::max(peel_after_factor, factor);
+      }
+    }
+
+    // To build the constant, insert point will not be used.
+    InstructionBuilder builder(context(), loop->GetHeaderBlock(),
+                               ir::IRContext::kAnalysisDefUse |
+                                   ir::IRContext::kAnalysisInstrToBlockMapping);
+    if (peel_before_factor) {
+      peeler.PeelBefore(
+          builder.Add32BitUnsignedIntegerConstant(peel_before_factor));
+      modified = true;
+    }
+    if (peel_after_factor) {
+      if (iterations <= std::numeric_limits<uint32_t>::max()) {
+        peeler.PeelAfter(
+            builder.Add32BitUnsignedIntegerConstant(peel_after_factor),
+            builder.Add32BitUnsignedIntegerConstant(
+                static_cast<uint32_t>(iterations)));
+        modified = true;
+      }
     }
   }
 
@@ -443,7 +480,7 @@ static bool IsHandledCondition(SpvOp opcode) {
   }
 }
 
-LoopPeelingPass::LoopPeelingInfo::LoopPeelDirection
+LoopPeelingPass::LoopPeelingInfo::Direction
 LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) {
   if (bb->terminator()->opcode() != SpvOpBranchConditional) {
     return GetNoneDirection();
@@ -458,76 +495,153 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) {
     return GetNoneDirection();
   }
 
-  uint32_t invariant_op = GetFirstLoopInvariantOperand(condition);
-  if (!invariant_op) {
+  if (!GetFirstLoopInvariantOperand(condition)) {
     // No loop invariant, it cannot be peeled by this pass.
     return GetNoneDirection();
   }
-  uint32_t iv_op = GetFirstNonLoopInvariantOperand(condition);
-  if (!iv_op) {
+  if (!GetFirstNonLoopInvariantOperand(condition)) {
     // Seems to be a job for the unswitch pass.
     return GetNoneDirection();
   }
 
-  SENode* invariant_scev =
-      scev_analysis_->AnalyzeInstruction(def_use_mgr->GetDef(invariant_op));
-  if (invariant_scev->GetType() == SENode::CanNotCompute) {
+  // Left hand-side.
+  SENode* lhs = scev_analysis_->AnalyzeInstruction(
+      def_use_mgr->GetDef(condition->GetSingleWordInOperand(1)));
+  if (lhs->GetType() == SENode::CanNotCompute) {
     // Can't make any conclusion.
     return GetNoneDirection();
   }
 
-  SENode* iv_scev =
-      scev_analysis_->AnalyzeInstruction(def_use_mgr->GetDef(iv_op));
-  if (iv_scev->GetType() == SENode::CanNotCompute) {
+  // Right hand-side.
+  SENode* rhs = scev_analysis_->AnalyzeInstruction(
+      def_use_mgr->GetDef(condition->GetSingleWordInOperand(2)));
+  if (rhs->GetType() == SENode::CanNotCompute) {
     // Can't make any conclusion.
     return GetNoneDirection();
   }
 
+  // One side should be a recurrent expression over the current loop, the
+  // other should be a constant over the loop.
+  auto is_recurent_expr_over_current_loop =
+      [this](const SERecurrentNode* rec_expr) -> bool {
+    if (!rec_expr) return false;
+    return std::any_of(
+        rec_expr->graph_cbegin(), rec_expr->graph_cend(),
+        [this](const SENode& node) {
+          const SERecurrentNode* rec = node.AsSERecurrentNode();
+          return loop_->IsInsideLoop(rec->GetLoop()->GetHeaderBlock());
+        });
+  };
+  // Only take into account recurrent expression over the current loop.
+  bool is_lhs_rec =
+      is_recurent_expr_over_current_loop(lhs->AsSERecurrentNode());
+  bool is_rhs_rec =
+      is_recurent_expr_over_current_loop(rhs->AsSERecurrentNode());
+  if ((is_lhs_rec && is_rhs_rec) || (!is_lhs_rec && !is_rhs_rec)) {
+    return GetNoneDirection();
+  }
+
+  // If the op code is ==, then we try a peel before or after.
+  // If opcode is not <, >, <= or >=, we bail out.
+  //
+  // For the remaining cases, we canonicalize the expression so that the
+  // constant expression is on the left hand side and the recurring expression
+  // is on the right hand side. If the we swap hand side, then < becomes >, <=
+  // becomes >= etc.
+  // If the opcode is <=, then we add 1 to the right hand side and do the peel
+  // check on <.
+  // If the opcode is >=, then we add 1 to the left hand side and do the peel
+  // check on >.
+
+  bool is_signed = false;
+  CompareOp cmp_op = CompareOp::None;
   switch (condition->opcode()) {
-    case SpvOpIEqual:
-    case SpvOpUGreaterThan:
-    case SpvOpSGreaterThan:
-    case SpvOpUGreaterThanEqual:
-    case SpvOpSGreaterThanEqual:
-    case SpvOpULessThan:
-    case SpvOpSLessThan:
-    case SpvOpULessThanEqual:
-    case SpvOpSLessThanEqual:
     default:
       return GetNoneDirection();
-  }
-}
-
-bool LoopPeelingPass::LoopPeelingInfo::DivideNodes(SENode* lhs, SENode* rhs,
-                                                   int64_t* result) const {
-  if (SEConstantNode* rhs_cst = rhs->GetCoefficient()->AsSEConstantNode()) {
-    int64_t rhs_val = rhs_cst->FoldToSingleValue();
-    if (!rhs_val) return false;
-    if (SEConstantNode* lhs_cst = lhs->GetCoefficient()->AsSEConstantNode()) {
-      *result = lhs_cst->FoldToSingleValue() / rhs_val;
-      return true;
+    case SpvOpIEqual:
+      return HandleEqual(lhs, rhs);
+    case SpvOpUGreaterThan: {
+      is_signed = false;
+      cmp_op = CompareOp::GT;
+      break;
+    }
+    case SpvOpSGreaterThan: {
+      is_signed = true;
+      cmp_op = CompareOp::GT;
+      break;
+    }
+    case SpvOpUGreaterThanEqual: {
+      is_signed = false;
+      cmp_op = CompareOp::GE;
+      break;
+    }
+    case SpvOpSGreaterThanEqual: {
+      is_signed = true;
+      cmp_op = CompareOp::GE;
+      break;
+    }
+    case SpvOpULessThan: {
+      is_signed = false;
+      cmp_op = CompareOp::LT;
+      break;
+    }
+    case SpvOpSLessThan: {
+      is_signed = true;
+      cmp_op = CompareOp::LT;
+      break;
+    }
+    case SpvOpULessThanEqual: {
+      is_signed = false;
+      cmp_op = CompareOp::LE;
+      break;
+    }
+    case SpvOpSLessThanEqual: {
+      is_signed = true;
+      cmp_op = CompareOp::LE;
+      break;
     }
   }
 
-  return false;
+  // We add one to transform >= into > and <= into <.
+  // If |do_add_1| == 0 then add nothing (already < or >).
+  // If |do_add_1| == -1 then add 1 to the left hand side (>= to >).
+  // If |do_add_1| == 1 then add 1 to the right hand side (<= to <).
+  switch (cmp_op) {
+    case CompareOp::LE:
+      cmp_op = CompareOp::LT;
+      lhs = SENodeDSL(lhs) + 1;
+      break;
+    case CompareOp::GE:
+      cmp_op = CompareOp::GT;
+      rhs = SENodeDSL(rhs) + 1;
+      break;
+    default:
+      break;
+  }
+
+  // Force the left hand side to be the non recurring expression.
+  if (is_lhs_rec) {
+    std::swap(lhs, rhs);
+    std::swap(is_lhs_rec, is_rhs_rec);
+    cmp_op = cmp_op == CompareOp::LT ? CompareOp::GT : CompareOp::LT;
+  }
+
+  return HandleInequality(cmp_op, lhs, rhs->AsSERecurrentNode());
 }
 
 SENode* LoopPeelingPass::LoopPeelingInfo::GetLastIterationValue(
     SERecurrentNode* rec) const {
-  return (SENodeDSL(rec->GetCoefficient(), scev_analysis_) *
-          (loop_max_iterations_ - 1)) +
+  return (SENodeDSL{rec->GetCoefficient()} * (loop_max_iterations_ - 1)) +
          rec->GetOffset();
 }
 
 SENode* LoopPeelingPass::LoopPeelingInfo::GetIterationValueAt(
     SERecurrentNode* rec, SENode* x) const {
-  return (SENodeDSL(rec->GetCoefficient(), scev_analysis_) * x) +
-         rec->GetOffset();
+  return (SENodeDSL{rec->GetCoefficient()} * x) + rec->GetOffset();
 }
 
-LoopPeelingPass::LoopPeelingInfo::LoopPeelDirection
-LoopPeelingPass::LoopPeelingInfo::HandleEqual(SpvOp opcode, SENode* lhs,
-                                              SENode* rhs) const {
+LoopPeelingPass::LoopPeelingInfo::Direction
+LoopPeelingPass::LoopPeelingInfo::HandleEqual(SENode* lhs, SENode* rhs) const {
   // FIXME: check the current loop for scev nodes
   {
     // Try peel before opportunity.
@@ -541,7 +655,7 @@ LoopPeelingPass::LoopPeelingInfo::HandleEqual(SpvOp opcode, SENode* lhs,
     }
 
     if (lhs_cst == rhs_cst) {
-      return LoopPeelDirection{LoopPeelingPass::PeelDirection::Before, 1};
+      return Direction{LoopPeelingPass::PeelDirection::Before, 1};
     }
   }
 
@@ -561,80 +675,61 @@ LoopPeelingPass::LoopPeelingInfo::HandleEqual(SpvOp opcode, SENode* lhs,
     }
 
     if (lhs_cst == rhs_cst) {
-      return LoopPeelDirection{LoopPeelingPass::PeelDirection::After, 1};
+      return Direction{LoopPeelingPass::PeelDirection::After, 1};
     }
   }
 
   return GetNoneDirection();
 }
 
-LoopPeelingPass::LoopPeelingInfo::LoopPeelDirection
-LoopPeelingPass::LoopPeelingInfo::HandleLessThan(SpvOp opcode, bool handle_ge,
-                                                 SENode* lhs,
-                                                 SENode* rhs) const {
-  // FIXME: check the current loop for scev nodes
-  assert(rhs->AsSERecurrentNode() == nullptr);
-  SENode* last_value = GetLastIterationValue(rec_node);
-  // FIXME: Get iteration for cross point:
-  // rec: a X + b
-  // rhs: c
-  // iteration: (c - b) / a
-  SENode* cross_point /* wrong */ = GetIterationValueAt(rec_node, rhs);
-  SENode* distance_to_end =
-      cross_point - SENodeDSL(last_value->GetCoefficient(), scev_analysis_);
+LoopPeelingPass::LoopPeelingInfo::Direction
+LoopPeelingPass::LoopPeelingInfo::HandleInequality(CompareOp cmp_op,
+                                                   SENode* lhs,
+                                                   SERecurrentNode* rhs) const {
+  assert(cmp_op == CompareOp::GT || cmp_op == CompareOp::LT);
 
-  bool has_value = false;
-
-  size_t factor = 0;
-  LoopPeelingPass::PeelDirection direction =
-      LoopPeelingPass::PeelDirection::None;
-
-  if (SEConstantNode* dist = distance_to_end->AsSEConstantNode()) {
-    assert(dist->FoldToSingleValue() >= 0);
-    factor = dist->FoldToSingleValue();
-    direction = LoopPeelingPass::PeelDirection::After;
+  // We have an iteration, now workout at which iteration the condition flips.
+  SEConstantNode* rhs_step = rhs->GetCoefficient()->AsSEConstantNode();
+  if (!rhs_step) {
+    return GetNoneDirection();
+  }
+  // Compute (cst - B) / A,
+  SEConstantNode* cst_minus_offset =
+      (SENodeDSL{lhs} - rhs->GetOffset()->AsSEConstantNode())
+          ->AsSEConstantNode();
+  // Early exit: as written now, if |is_first_iteration_true| is not a constant
+  // node, we won't be able to get the peel factor.
+  if (!cst_minus_offset) {
+    return GetNoneDirection();
   }
 
-  if (SEConstantNode* dist = cross_point->AsSEConstantNode()) {
-    assert(dist->FoldToSingleValue() >= 0);
-    factor = dist->FoldToSingleValue();
-    direction = LoopPeelingPass::PeelDirection::Before;
+  // if the result is not an int, round the result to do 1 more/less step than
+  // required so that the unpeeled loop can safely remove the false branch.
+  int64_t dividend = cst_minus_offset->FoldToSingleValue();
+  int64_t divisor = rhs_step->FoldToSingleValue();
+  assert(divisor && "The recurring expression's coefficient is 0");
+  // !!(dividend % divisor) => 1 if |dividend| is not divisible by |divisor|.
+  int64_t flip_iteration = dividend / divisor + !!(dividend % divisor);
+  if (flip_iteration < 0 ||
+      loop_max_iterations_ >= static_cast<uint64_t>(flip_iteration)) {
+    // Always true or false within the loop bounds.
+    return GetNoneDirection();
   }
 
-  if (has_value) {
-    if (factor >)
-      return LoopPeelDirection{LoopPeelingPass::PeelDirection::Before, factor};
+  uint32_t factor = 0;
+  /* sanity check: can we fit |flip_iteration| in a uint32_t ? */
+  if (flip_iteration > 0 && static_cast<uint64_t>(flip_iteration) <
+                                std::numeric_limits<uint32_t>::max()) {
+    factor = static_cast<uint32_t>(flip_iteration);
   }
 
-  return GetNoneDirection();
-}
-
-LoopPeelingPass::LoopPeelingInfo::LoopPeelDirection
-LoopPeelingPass::LoopPeelingInfo::HandleGreaterThan(SpvOp opcode,
-                                                    bool handle_ge, SENode* lhs,
-                                                    SENode* rhs) const {
-  // FIXME: check the current loop for scev nodes
-  assert(rhs->AsSERecurrentNode() == nullptr);
-  {
-    // Try peel before opportunity.
-    size_t factor = 0;
-    bool has_value = false;
-    if (SERecurrentNode* rec_node = lhs->AsSERecurrentNode()) {
-      has_value =
-          DivideNodes(SENodeDSL(rhs, scev_analysis_) - rec_node->GetOffset(),
-                      rec_node->GetCoefficient(), &factor);
-      if (has_value) {
-        factor += 1;
-        if (handle_ge) {
-          factor += 1;
-        }
-      }
-    }
-
-    if (has_value)
-      return LoopPeelDirection{LoopPeelingPass::PeelDirection::After, factor};
-    else
-      return GetNoneDirection();
+  if (factor) {
+    // Peel before if we are closer to the start, after if closer to the end.
+    LoopPeelingPass::PeelDirection direction =
+        loop_max_iterations_ / 2 > factor
+            ? LoopPeelingPass::PeelDirection::Before
+            : LoopPeelingPass::PeelDirection::After;
+    return Direction{direction, factor};
   }
 
   return GetNoneDirection();

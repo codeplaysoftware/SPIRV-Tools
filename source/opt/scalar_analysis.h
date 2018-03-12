@@ -130,23 +130,24 @@ class ScalarEvolutionAnalysis {
   SENode* AnalyzePhiInstruction(const ir::Instruction* phi);
 };
 
-// Wrapping class for composability.
+// Wrapping class to manipulate SENode pointer using + - * operators.
 struct SENodeDSL {
  public:
-  SENodeDSL(SENode* node, ScalarEvolutionAnalysis* scev)
-      : node_(node), scev_(scev) {}
+  // Implicit on purpose !
+  SENodeDSL(SENode* node) : node_(node), scev_(node->GetSCEVAnalysis()) {}
+
+  operator SENode*() const { return scev_->SimplifyExpression(node_); }
+  SENode* operator->() const { return scev_->SimplifyExpression(node_); }
 
   SENodeDSL operator+(SENode* rhs) const {
-    return SENodeDSL{scev_->CreateAddNode(node_, rhs), scev_};
+    return scev_->CreateAddNode(node_, rhs);
   }
   SENodeDSL operator+(int64_t integer) const {
     return *this + scev_->CreateConstant(integer);
   }
   SENodeDSL operator+(SENodeDSL rhs) const { return *this + rhs.node_; }
 
-  SENodeDSL operator-() const {
-    return SENodeDSL{scev_->CreateNegation(node_), scev_};
-  }
+  SENodeDSL operator-() const { return scev_->CreateNegation(node_); }
   SENodeDSL operator-(SENode* rhs) const {
     return *this + scev_->CreateNegation(rhs);
   }
@@ -156,31 +157,29 @@ struct SENodeDSL {
   SENodeDSL operator-(SENodeDSL rhs) const { return *this - rhs.node_; }
 
   SENodeDSL operator*(SENode* rhs) const {
-    return SENodeDSL{scev_->CreateMultiplyNode(node_, rhs), scev_};
+    return scev_->CreateMultiplyNode(node_, rhs);
   }
   SENodeDSL operator*(int64_t integer) const {
     return *this * scev_->CreateConstant(integer);
   }
   SENodeDSL operator*(SENodeDSL rhs) const { return *this * rhs.node_; }
 
-  operator SENode*() const { return scev_->SimplifyExpression(node_); }
-
   SENode* node_;
   ScalarEvolutionAnalysis* scev_;
 };
 
-SENodeDSL operator+(int64_t lhs, SENodeDSL rhs) { return rhs + lhs; }
-SENodeDSL operator+(SENode* lhs, SENodeDSL rhs) { return rhs + lhs; }
+inline SENodeDSL operator+(int64_t lhs, SENodeDSL rhs) { return rhs + lhs; }
+inline SENodeDSL operator+(SENode* lhs, SENodeDSL rhs) { return rhs + lhs; }
 
-SENodeDSL operator-(int64_t lhs, SENodeDSL rhs) {
-  return SENodeDSL{rhs.scev_->CreateConstant(lhs), rhs.scev_} - rhs;
+inline SENodeDSL operator-(int64_t lhs, SENodeDSL rhs) {
+  return SENodeDSL{rhs.scev_->CreateConstant(lhs)} - rhs;
 }
-SENodeDSL operator-(SENode* lhs, SENodeDSL rhs) {
-  return SENodeDSL{lhs, rhs.scev_} - rhs;
+inline SENodeDSL operator-(SENode* lhs, SENodeDSL rhs) {
+  return SENodeDSL{lhs} - rhs;
 }
 
-SENodeDSL operator*(int64_t lhs, SENodeDSL rhs) { return rhs * lhs; }
-SENodeDSL operator*(SENode* lhs, SENodeDSL rhs) { return rhs * lhs; }
+inline SENodeDSL operator*(int64_t lhs, SENodeDSL rhs) { return rhs * lhs; }
+inline SENodeDSL operator*(SENode* lhs, SENodeDSL rhs) { return rhs * lhs; }
 
 }  // namespace opt
 }  // namespace spvtools

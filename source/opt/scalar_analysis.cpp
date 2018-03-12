@@ -338,5 +338,18 @@ void SENode::DumpDot(std::ostream& out, bool recurse) const {
   }
 }
 
+// SENodeDSL operator+(int64_t lhs, SENodeDSL rhs) { return rhs + lhs; }
+// SENodeDSL operator+(SENode* lhs, SENodeDSL rhs) { return rhs + lhs; }
+
+// SENodeDSL operator-(int64_t lhs, SENodeDSL rhs) {
+//   return SENodeDSL{rhs.scev_->CreateConstant(lhs)} - rhs;
+// }
+// SENodeDSL operator-(SENode* lhs, SENodeDSL rhs) {
+//   return SENodeDSL{lhs} - rhs;
+// }
+
+// SENodeDSL operator*(int64_t lhs, SENodeDSL rhs) { return rhs * lhs; }
+// SENodeDSL operator*(SENode* lhs, SENodeDSL rhs) { return rhs * lhs; }
+
 }  // namespace opt
 }  // namespace spvtools
