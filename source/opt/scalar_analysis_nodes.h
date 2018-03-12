@@ -65,8 +65,6 @@ class SENode {
   // as a root.
   void DumpDot(std::ostream& out, bool recurse = false) const;
 
-  virtual int64_t FoldToSingleValue() const { return 0; }
-
   // Checks if two nodes are the same by hashing them.
   bool operator==(const SENode& other) const;
 
@@ -141,7 +139,7 @@ class SEConstantNode : public SENode {
 
   SENodeType GetType() const final { return Constant; }
 
-  int64_t FoldToSingleValue() const override { return literal_value_; }
+  int64_t FoldToSingleValue() const { return literal_value_; }
 
   SEConstantNode* AsSEConstantNode() override { return this; }
   const SEConstantNode* AsSEConstantNode() const override { return this; }
@@ -192,8 +190,6 @@ class SEAddNode : public SENode {
  public:
   SENodeType GetType() const final { return Add; }
 
-  int64_t FoldToSingleValue() const override;
-
   SEAddNode* AsSEAddNode() override { return this; }
   const SEAddNode* AsSEAddNode() const override { return this; }
 };
@@ -203,8 +199,6 @@ class SEMultiplyNode : public SENode {
  public:
   SENodeType GetType() const final { return Multiply; }
 
-  int64_t FoldToSingleValue() const override;
-
   SEMultiplyNode* AsSEMultiplyNode() override { return this; }
   const SEMultiplyNode* AsSEMultiplyNode() const override { return this; }
 };
@@ -212,10 +206,6 @@ class SEMultiplyNode : public SENode {
 // A node representing a unary negative operation.
 class SENegative : public SENode {
  public:
-  int64_t FoldToSingleValue() const override {
-    return -children_[0]->FoldToSingleValue();
-  }
-
   SENodeType GetType() const final { return Negative; }
 
   SENegative* AsSENegative() override { return this; }
