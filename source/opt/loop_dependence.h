@@ -55,12 +55,18 @@ class LoopDependenceAnalysis {
         scalar_evolution_(context),
         debug_stream_(nullptr){};
 
+  // Finds the dependence between |source| and |destination|.
+  // |source| should be an OpLoad.
+  // |destination| should be an OpStore.
+  // Any direction and distance information found will be stored in
+  // |distance_vector|.
+  // Returns true if independence is found, false otherwise.
   bool GetDependence(const ir::Instruction* source,
                      const ir::Instruction* destination,
                      DistanceVector* distance_vector);
 
-  void DumpIterationSpaceAsDot(std::ostream& out_stream);
-
+  // Sets the ostream for debug information for the analysis.
+  // Set to nullptr to disable debug information.
   void SetDebugStream(std::ostream& debug_stream) {
     debug_stream_ = &debug_stream;
   }
@@ -71,12 +77,12 @@ class LoopDependenceAnalysis {
   // The loop we are analysing the dependence of.
   const ir::Loop& loop_;
 
+  // The ScalarEvolutionAnalysis used by this analysis to store and perform much
+  // of its logic.
   ScalarEvolutionAnalysis scalar_evolution_;
 
+  // The ostream debug information for the analysis to print to.
   std::ostream* debug_stream_;
-
-  std::map<const ir::Instruction*, std::vector<SENode*>>
-      memory_access_to_indice_;
 
   // Returns true if independence can be proven and false if it can't be proven.
   bool ZIVTest(SENode* source, SENode* destination,
@@ -93,13 +99,13 @@ class LoopDependenceAnalysis {
                      DistanceVector* distance_vector);
 
   // Takes for form a*i + c1, a*i + c2
-  // When c1 and c2 are loop invariant and a is constant
-  // c1 and/or c2 contain one or more SEValueUnknown nodes
+  // where c1 and c2 are loop invariant and a is constant.
+  // c1 and/or c2 contain one or more SEValueUnknown nodes.
   bool SymbolicStrongSIVTest(SENode* source, SENode* destination,
                              DistanceVector* distance_vector);
 
   // Takes the form a1*i + c1, a2*i + c2
-  // when a1 = 0
+  // where a1 = 0
   // distance = (c1 - c2) / a2
   // Returns true if independence is proven and false if it can't be proven.
   bool WeakZeroSourceSIVTest(SENode* source, SERecurrentNode* destination,
@@ -107,7 +113,7 @@ class LoopDependenceAnalysis {
                              DistanceVector* distance_vector);
 
   // Takes the form a1*i + c1, a2*i + c2
-  // when a2 = 0
+  // where a2 = 0
   // distance = (c2 - c1) / a1
   // Returns true if independence is proven and false if it can't be proven.
   bool WeakZeroDestinationSIVTest(SERecurrentNode* source, SENode* destination,
@@ -115,7 +121,7 @@ class LoopDependenceAnalysis {
                                   DistanceVector* distance_vector);
 
   // Takes the form a1*i + c1, a2*i + c2
-  // When a1 = -a2
+  // where a1 = -a2
   // distance = (c2 - c1) / 2*a1
   // Returns true if independence is proven and false if it can't be proven.
   bool WeakCrossingSIVTest(SENode* source, SENode* destination,
@@ -163,15 +169,17 @@ class LoopDependenceAnalysis {
   // If the operation can not be completed a nullptr is returned.
   SENode* GetFinalTripInductionNode(SENode* induction_coefficient);
 
-  // Finds the number of induction variables in |node|
-  // Returns -1 on failure
+  // Finds the number of induction variables in |node|.
+  // Returns -1 on failure.
   int64_t CountInductionVariables(SENode* node);
 
   // Finds the number of induction variables shared between |source| and
-  // |destination|
-  // Returns -1 on failure
+  // |destination|.
+  // Returns -1 on failure.
   int64_t CountInductionVariables(SENode* source, SENode* destination);
 
+  // Prints |debug_msg| and "\n" to the ostream pointed to by |debug_stream_|.
+  // Won't print anything if |debug_stream_| is nullptr.
   void PrintDebug(std::string debug_msg);
 };
 
