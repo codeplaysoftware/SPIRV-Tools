@@ -36,9 +36,9 @@ struct DistanceVector {
     GE = 6,
     ALL = 7
   };
-  Directions direction : 3;
-  bool peel_first : 1;
-  bool peel_last : 1;
+  Directions direction;
+  bool peel_first;
+  bool peel_last;
   int64_t distance;
   DistanceVector()
       : direction(Directions::ALL),
