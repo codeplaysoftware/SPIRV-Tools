@@ -728,18 +728,18 @@ TEST_F(PassClassTest, SimplifyMultiplyInductions) {
   const ir::Function* f = spvtest::GetFunction(module, 2);
   opt::ScalarEvolutionAnalysis analysis{context.get()};
 
-  const ir::Instruction* loads[1];
-  const ir::Instruction* stores[1];
+  const ir::Instruction* load = nullptr;
+  const ir::Instruction* store = nullptr;
   int load_count = 0;
   int store_count = 0;
 
   for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 31)) {
     if (inst.opcode() == SpvOp::SpvOpLoad) {
-      loads[load_count] = &inst;
+      load = &inst;
       ++load_count;
     }
     if (inst.opcode() == SpvOp::SpvOpStore) {
-      stores[store_count] = &inst;
+      store = &inst;
       ++store_count;
     }
   }
@@ -749,9 +749,9 @@ TEST_F(PassClassTest, SimplifyMultiplyInductions) {
 
   // Testing [i] - [i] == 0
   ir::Instruction* load_access_chain =
-      context->get_def_use_mgr()->GetDef(loads[0]->GetSingleWordInOperand(0));
+      context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
   ir::Instruction* store_access_chain =
-      context->get_def_use_mgr()->GetDef(stores[0]->GetSingleWordInOperand(0));
+      context->get_def_use_mgr()->GetDef(store->GetSingleWordInOperand(0));
 
   ir::Instruction* load_child = context->get_def_use_mgr()->GetDef(
       load_access_chain->GetSingleWordInOperand(1));
