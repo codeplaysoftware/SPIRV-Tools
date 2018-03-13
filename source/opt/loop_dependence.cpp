@@ -168,6 +168,12 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
 
     // We have multiple induction variables so should attempt an MIV test.
     if (induction_variable_count > 1) {
+      // Currently not handled
+      PrintDebug(
+          "Found multiple induction variables. MIV is currently unhandled. "
+          "Exiting.");
+      distance_vector->direction = DistanceVector::Directions::ALL;
+      return false;
     }
   }
 
