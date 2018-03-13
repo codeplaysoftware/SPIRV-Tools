@@ -57,7 +57,8 @@ class SENodeSimplifyImpl {
   // traversed and the |negation| flag is used to signify that this operation
   // was preceded by a unary negative operation and as such the result should be
   // negated.
-  void GatherAccumulatorsFromChildNodes(SENode* child, bool negation);
+  void GatherAccumulatorsFromChildNodes(SENode* new_node, SENode* child,
+                                        bool negation);
 
   // Given a |multiply| node add to the accumulators for the term type within
   // the |multiply| expression. Will return true if the accumulators could be
@@ -96,7 +97,7 @@ bool SENodeSimplifyImpl::AccumulatorsFromMultiply(SENode* multiply,
       operand_1->GetType() == SENode::RecurrentExpr)
     value_unknown = operand_1;
   else if (operand_2->GetType() == SENode::ValueUnknown ||
-           operand_1->GetType() == SENode::RecurrentExpr)
+           operand_2->GetType() == SENode::RecurrentExpr)
     value_unknown = operand_2;
 
   // Work out which operand is the constant coefficient.
@@ -156,49 +157,50 @@ SENode* SENodeSimplifyImpl::Simplify() {
 }
 
 // Traverse the graph to build up the accumulator objects.
-void SENodeSimplifyImpl::GatherAccumulatorsFromChildNodes(SENode* new_child,
+void SENodeSimplifyImpl::GatherAccumulatorsFromChildNodes(SENode* new_node,
+                                                          SENode* child,
                                                           bool negation) {
   int32_t sign = negation ? -1 : 1;
 
-  if (new_child->GetType() == SENode::Constant) {
+  if (child->GetType() == SENode::Constant) {
     // Collect all the constants and add them together.
     constant_accumulator_ +=
-        new_child->AsSEConstantNode()->FoldToSingleValue() * sign;
+        child->AsSEConstantNode()->FoldToSingleValue() * sign;
 
-  } else if (new_child->GetType() == SENode::ValueUnknown ||
-             new_child->GetType() == SENode::RecurrentExpr) {
+  } else if (child->GetType() == SENode::ValueUnknown ||
+             child->GetType() == SENode::RecurrentExpr) {
     // If we've incountered this term before add to the accumulator for it.
-    if (accumulators_.find(new_child) == accumulators_.end())
-      accumulators_[new_child] = sign;
+    if (accumulators_.find(child) == accumulators_.end())
+      accumulators_[child] = sign;
     else
-      accumulators_[new_child] += sign;
+      accumulators_[child] += sign;
 
-  } else if (new_child->GetType() == SENode::Multiply) {
-    if (!AccumulatorsFromMultiply(new_child, negation)) {
-      node_->AddChild(new_child);
+  } else if (child->GetType() == SENode::Multiply) {
+    if (!AccumulatorsFromMultiply(child, negation)) {
+      new_node->AddChild(child);
     }
 
-  } else if (new_child->GetType() == SENode::Add) {
-    for (SENode* child : *new_child) {
-      GatherAccumulatorsFromChildNodes(child, negation);
+  } else if (child->GetType() == SENode::Add) {
+    for (SENode* next_child : *child) {
+      GatherAccumulatorsFromChildNodes(new_node, next_child, negation);
     }
 
-  } else if (new_child->GetType() == SENode::Negative) {
-    SENode* negated_node = new_child->GetChild(0);
-    GatherAccumulatorsFromChildNodes(negated_node, !negation);
+  } else if (child->GetType() == SENode::Negative) {
+    SENode* negated_node = child->GetChild(0);
+    GatherAccumulatorsFromChildNodes(new_node, negated_node, !negation);
   } else {
     // If we can't work out how to fold the expression just add it back into
     // the graph.
-    node_->AddChild(new_child);
+    new_node->AddChild(child);
   }
 }
 
 SERecurrentNode* SENodeSimplifyImpl::UpdateCoefficent(
     SERecurrentNode* recurrent, int64_t coefficent_update) const {
-  std::unique_ptr<SERecurrentNode> new_recurrent_node{
-      new SERecurrentNode(recurrent->GetParentAnalysis(), recurrent->GetLoop())};
+  std::unique_ptr<SERecurrentNode> new_recurrent_node{new SERecurrentNode(
+      recurrent->GetParentAnalysis(), recurrent->GetLoop())};
 
-  SENode* new_coefficent = analysis_.CreateAddNode(
+  SENode* new_coefficent = analysis_.CreateMultiplyNode(
       recurrent->GetCoefficient(), analysis_.CreateConstant(coefficent_update));
 
   // See if the node can be simplified.
@@ -218,7 +220,7 @@ SENode* SENodeSimplifyImpl::SimplifyPolynomial() {
   std::unique_ptr<SENode> new_add{new SEAddNode(node_->GetParentAnalysis())};
 
   // Traverse the graph and gather the accumulators from it.
-  GatherAccumulatorsFromChildNodes(node_, false);
+  GatherAccumulatorsFromChildNodes(new_add.get(), node_, false);
 
   // Fold all the constants into a single constant node.
   if (constant_accumulator_ != 0) {
@@ -245,6 +247,9 @@ SENode* SENodeSimplifyImpl::SimplifyPolynomial() {
         new_add->AddChild(
             analysis_.CreateMultiplyNode(count_as_constant, term));
       } else {
+        assert(term->GetType() == SENode::RecurrentExpr &&
+               "We only handle value unknowns or recurrent expressions");
+
         // Create a new recurrent expression by adding the count to the
         // coefficient of the old one.
         new_add->AddChild(UpdateCoefficent(term->AsSERecurrentNode(), count));
@@ -269,8 +274,8 @@ SENode* SENodeSimplifyImpl::SimplifyRecurrentExpression(
     SERecurrentNode* recurrent_expr) {
   const std::vector<SENode*>& children = node_->GetChildren();
 
-  std::unique_ptr<SERecurrentNode> recurrent_node{
-      new SERecurrentNode(recurrent_expr->GetParentAnalysis(), recurrent_expr->GetLoop())};
+  std::unique_ptr<SERecurrentNode> recurrent_node{new SERecurrentNode(
+      recurrent_expr->GetParentAnalysis(), recurrent_expr->GetLoop())};
 
   // Create and simplify the new offset node.
   SENode* new_offset = analysis_.CreateAddNode(recurrent_expr->GetOffset(),

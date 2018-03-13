@@ -760,7 +760,7 @@ TEST_F(PassClassTest, SimplifyMultiplyInductions) {
 
   opt::SENode* load_node = analysis.AnalyzeInstruction(load_child);
 
-  // Check that Rec(0,1)*2 has been simplified into Rec(0,3).
+  // Check that Rec(0,1)*2 has been simplified into Rec(0,2)
   opt::SERecurrentNode* load_simplified =
       analysis.SimplifyExpression(load_node)->AsSERecurrentNode();
   EXPECT_TRUE(load_simplified);
@@ -770,20 +770,20 @@ TEST_F(PassClassTest, SimplifyMultiplyInductions) {
       0);
   EXPECT_TRUE(load_simplified->GetCoefficient()
                   ->AsSEConstantNode()
-                  ->FoldToSingleValue() == 3);
+                  ->FoldToSingleValue() == 2);
 
   opt::SENode* store_node = analysis.AnalyzeInstruction(store_child);
   opt::SERecurrentNode* store_simplified =
       analysis.SimplifyExpression(store_node)->AsSERecurrentNode();
 
-  // Check that Rec(0,1)*2 + 5 has been simplified into Rec(5,3).
+  // Check that Rec(0,1)*2 + 5 has been simplified into Rec(5,2).
   EXPECT_TRUE(store_simplified->GetType() == opt::SENode::RecurrentExpr);
   EXPECT_TRUE(
       store_simplified->GetOffset()->AsSEConstantNode()->FoldToSingleValue() ==
       5);
   EXPECT_TRUE(store_simplified->GetCoefficient()
                   ->AsSEConstantNode()
-                  ->FoldToSingleValue() == 3);
+                  ->FoldToSingleValue() == 2);
 }
 
 }  // namespace
