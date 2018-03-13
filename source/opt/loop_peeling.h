@@ -172,9 +172,9 @@ class LoopPeeling {
 // To avoid code size explosion, too large loops will not be peeled.
 class LoopPeelingPass : public Pass {
   enum class PeelDirection {
-    None,    // Cannot be peeled
-    Before,  // Can be peeled before
-    After    // Can be peeled last
+    kNone,    // Cannot peel
+    kBefore,  // Can peel before
+    kAfter    // Can peel last
   };
 
   class LoopPeelingInfo {
@@ -188,18 +188,9 @@ class LoopPeelingPass : public Pass {
           scev_analysis_(scev_analysis),
           loop_max_iterations_(loop_max_iterations) {}
 
-    Direction GetPeelingInfo(ir::BasicBlock* bb);
+    Direction GetPeelingInfo(ir::BasicBlock* bb) const;
 
    private:
-    // Abstraction of <, >, <= and >=
-    enum class CompareOp {
-      None,  // default/invalid
-      LT,    // <
-      GT,    // >
-      LE,    // <=
-      GE     // >=
-    };
-
     ir::IRContext* context_;
     ir::Loop* loop_;
     opt::ScalarEvolutionAnalysis* scev_analysis_;
@@ -208,18 +199,15 @@ class LoopPeelingPass : public Pass {
     uint32_t GetFirstLoopInvariantOperand(ir::Instruction* condition) const;
     uint32_t GetFirstNonLoopInvariantOperand(ir::Instruction* condition) const;
 
-    SEConstantNode* Divide(SENode* dividend, SENode* divisor) const;
-
     SENode* GetLastIterationValue(SERecurrentNode* rec) const;
 
     SENode* GetIterationValueAt(SERecurrentNode* rec, SENode* x) const;
 
     Direction HandleEqual(SENode* lhs, SENode* rhs) const;
-    Direction HandleInequality(CompareOp cmp_op, SENode* lhs,
-                               SERecurrentNode* rhs) const;
+    Direction HandleInequality(SENode* lhs, SERecurrentNode* rhs) const;
 
     static Direction GetNoneDirection() {
-      return Direction{LoopPeelingPass::PeelDirection::None, 0};
+      return Direction{LoopPeelingPass::PeelDirection::kNone, 0};
     }
   };
 
