@@ -162,9 +162,6 @@ class LoopDependenceAnalysis {
   // |destination|
   // Returns -1 on failure
   int64_t CountInductionVariables(SENode* source, SENode* destination);
-
-  // Finds and returns the loop descriptor for the loop stored by this analysis.
-  ir::LoopDescriptor* GetLoopDescriptor();
 };
 
 }  // namespace ir

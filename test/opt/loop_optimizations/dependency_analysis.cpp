@@ -499,9 +499,9 @@ void main(){
   int a = 2;
   for (int i = 0; i < N; i++) {
     arr[i+2*N] = arr[i+N];
-    arr2[i+2*N] = arr2[i+N] + C;
+    arr2[i+N] = arr2[i+2*N] + C;
     arr3[2*i+2*N+1] = arr3[2*i+N+1];
-    arr4[a*i+2*N+1] = arr4[a*i+N+1];
+    arr4[a*i+N+1] = arr4[a*i+2*N+1];
   }
 }
 */
@@ -513,7 +513,11 @@ TEST(DependencyAnalysis, SymbolicSIV) {
                OpExecutionMode %4 OriginUpperLeft
                OpSource GLSL 440
                OpName %4 "main"
+               OpName %8 "N"
                OpName %12 "c"
+               OpName %19 "C"
+               OpName %21 "a"
+               OpName %22 "i"
                OpName %36 "arr"
                OpName %50 "arr2"
                OpName %66 "arr3"
@@ -545,6 +549,10 @@ TEST(DependencyAnalysis, SymbolicSIV) {
          %72 = OpConstant %6 1
           %4 = OpFunction %2 None %3
           %5 = OpLabel
+          %8 = OpVariable %7 Function
+         %19 = OpVariable %7 Function
+         %21 = OpVariable %7 Function
+         %22 = OpVariable %7 Function
          %36 = OpVariable %35 Function
          %50 = OpVariable %49 Function
          %66 = OpVariable %65 Function
@@ -552,6 +560,10 @@ TEST(DependencyAnalysis, SymbolicSIV) {
          %16 = OpAccessChain %15 %12 %14
          %17 = OpLoad %9 %16
          %18 = OpConvertFToS %6 %17
+               OpStore %8 %18
+               OpStore %19 %20
+               OpStore %21 %20
+               OpStore %22 %23
                OpBranch %24
          %24 = OpLabel
         %101 = OpPhi %6 %23 %5 %100 %27
@@ -568,13 +580,13 @@ TEST(DependencyAnalysis, SymbolicSIV) {
          %45 = OpLoad %6 %44
          %46 = OpAccessChain %7 %36 %40
                OpStore %46 %45
-         %53 = OpIMul %6 %20 %18
-         %54 = OpIAdd %6 %101 %53
-         %57 = OpIAdd %6 %101 %18
+         %53 = OpIAdd %6 %101 %18
+         %56 = OpIMul %6 %20 %18
+         %57 = OpIAdd %6 %101 %56
          %58 = OpAccessChain %7 %50 %57
          %59 = OpLoad %6 %58
          %61 = OpIAdd %6 %59 %20
-         %62 = OpAccessChain %7 %50 %54
+         %62 = OpAccessChain %7 %50 %53
                OpStore %62 %61
          %68 = OpIMul %6 %20 %101
          %70 = OpIMul %6 %20 %18
@@ -588,19 +600,20 @@ TEST(DependencyAnalysis, SymbolicSIV) {
          %81 = OpAccessChain %7 %66 %73
                OpStore %81 %80
          %85 = OpIMul %6 %20 %101
-         %87 = OpIMul %6 %20 %18
-         %88 = OpIAdd %6 %85 %87
-         %89 = OpIAdd %6 %88 %72
-         %92 = OpIMul %6 %20 %101
-         %94 = OpIAdd %6 %92 %18
+         %87 = OpIAdd %6 %85 %18
+         %88 = OpIAdd %6 %87 %72
+         %91 = OpIMul %6 %20 %101
+         %93 = OpIMul %6 %20 %18
+         %94 = OpIAdd %6 %91 %93
          %95 = OpIAdd %6 %94 %72
          %96 = OpAccessChain %7 %82 %95
          %97 = OpLoad %6 %96
-         %98 = OpAccessChain %7 %82 %89
+         %98 = OpAccessChain %7 %82 %88
                OpStore %98 %97
                OpBranch %27
          %27 = OpLabel
         %100 = OpIAdd %6 %101 %72
+               OpStore %22 %100
                OpBranch %24
          %26 = OpLabel
                OpReturn

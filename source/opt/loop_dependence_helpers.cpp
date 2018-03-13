@@ -280,10 +280,6 @@ SENode* LoopDependenceAnalysis::GetFinalTripInductionNode(
       scalar_evolution_.CreateMultiplyNode(trip_count, induction_coefficient)));
 }
 
-ir::LoopDescriptor* LoopDependenceAnalysis::GetLoopDescriptor() {
-  return context_->GetLoopDescriptor(loop_.GetHeaderBlock()->GetParent());
-}
-
 int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* node) {
   if (!node) {
     return -1;

@@ -111,6 +111,24 @@ class SENode {
     return recurrent_nodes;
   }
 
+  // Collect all the value unknown nodes in this SENode
+  std::vector<SEValueUnknown*> CollectValueUnknownNodes() {
+    std::vector<SEValueUnknown*> value_unknown_nodes{};
+
+    if (auto value_unknown_node = AsSEValueUnknown()) {
+      value_unknown_nodes.push_back(value_unknown_node);
+    }
+
+    for (auto child : GetChildren()) {
+      auto child_value_unknown_nodes = child->CollectValueUnknownNodes();
+      value_unknown_nodes.insert(value_unknown_nodes.end(),
+                                 child_value_unknown_nodes.begin(),
+                                 child_value_unknown_nodes.end());
+    }
+
+    return value_unknown_nodes;
+  }
+
   // Iterator to iterate over the entire DAG. Even though we are using the tree
   // iterator it should still be safe to iterate over. However, nodes with
   // multiple parents will be visited multiple times, unlike in a tree.

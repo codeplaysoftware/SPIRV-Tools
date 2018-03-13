@@ -205,9 +205,16 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
                                            SENode* coefficient,
                                            DistanceVector* distance_vector) {
   // If both source and destination are SERecurrentNodes we can perform tests
-  // basedon distance. If one or both are not SERecurrentNodes we must attempt a
-  // symbolic test.
-  if (!source->AsSERecurrentNode() || !destination->AsSERecurrentNode()) {
+  // based on distance.
+  // If either source or destination contain value unknown nodes or if one or
+  // both are not SERecurrentNodes we must attempt a symbolic test.
+  std::vector<SEValueUnknown*> source_value_unknown_nodes =
+      source->CollectValueUnknownNodes();
+  std::vector<SEValueUnknown*> destination_value_unknown_nodes =
+      destination->CollectValueUnknownNodes();
+  if (source_value_unknown_nodes.size() > 0 ||
+      destination_value_unknown_nodes.size() > 0 ||
+      !source->AsSERecurrentNode() || !destination->AsSERecurrentNode()) {
     return SymbolicStrongSIVTest(source, destination, distance_vector);
   }
 
