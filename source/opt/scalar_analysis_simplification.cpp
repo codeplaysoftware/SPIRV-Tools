@@ -96,7 +96,7 @@ bool SENodeSimplifyImpl::AccumulatorsFromMultiply(SENode* multiply,
       operand_1->GetType() == SENode::RecurrentExpr)
     value_unknown = operand_1;
   else if (operand_2->GetType() == SENode::ValueUnknown ||
-           operand_1->GetType() == SENode::RecurrentExpr)
+           operand_2->GetType() == SENode::RecurrentExpr)
     value_unknown = operand_2;
 
   // Work out which operand is the constant coefficient.

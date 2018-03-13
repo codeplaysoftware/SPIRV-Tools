@@ -25,24 +25,23 @@
 namespace spvtools {
 namespace opt {
 
-enum DVDirections {
-  NONE = 0,
-  LT = 1,
-  EQ = 2,
-  LE = 3,
-  GT = 4,
-  NE = 5,
-  GE = 6,
-  ALL = 7
-};
-
-struct DVEntry {
-  DVDirections direction : 3;
+struct DistanceVector {
+  enum Directions {
+    NONE = 0,
+    LT = 1,
+    EQ = 2,
+    LE = 3,
+    GT = 4,
+    NE = 5,
+    GE = 6,
+    ALL = 7
+  };
+  Directions direction : 3;
   bool peel_first : 1;
   bool peel_last : 1;
   int64_t distance;
-  DVEntry()
-      : direction(DVDirections::ALL),
+  DistanceVector()
+      : direction(Directions::ALL),
         peel_first(false),
         peel_last(false),
         distance(0) {}
@@ -54,7 +53,8 @@ class LoopDependenceAnalysis {
       : context_(context), loop_(loop), scalar_evolution_(context){};
 
   bool GetDependence(const ir::Instruction* source,
-                     const ir::Instruction* destination, DVEntry* dv_entry);
+                     const ir::Instruction* destination,
+                     DistanceVector* distance_vector);
 
   void DumpIterationSpaceAsDot(std::ostream& out_stream);
 
@@ -69,8 +69,9 @@ class LoopDependenceAnalysis {
   std::map<const ir::Instruction*, std::vector<SENode*>>
       memory_access_to_indice_;
 
-  // Returns true if independence can be proven and false if it can't be proven
-  bool ZIVTest(SENode* source, SENode* destination, DVEntry* dv_entry);
+  // Returns true if independence can be proven and false if it can't be proven.
+  bool ZIVTest(SENode* source, SENode* destination,
+               DistanceVector* distance_vector);
 
   // Takes the form a*i + c1, a*i + c2
   // When c1 and c2 are loop invariant and a is constant
@@ -78,75 +79,82 @@ class LoopDependenceAnalysis {
   //              < if distance > 0
   // direction =  = if distance = 0
   //              > if distance < 0
-  // Returns true if independence is proven and false if it can't be proven
+  // Returns true if independence is proven and false if it can't be proven.
   bool StrongSIVTest(SERecurrentNode* source, SERecurrentNode* destination,
-                     SENode* coeff, DVEntry* dv_entry);
+                     SENode* coeff, DistanceVector* distance_vector);
+
+  // Takes for form a*i + c1, a*i + c2
+  // When c1 and c2 are loop invariant and a is constant
+  // c1 and/or c2 contain one or more SEValueUnknown nodes
+  bool SymbolicStrongSIVTest(SENode* source, SENode* destination,
+                             DistanceVector* distance_vector);
 
   // Takes the form a1*i + c1, a2*i + c2
   // when a1 = 0
   // distance = (c1 - c2) / a2
-  // Returns true if independence is proven and false if it can't be proven
+  // Returns true if independence is proven and false if it can't be proven.
   bool WeakZeroSourceSIVTest(SENode* source, SERecurrentNode* destination,
-                             SENode* coefficient, DVEntry* dv_entry);
+                             SENode* coefficient,
+                             DistanceVector* distance_vector);
 
   // Takes the form a1*i + c1, a2*i + c2
   // when a2 = 0
   // distance = (c2 - c1) / a1
-  // Returns true if independence is proven and false if it can't be proven
+  // Returns true if independence is proven and false if it can't be proven.
   bool WeakZeroDestinationSIVTest(SERecurrentNode* source, SENode* destination,
-                                  SENode* coefficient, DVEntry* dv_entry);
+                                  SENode* coefficient,
+                                  DistanceVector* distance_vector);
 
   // Takes the form a1*i + c1, a2*i + c2
   // When a1 = -a2
   // distance = (c2 - c1) / 2*a1
-  // Returns true if independence is proven and false if it can't be proven
+  // Returns true if independence is proven and false if it can't be proven.
   bool WeakCrossingSIVTest(SERecurrentNode* source,
                            SERecurrentNode* destination, SENode* coefficient,
-                           DVEntry* dv_entry);
-
-  // Takes the form a1*i + c1, a2*i + c2
-  // Where a1 and a2 are constant and different
-  // Returns true if independence is proven and false if it can't be proven
-  // bool WeakSIVTest(SENode* source, SENode* destination, SENode* src_coeff,
-  //                 SENode* dest_coeff, DVEntry* dv_entry);
-
-  // Returns true if |value| is between |bound_one| and |bound_two| (inclusive)
-  bool IsWithinBounds(int64_t value, int64_t bound_one, int64_t bound_two);
+                           DistanceVector* distance_vector);
 
   // Finds the lower bound of the loop as an SENode* and returns the resulting
   // SENode. The lower bound is evaluated as the bound with the lesser signed
   // value.
-  // If the operations can not be completed a nullptr is returned
-  SEConstantNode* GetLowerBound();
+  // If the operations can not be completed a nullptr is returned.
+  SENode* GetLowerBound();
 
   // Finds the upper bound of the loop as an SENode* and returns the resulting
   // SEnode. The upper bound is evaluated as the bound with the greater signed
   // value.
-  // If the operations can not be completed a nullptr is returned
-  SEConstantNode* GetUpperBound();
+  // If the operations can not be completed a nullptr is returned.
+  SENode* GetUpperBound();
 
   // Finds the lower and upper bounds of the loop as SENode* and returns a pair
-  // of the resulting SENodes
+  // of the resulting SENodes.
   // Either or both of the pointers in the std::pair may be nullptr if the
-  // bounds could not be found
-  std::pair<SEConstantNode*, SEConstantNode*> GetLoopLowerUpperBounds();
+  // bounds could not be found.
+  std::pair<SENode*, SENode*> GetLoopLowerUpperBounds();
+
+  // Returns true if |value| is between |bound_one| and |bound_two| (inclusive).
+  bool IsWithinBounds(int64_t value, int64_t bound_one, int64_t bound_two);
+
+  // Returns true if |distance| is provably within the loop bounds.
+  // This method is able to handle a small number of symbolic cases not handled
+  // by IsWithinBounds.
+  bool IsProvablyOutwithLoopBounds(SENode* distance);
 
   // Finds the loop bounds as upper_bound - lower_bound and returns the
-  // resulting SENode
-  // If the operations can not be completed a nullptr is returned
+  // resulting SENode.
+  // If the operations can not be completed a nullptr is returned.
   SENode* GetTripCount();
 
   // Finds the value of the induction variable at the first trip of the loop and
-  // returns the resulting SENode
-  // If the operation can not be completed a nullptr is returned
+  // returns the resulting SENode.
+  // If the operation can not be completed a nullptr is returned.
   SENode* GetFirstTripInductionNode();
 
   // Finds the value of the induction variable at the final trip of the loop and
-  // returns the resulting SENode
-  // If the operation can not be completed a nullptr is returned
+  // returns the resulting SENode.
+  // If the operation can not be completed a nullptr is returned.
   SENode* GetFinalTripInductionNode();
 
-  // Finds and returns the loop descriptor for the loop stored by this analysis
+  // Finds and returns the loop descriptor for the loop stored by this analysis.
   ir::LoopDescriptor* GetLoopDescriptor();
 };
 

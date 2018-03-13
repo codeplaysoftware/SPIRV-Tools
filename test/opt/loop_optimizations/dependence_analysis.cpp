@@ -120,7 +120,7 @@ TEST_F(PassClassTest, BasicDependenceTest) {
 
   EXPECT_TRUE(store);
 
-  opt::DVEntry dv_entry{};
+  opt::DistanceVector dv_entry{};
   EXPECT_FALSE(analysis.GetDependence(
       store, context->get_def_use_mgr()->GetDef(31), &dv_entry));
   analysis.DumpIterationSpaceAsDot(std::cout);

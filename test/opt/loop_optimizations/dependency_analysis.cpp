@@ -142,7 +142,7 @@ TEST(DependencyAnalysis, ZIV) {
     EXPECT_TRUE(store[i]);
   }
 
-  opt::DVEntry dv_entry{};
+  opt::DistanceVector dv_entry{};
 
   // 29 -> 30 tests looking through constants
   EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(29),
@@ -287,7 +287,7 @@ TEST(DependencyAnalysis, SymbolicZIV) {
     EXPECT_TRUE(store[i]);
   }
 
-  opt::DVEntry dv_entry{};
+  opt::DistanceVector dv_entry{};
 
   // independent due to loop bounds (won't enter if N <= 0)
   // 39 -> 40 tests looking through symbols and multiplicaiton
@@ -427,40 +427,40 @@ TEST(DependencyAnalysis, SIV) {
   // = dependence
   // 29 -> 30 tests looking at SIV in same array
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(29),
                                         store[0], &dv_entry));
-    EXPECT_EQ(dv_entry.direction, opt::DVDirections::EQ);
+    EXPECT_EQ(dv_entry.direction, opt::DistanceVector::Directions::EQ);
     EXPECT_EQ(dv_entry.distance, 0);
   }
 
-  // < -1 dependence
+  // < 1 dependence
   // 40 -> 41 tests looking at SIV in same array with addition
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(40),
                                         store[1], &dv_entry));
-    EXPECT_EQ(dv_entry.direction, opt::DVDirections::LT);
-    EXPECT_EQ(dv_entry.distance, -1);
+    EXPECT_EQ(dv_entry.direction, opt::DistanceVector::Directions::LT);
+    EXPECT_EQ(dv_entry.distance, 1);
   }
 
-  // > 1 dependence
+  // > -1 dependence
   // 50 -> 51 tests looking at SIV in same array with subtraction
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(50),
                                         store[2], &dv_entry));
-    EXPECT_EQ(dv_entry.direction, opt::DVDirections::GT);
-    EXPECT_EQ(dv_entry.distance, 1);
+    EXPECT_EQ(dv_entry.direction, opt::DistanceVector::Directions::GT);
+    EXPECT_EQ(dv_entry.distance, -1);
   }
 
   // =,> dependence
   // 57 -> 58 tests looking at SIV in same array with multiplication
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(57),
                                         store[3], &dv_entry));
-    EXPECT_EQ(dv_entry.direction, opt::DVDirections::GE);
+    EXPECT_EQ(dv_entry.direction, opt::DistanceVector::Directions::GE);
   }
 }
 
@@ -613,28 +613,28 @@ TEST(DependencyAnalysis, SymbolicSIV) {
   // independent due to loop bounds (won't enter when N <= 0)
   // 45 -> 46 tests looking through SIV and symbols with multiplication
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(45),
                                        store[0], &dv_entry));
   }
 
   // 59 -> 62 tests looking through SIV and symbols with multiplication and + C
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(59),
                                        store[1], &dv_entry));
   }
 
   // 80 -> 81 tests looking through arithmetic on SIV and symbols
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(80),
                                        store[2], &dv_entry));
   }
 
   // 97 -> 98 tests looking through symbol arithmetic on SIV and symbols
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(97),
                                        store[3], &dv_entry));
   }
@@ -839,7 +839,7 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(39),
                                         store, &dv_entry));
   }
@@ -858,7 +858,7 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(59),
                                         store, &dv_entry));
   }
@@ -878,7 +878,7 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(84),
                                         store, &dv_entry));
   }
@@ -897,7 +897,7 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(105),
                                         store, &dv_entry));
   }
@@ -1012,7 +1012,7 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
   // Tests identifying peel first with weak zero with destination as zero index.
   // 26 -> 27
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(26),
                                         store[0], &dv_entry));
     EXPECT_TRUE(dv_entry.peel_first);
@@ -1021,7 +1021,7 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
   // Tests identifying peel first with weak zero with source as zero index.
   // 31 -> 32
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(31),
                                         store[1], &dv_entry));
     EXPECT_TRUE(dv_entry.peel_first);
@@ -1030,7 +1030,7 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
   // Tests identifying peel first with weak zero with destination as zero index.
   // 37 -> 38
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(37),
                                         store[2], &dv_entry));
     EXPECT_TRUE(dv_entry.peel_last);
@@ -1039,7 +1039,7 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
   // Tests identifying peel first with weak zero with source as zero index.
   // 42 -> 43
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(42),
                                         store[3], &dv_entry));
     EXPECT_TRUE(dv_entry.peel_last);
@@ -1159,51 +1159,51 @@ TEST(DependencyAnalysis, MultipleSubscript) {
 
   // 30 -> 31
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(30),
                                         store[0], &dv_entry));
-    EXPECT_EQ(dv_entry.direction, opt::DVDirections::EQ);
+    EXPECT_EQ(dv_entry.direction, opt::DistanceVector::Directions::EQ);
     EXPECT_EQ(dv_entry.distance, 0);
   }
 
   // 36 -> 37
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(36),
-                                        store[1], &dv_entry));
-    EXPECT_EQ(dv_entry.direction, opt::DVDirections::NONE);
+                                       store[1], &dv_entry));
+    EXPECT_EQ(dv_entry.direction, opt::DistanceVector::Directions::NONE);
   }
 
   // 41 -> 42
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(41),
-                                        store[2], &dv_entry));
-    EXPECT_EQ(dv_entry.direction, opt::DVDirections::NONE);
+                                       store[2], &dv_entry));
+    EXPECT_EQ(dv_entry.direction, opt::DistanceVector::Directions::NONE);
   }
 
   // 46 -> 47
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(46),
-                                        store[3], &dv_entry));
-    EXPECT_EQ(dv_entry.direction, opt::DVDirections::NONE);
+                                       store[3], &dv_entry));
+    EXPECT_EQ(dv_entry.direction, opt::DistanceVector::Directions::NONE);
   }
 
   // 51 -> 52
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(51),
-                                        store[4], &dv_entry));
-    EXPECT_EQ(dv_entry.direction, opt::DVDirections::NONE);
+                                       store[4], &dv_entry));
+    EXPECT_EQ(dv_entry.direction, opt::DistanceVector::Directions::NONE);
   }
 
   // 54 -> 55
   {
-    opt::DVEntry dv_entry{};
+    opt::DistanceVector dv_entry{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(54),
-                                        store[5], &dv_entry));
-    EXPECT_EQ(dv_entry.direction, opt::DVDirections::NONE);
+                                       store[5], &dv_entry));
+    EXPECT_EQ(dv_entry.direction, opt::DistanceVector::Directions::NONE);
   }
 }
 
