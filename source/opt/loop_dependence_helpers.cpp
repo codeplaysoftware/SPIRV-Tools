@@ -353,5 +353,11 @@ void LoopDependenceAnalysis::DumpIterationSpaceAsDot(std::ostream& out_stream) {
   out_stream << "}\n";
 }
 
+void LoopDependenceAnalysis::PrintDebug(std::string debug_msg) {
+  if (debug_stream_) {
+    (*debug_stream_) << debug_msg << "\n";
+  }
+}
+
 }  // namespace opt
 }  // namespace spvtools

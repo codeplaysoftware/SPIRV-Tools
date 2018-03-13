@@ -50,13 +50,20 @@ struct DistanceVector {
 class LoopDependenceAnalysis {
  public:
   LoopDependenceAnalysis(ir::IRContext* context, const ir::Loop& loop)
-      : context_(context), loop_(loop), scalar_evolution_(context){};
+      : context_(context),
+        loop_(loop),
+        scalar_evolution_(context),
+        debug_stream_(nullptr){};
 
   bool GetDependence(const ir::Instruction* source,
                      const ir::Instruction* destination,
                      DistanceVector* distance_vector);
 
   void DumpIterationSpaceAsDot(std::ostream& out_stream);
+
+  void SetDebugStream(std::ostream& debug_stream) {
+    debug_stream_ = &debug_stream;
+  }
 
  private:
   ir::IRContext* context_;
@@ -65,6 +72,8 @@ class LoopDependenceAnalysis {
   const ir::Loop& loop_;
 
   ScalarEvolutionAnalysis scalar_evolution_;
+
+  std::ostream* debug_stream_;
 
   std::map<const ir::Instruction*, std::vector<SENode*>>
       memory_access_to_indice_;
@@ -162,6 +171,8 @@ class LoopDependenceAnalysis {
   // |destination|
   // Returns -1 on failure
   int64_t CountInductionVariables(SENode* source, SENode* destination);
+
+  void PrintDebug(std::string debug_msg);
 };
 
 }  // namespace ir

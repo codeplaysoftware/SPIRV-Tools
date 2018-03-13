@@ -32,14 +32,7 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
   ir::Instruction* destination_array = context_->get_def_use_mgr()->GetDef(
       destination_access_chain->GetSingleWordInOperand(0));
   if (source_array != destination_array) {
-    distance_vector->direction = DistanceVector::Directions::NONE;
-    return true;
-  }
-
-  // If the access chains somehow have a different number of operands they store
-  // and load must be independent.
-  if (source_access_chain->NumOperands() !=
-      destination_access_chain->NumOperands()) {
+    PrintDebug("Proved independence through different arrays.");
     distance_vector->direction = DistanceVector::Directions::NONE;
     return true;
   }
@@ -83,8 +76,10 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
 
     // We have no induction variables so can apply a ZIV test.
     if (induction_variable_count == 0) {
+      PrintDebug("Found 0 induction variables.");
       if (ZIVTest(source_node, destination_node,
                   &distance_vector_entries[subscript])) {
+        PrintDebug("Proved independence with ZIVTest.");
         distance_vector->direction = DistanceVector::Directions::NONE;
         return true;
       }
@@ -92,6 +87,7 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
 
     // We have only one induction variable so should attempt an SIV test.
     if (induction_variable_count == 1) {
+      PrintDebug("Found 1 induction variable.");
       int64_t source_induction_count = CountInductionVariables(source_node);
       int64_t destination_induction_count =
           CountInductionVariables(destination_node);
@@ -99,10 +95,12 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
       // If the source node has no induction variables we can apply a
       // WeakZeroSrcTest.
       if (source_induction_count == 0) {
+        PrintDebug("Found source has no induction variable.");
         if (WeakZeroSourceSIVTest(
                 source_node, destination_node->AsSERecurrentNode(),
                 destination_node->AsSERecurrentNode()->GetCoefficient(),
                 &distance_vector_entries[subscript])) {
+          PrintDebug("Proved independence with WeakZeroSourceSIVTest.");
           distance_vector->direction = DistanceVector::Directions::NONE;
           return true;
         }
@@ -111,10 +109,12 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
       // If the destination has no induction variables we can apply a
       // WeakZeroDestTest.
       if (destination_induction_count == 0) {
+        PrintDebug("Found destination has no induction variable.");
         if (WeakZeroDestinationSIVTest(
                 source_node->AsSERecurrentNode(), destination_node,
                 source_node->AsSERecurrentNode()->GetCoefficient(),
                 &distance_vector_entries[subscript])) {
+          PrintDebug("Proved independence with WeakZeroDestinationSIVTest.");
           distance_vector->direction = DistanceVector::Directions::NONE;
           return true;
         }
@@ -127,8 +127,10 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
           source_node->CollectRecurrentNodes();
       std::vector<SERecurrentNode*> destination_recurrent_nodes =
           destination_node->CollectRecurrentNodes();
+
       if (source_recurrent_nodes.size() == 1 &&
           destination_recurrent_nodes.size() == 1) {
+        PrintDebug("Found source and destination have 1 induction variable.");
         SERecurrentNode* source_recurrent_expr =
             *source_recurrent_nodes.begin();
         SERecurrentNode* destination_recurrent_expr =
@@ -137,9 +139,11 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
         // If the coefficients are identical we can apply a StrongSIVTest.
         if (source_recurrent_expr->GetCoefficient() ==
             destination_recurrent_expr->GetCoefficient()) {
+          PrintDebug("Found source and destination share coefficient.");
           if (StrongSIVTest(source_node, destination_node,
                             source_recurrent_expr->GetCoefficient(),
                             &distance_vector_entries[subscript])) {
+            PrintDebug("Proved independence with StrongSIVTest");
             distance_vector->direction = DistanceVector::Directions::NONE;
             return true;
           }
@@ -150,9 +154,11 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
         if (source_recurrent_expr->GetCoefficient() ==
             scalar_evolution_.CreateNegation(
                 destination_recurrent_expr->GetCoefficient())) {
+          PrintDebug("Found source coefficient = -destination coefficient.");
           if (WeakCrossingSIVTest(source_node, destination_node,
                                   source_recurrent_expr->GetCoefficient(),
                                   &distance_vector_entries[subscript])) {
+            PrintDebug("Proved independence with WeakCrossingSIVTest");
             distance_vector->direction = DistanceVector::Directions::NONE;
             return true;
           }
@@ -167,6 +173,7 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
 
   // We were unable to prove independence so must gather all of the direction
   // information we found.
+  PrintDebug("Couldn't prove independence. Collecting direction information.");
   distance_vector->direction = DistanceVector::Directions::NONE;
   for (size_t subscript = 0; subscript < distance_vector_entries.size();
        ++subscript) {
@@ -189,12 +196,15 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
 
 bool LoopDependenceAnalysis::ZIVTest(SENode* source, SENode* destination,
                                      DistanceVector* distance_vector) {
+  PrintDebug("Performing ZIVTest");
   // If source == destination, dependence with direction = and distance 0.
   if (source == destination) {
+    PrintDebug("ZIVTest found EQ dependence.");
     distance_vector->direction = DistanceVector::Directions::EQ;
     distance_vector->distance = 0;
     return false;
   } else {
+    PrintDebug("ZIVTest found independence.");
     // Otherwise we prove independence.
     distance_vector->direction = DistanceVector::Directions::NONE;
     return true;
@@ -204,6 +214,7 @@ bool LoopDependenceAnalysis::ZIVTest(SENode* source, SENode* destination,
 bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
                                            SENode* coefficient,
                                            DistanceVector* distance_vector) {
+  PrintDebug("Performing StrongSIVTest.");
   // If both source and destination are SERecurrentNodes we can perform tests
   // based on distance.
   // If either source or destination contain value unknown nodes or if one or
@@ -213,9 +224,18 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
   std::vector<SEValueUnknown*> destination_value_unknown_nodes =
       destination->CollectValueUnknownNodes();
   if (source_value_unknown_nodes.size() > 0 ||
-      destination_value_unknown_nodes.size() > 0 ||
-      !source->AsSERecurrentNode() || !destination->AsSERecurrentNode()) {
+      destination_value_unknown_nodes.size() > 0) {
+    PrintDebug(
+        "StrongSIVTest found symbolics. Will attempt SymbolicStrongSIVTest.");
     return SymbolicStrongSIVTest(source, destination, distance_vector);
+  }
+
+  if (!source->AsSERecurrentNode() || !destination->AsSERecurrentNode()) {
+    PrintDebug(
+        "StrongSIVTest could not simplify source and destination to "
+        "SERecurrentNodes so will exit.");
+    distance_vector->direction = DistanceVector::Directions::ALL;
+    return false;
   }
 
   // Build an SENode for distance.
@@ -231,10 +251,15 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
   SEConstantNode* delta_constant = offset_delta->AsSEConstantNode();
   SEConstantNode* coefficient_constant = coefficient->AsSEConstantNode();
   if (delta_constant && coefficient_constant) {
+    PrintDebug(
+        "StrongSIVTest folding offset_delta and coefficient to constants.");
     int64_t delta_value = delta_constant->FoldToSingleValue();
     int64_t coefficient_value = coefficient_constant->FoldToSingleValue();
     // Check if the distance is not integral to try to prove independence.
     if (delta_value % coefficient_value != 0) {
+      PrintDebug(
+          "StrongSIVTest proved independence through distance not being an "
+          "integer.");
       distance_vector->direction = DistanceVector::Directions::NONE;
       return true;
     } else {
@@ -245,6 +270,7 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
     // distance.
     // As a result we can't perform the rest of the pass and must assume
     // dependence in all directions.
+    PrintDebug("StrongSIVTest could not produce a distance. Must exit.");
     distance_vector->distance = DistanceVector::Directions::ALL;
     return false;
   }
@@ -254,6 +280,7 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
   SEConstantNode* lower_bound = GetLowerBound()->AsSEConstantNode();
   SEConstantNode* upper_bound = GetUpperBound()->AsSEConstantNode();
   if (lower_bound && upper_bound) {
+    PrintDebug("StrongSIVTest found bounds as SEConstantNodes.");
     SENode* bounds = scalar_evolution_.SimplifyExpression(
         scalar_evolution_.CreateSubtraction(upper_bound, lower_bound));
 
@@ -263,6 +290,9 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
       // If the absolute value of the distance is > upper bound - lower bound
       // then we prove independence.
       if (llabs(distance) > bounds_value) {
+        PrintDebug(
+            "StrongSIVTest proved independence through distance escaping the "
+            "loop bounds.");
         distance_vector->direction = DistanceVector::Directions::NONE;
         distance_vector->distance = distance;
         return true;
@@ -274,11 +304,12 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
   //             { < if distance > 0
   // direction = { = if distance == 0
   //             { > if distance < 0
-
+  PrintDebug(
+      "StrongSIVTest could not prove independence. Gathering direction "
+      "information.");
   if (distance > 0) {
     distance_vector->direction = DistanceVector::Directions::LT;
     distance_vector->distance = distance;
-
     return false;
   }
   if (distance == 0) {
@@ -294,25 +325,38 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
 
   // We were unable to prove independence or discern any additional information
   // Must assume <=> direction.
+  PrintDebug(
+      "StrongSIVTest was unable to determine any dependence information.");
   distance_vector->direction = DistanceVector::Directions::ALL;
   return false;
 }
 
 bool LoopDependenceAnalysis::SymbolicStrongSIVTest(
     SENode* source, SENode* destination, DistanceVector* distance_vector) {
+  PrintDebug("Performing SymbolicStrongSIVTest.");
   SENode* source_destination_delta = scalar_evolution_.SimplifyExpression(
       scalar_evolution_.CreateSubtraction(source, destination));
   // Using the offset delta we can prove loop bounds independence under some
   // symbolic cases
   if (IsProvablyOutwithLoopBounds(source_destination_delta)) {
+    PrintDebug(
+        "SymbolicStrongSIVTest proved independence through loop bounds.");
     distance_vector->direction = DistanceVector::Directions::NONE;
+    return true;
   }
+  // We were unable to prove independence or discern any additional information.
+  // Must assume <=> direction.
+  PrintDebug(
+      "SymbolicStrongSIVTest was unable to determine any dependence "
+      "information.");
+  distance_vector->direction = DistanceVector::Directions::ALL;
   return false;
 }
 
 bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
     SENode* source, SERecurrentNode* destination, SENode* coefficient,
     DistanceVector* distance_vector) {
+  PrintDebug("Performing WeakZeroSourceSIVTest.");
   // Build an SENode for distance.
   SENode* destination_offset = destination->GetOffset();
   SENode* delta = scalar_evolution_.SimplifyExpression(
@@ -324,10 +368,15 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
   SEConstantNode* delta_constant = delta->AsSEConstantNode();
   SEConstantNode* coefficient_constant = coefficient->AsSEConstantNode();
   if (delta_constant && coefficient_constant) {
+    PrintDebug(
+        "WeakZeroSourceSIVTest folding delta and coefficient to constants.");
     int64_t delta_value = delta_constant->FoldToSingleValue();
     int64_t coefficient_value = coefficient_constant->FoldToSingleValue();
     // Check if the distance is not integral.
     if (delta_value % coefficient_value != 0) {
+      PrintDebug(
+          "WeakZeroSourceSIVTest proved independence through distance not "
+          "being an integer.");
       distance_vector->direction = DistanceVector::Directions::NONE;
       return true;
     } else {
@@ -339,9 +388,13 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
   SEConstantNode* lower_bound = GetLowerBound()->AsSEConstantNode();
   SEConstantNode* upper_bound = GetUpperBound()->AsSEConstantNode();
   if (lower_bound && upper_bound) {
+    PrintDebug("WeakZeroSourceSIVTest found bounds as SEConstantNodes.");
     int64_t lower_bound_value = lower_bound->FoldToSingleValue();
     int64_t upper_bound_value = upper_bound->FoldToSingleValue();
     if (!IsWithinBounds(distance, lower_bound_value, upper_bound_value)) {
+      PrintDebug(
+          "WeakZeroSourceSIVTest proved independence through distance escaping "
+          "the loop bounds.");
       distance_vector->direction = DistanceVector::Directions::NONE;
       distance_vector->distance = distance;
       return true;
@@ -365,8 +418,12 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
 
   // If source == FirstTripValue, peel_first.
   if (first_trip_SENode) {
+    PrintDebug("WeakZeroSourceSIVTest build first_trip_SENode.");
     if (source == first_trip_SENode) {
       // We have found that peeling the first iteration will break dependency.
+      PrintDebug(
+          "WeakZeroSourceSIVTest has found peeling first iteration will break "
+          "dependency");
       distance_vector->peel_first = true;
       return false;
     }
@@ -387,8 +444,12 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
 
   // If source == LastTripValue, peel_last.
   if (final_trip_SENode) {
+    PrintDebug("WeakZeroSourceSIVTest build final_trip_SENode.");
     if (source == final_trip_SENode) {
       // We have found that peeling the last iteration will break dependency.
+      PrintDebug(
+          "WeakZeroSourceSIVTest has found peeling final iteration will break "
+          "dependency");
       distance_vector->peel_last = true;
       return false;
     }
@@ -396,6 +457,9 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
 
   // We were unable to prove independence or discern any additional information.
   // Must assume <=> direction.
+  PrintDebug(
+      "WeakZeroSourceSIVTest was unable to determine any dependence "
+      "information.");
   distance_vector->direction = DistanceVector::Directions::ALL;
   return false;
 }
@@ -403,6 +467,7 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
 bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
     SERecurrentNode* source, SENode* destination, SENode* coefficient,
     DistanceVector* distance_vector) {
+  PrintDebug("Performing WeakZeroDestinationSIVTest.");
   // Build an SENode for distance.
   SENode* source_offset = source->GetOffset();
   SENode* delta = scalar_evolution_.SimplifyExpression(
@@ -414,10 +479,16 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
   SEConstantNode* delta_constant = delta->AsSEConstantNode();
   SEConstantNode* coefficient_constant = coefficient->AsSEConstantNode();
   if (delta_constant && coefficient_constant) {
+    PrintDebug(
+        "WeakZeroDestinationSIVTest folding delta and coefficient to "
+        "constants.");
     int64_t delta_value = delta_constant->FoldToSingleValue();
     int64_t coefficient_value = coefficient_constant->FoldToSingleValue();
     // Check if the distance is not integral.
     if (delta_value % coefficient_value != 0) {
+      PrintDebug(
+          "WeakZeroDestinationSIVTest proved independence through distance not "
+          "being an integer.");
       distance_vector->direction = DistanceVector::Directions::NONE;
       return true;
     } else {
@@ -429,9 +500,13 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
   SEConstantNode* lower_bound = GetLowerBound()->AsSEConstantNode();
   SEConstantNode* upper_bound = GetUpperBound()->AsSEConstantNode();
   if (lower_bound && upper_bound) {
+    PrintDebug("WeakZeroDestinationSIVTest found bounds as SEConstantNodes.");
     int64_t lower_bound_value = lower_bound->FoldToSingleValue();
     int64_t upper_bound_value = upper_bound->FoldToSingleValue();
     if (!IsWithinBounds(distance, lower_bound_value, upper_bound_value)) {
+      PrintDebug(
+          "WeakZeroDestinationSIVTest proved independence through distance "
+          "escaping the loop bounds.");
       distance_vector->direction = DistanceVector::Directions::NONE;
       distance_vector->distance = distance;
       return true;
@@ -453,8 +528,12 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
 
   // If destination == FirstTripValue, peel_first.
   if (first_trip_SENode) {
+    PrintDebug("WeakZeroDestinationSIVTest build first_trip_SENode.");
     if (destination == first_trip_SENode) {
       // We have found that peeling the first iteration will break dependency.
+      PrintDebug(
+          "WeakZeroDestinationSIVTest has found peeling first iteration will "
+          "break dependency");
       distance_vector->peel_first = true;
       return false;
     }
@@ -473,8 +552,12 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
 
   // If destination == LastTripValue, peel_last.
   if (final_trip_SENode) {
+    PrintDebug("WeakZeroDestinationSIVTest build final_trip_SENode.");
     if (destination == final_trip_SENode) {
       // We have found that peeling the last iteration will break dependency.
+      PrintDebug(
+          "WeakZeroDestinationSIVTest has found peeling final iteration will "
+          "break dependency");
       distance_vector->peel_last = true;
       return false;
     }
@@ -482,6 +565,9 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
 
   // We were unable to prove independence or discern any additional information.
   // Must assume <=> direction.
+  PrintDebug(
+      "WeakZeroDestinationSIVTest was unable to determine any dependence "
+      "information.");
   distance_vector->direction = DistanceVector::Directions::ALL;
   return false;
 }
@@ -489,9 +575,13 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
 bool LoopDependenceAnalysis::WeakCrossingSIVTest(
     SENode* source, SENode* destination, SENode* coefficient,
     DistanceVector* distance_vector) {
+  PrintDebug("Performing WeakCrossingSIVTest.");
   // We currently can't handle symbolic WeakCrossingSIVTests. If either source
   // or destination are not SERecurrentNodes we must exit.
   if (!source->AsSERecurrentNode() || !destination->AsSERecurrentNode()) {
+    PrintDebug(
+        "WeakCrossingSIVTest found source or destination != SERecurrentNode. "
+        "Exiting");
     distance_vector->direction = DistanceVector::Directions::ALL;
     return false;
   }
@@ -508,6 +598,9 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
   SEConstantNode* delta_constant = offset_delta->AsSEConstantNode();
   SEConstantNode* coefficient_constant = coefficient->AsSEConstantNode();
   if (delta_constant && coefficient_constant) {
+    PrintDebug(
+        "WeakCrossingSIVTest folding offset_delta and coefficient to "
+        "constants.");
     int64_t delta_value = delta_constant->FoldToSingleValue();
     int64_t coefficient_value = coefficient_constant->FoldToSingleValue();
     // Check if the distance is not integral or if it has a non-integral part
@@ -515,6 +608,9 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
     if (delta_value % (2 * coefficient_value) != 0 ||
         (delta_value % (2 * coefficient_value)) / (2 * coefficient_value) !=
             0.5) {
+      PrintDebug(
+          "WeakCrossingSIVTest proved independence through distance escaping "
+          "the loop bounds.");
       distance_vector->direction = DistanceVector::Directions::NONE;
       return true;
     } else {
@@ -522,6 +618,7 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
     }
 
     if (distance == 0) {
+      PrintDebug("WeakCrossingSIVTest found EQ dependence.");
       distance_vector->direction = DistanceVector::Directions::EQ;
       distance_vector->distance = 0;
       return false;
@@ -530,6 +627,9 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
 
   // We were unable to prove independence or discern any additional information.
   // Must assume <=> direction.
+  PrintDebug(
+      "WeakCrossingSIVTest was unable to determine any dependence "
+      "information.");
   distance_vector->direction = DistanceVector::Directions::ALL;
   return false;
 }
