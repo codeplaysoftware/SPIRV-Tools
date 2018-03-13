@@ -93,6 +93,24 @@ class SENode {
   const_iterator cbegin() { return children_.cbegin(); }
   const_iterator cend() { return children_.cend(); }
 
+  // Collect all the recurrent nodes in this SENode
+  std::vector<SERecurrentNode*> CollectRecurrentNodes() {
+    std::vector<SERecurrentNode*> recurrent_nodes{};
+
+    if (auto recurrent_node = AsSERecurrentNode()) {
+      recurrent_nodes.push_back(recurrent_node);
+    }
+
+    for (auto child : GetChildren()) {
+      auto child_recurrent_nodes = child->CollectRecurrentNodes();
+      recurrent_nodes.insert(recurrent_nodes.end(),
+                             child_recurrent_nodes.begin(),
+                             child_recurrent_nodes.end());
+    }
+
+    return recurrent_nodes;
+  }
+
   // Iterator to iterate over the entire DAG. Even though we are using the tree
   // iterator it should still be safe to iterate over. However, nodes with
   // multiple parents will be visited multiple times, unlike in a tree.
