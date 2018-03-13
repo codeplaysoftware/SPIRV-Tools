@@ -70,6 +70,8 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     SENode* destination_node = scalar_evolution_.SimplifyExpression(
         scalar_evolution_.AnalyzeInstruction(
             destination_subscripts[subscript]));
+    int64_t induction_variable_count =
+        CountInductionVariables(source_node, destination_node);
 
     // If either node is simplified to a CanNotCompute we can't perform any
     // analysis so must assume <=> dependence and return.
@@ -79,9 +81,8 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
       break;
     }
 
-    // Neither node is a recurrent expr so we use a ZIV test.
-    if (source_node->GetType() != SENode::RecurrentExpr &&
-        destination_node->GetType() != SENode::RecurrentExpr) {
+    // We have no induction variables so can apply a ZIV test.
+    if (induction_variable_count == 0) {
       if (ZIVTest(source_node, destination_node,
                   &distance_vector_entries[subscript])) {
         distance_vector->direction = DistanceVector::Directions::NONE;
@@ -89,75 +90,91 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
       }
     }
 
-    // source is not a recurrent expr but destination is so we can try a
-    // WeakZeroSrcTest.
-    if (source_node->GetType() != SENode::RecurrentExpr &&
-        destination_node->GetType() == SENode::RecurrentExpr) {
-      if (WeakZeroSourceSIVTest(
-              source_node, destination_node->AsSERecurrentNode(),
-              destination_node->AsSERecurrentNode()->GetCoefficient(),
-              &distance_vector_entries[subscript])) {
-        distance_vector->direction = DistanceVector::Directions::NONE;
-        return true;
-      }
-    }
+    // We have only one induction variable so should attempt an SIV test.
+    if (induction_variable_count == 1) {
+      int64_t source_induction_count = CountInductionVariables(source_node);
+      int64_t destination_induction_count =
+          CountInductionVariables(destination_node);
 
-    // source is a recurrent expr but destination is not so we can try a
-    // WeakZeroDestTest.
-    if (source_node->GetType() == SENode::RecurrentExpr &&
-        destination_node->GetType() != SENode::RecurrentExpr) {
-      if (WeakZeroDestinationSIVTest(
-              source_node->AsSERecurrentNode(), destination_node,
-              source_node->AsSERecurrentNode()->GetCoefficient(),
-              &distance_vector_entries[subscript])) {
-        distance_vector->direction = DistanceVector::Directions::NONE;
-        return true;
-      }
-    }
-
-    // Both source and destination are recurrent exprs. We should narrow down to
-    // StrongSIV
-    // or WeakCrossingSIV tests.
-    if (source_node->GetType() == SENode::RecurrentExpr &&
-        destination_node->GetType() == SENode::RecurrentExpr) {
-      SERecurrentNode* source_recurrent_expr = source_node->AsSERecurrentNode();
-      SERecurrentNode* destination_recurrent_expr =
-          destination_node->AsSERecurrentNode();
-
-      // If the coefficients are identical we can use StrongSIV.
-      if (source_recurrent_expr->GetCoefficient() ==
-          destination_recurrent_expr->GetCoefficient()) {
-        if (StrongSIVTest(
-                source_recurrent_expr->AsSERecurrentNode(),
-                destination_recurrent_expr->AsSERecurrentNode(),
-                source_recurrent_expr->AsSERecurrentNode()->GetCoefficient(),
+      // If the source node has no induction variables we can apply a
+      // WeakZeroSrcTest.
+      if (source_induction_count == 0) {
+        if (WeakZeroSourceSIVTest(
+                source_node, destination_node->AsSERecurrentNode(),
+                destination_node->AsSERecurrentNode()->GetCoefficient(),
                 &distance_vector_entries[subscript])) {
           distance_vector->direction = DistanceVector::Directions::NONE;
           return true;
         }
       }
 
-      // If the coefficients are opposite (coefficient_1 == -coefficient_2) we
-      // can use a
-      // WeakCrossingSIV test.
-      if (source_recurrent_expr->GetCoefficient() ==
-          scalar_evolution_.CreateNegation(
-              destination_recurrent_expr->GetCoefficient())) {
-        if (WeakCrossingSIVTest(
-                source_recurrent_expr->AsSERecurrentNode(),
-                destination_recurrent_expr->AsSERecurrentNode(),
-                source_recurrent_expr->AsSERecurrentNode()->GetCoefficient(),
+      // If the destination has no induction variables we can apply a
+      // WeakZeroDestTest.
+      if (destination_induction_count == 0) {
+        if (WeakZeroDestinationSIVTest(
+                source_node->AsSERecurrentNode(), destination_node,
+                source_node->AsSERecurrentNode()->GetCoefficient(),
                 &distance_vector_entries[subscript])) {
           distance_vector->direction = DistanceVector::Directions::NONE;
           return true;
         }
       }
+
+      // We now need to collect the SERecurrentExpr nodes from source and
+      // destination. We do not handle cases where source or destination have
+      // multiple SERecurrentExpr nodes.
+      std::vector<SERecurrentNode*> source_recurrent_nodes =
+          source_node->CollectRecurrentNodes();
+      std::vector<SERecurrentNode*> destination_recurrent_nodes =
+          destination_node->CollectRecurrentNodes();
+      if (source_recurrent_nodes.size() == 1 &&
+          destination_recurrent_nodes.size() == 1) {
+        // If the coefficients are identical we can apply a StrongSIVTest.
+        // If the coefficients are of equal magnitude and opposite sign we can
+        // apply a WeakCrossingSIVTest.
+
+        SERecurrentNode* source_recurrent_expr =
+            *source_recurrent_nodes.begin();
+        SERecurrentNode* destination_recurrent_expr =
+            *destination_recurrent_nodes.begin();
+
+        // If the coefficients are identical we can apply a StrongSIVTest.
+        if (source_recurrent_expr->GetCoefficient() ==
+            destination_recurrent_expr->GetCoefficient()) {
+          if (StrongSIVTest(
+                  source_recurrent_expr->AsSERecurrentNode(),
+                  destination_recurrent_expr->AsSERecurrentNode(),
+                  source_recurrent_expr->AsSERecurrentNode()->GetCoefficient(),
+                  &distance_vector_entries[subscript])) {
+            distance_vector->direction = DistanceVector::Directions::NONE;
+            return true;
+          }
+        }
+
+        // If the coefficients are of equal magnitude and opposite sign we can
+        // apply a WeakCrossingSIVTest.
+        if (source_recurrent_expr->GetCoefficient() ==
+            scalar_evolution_.CreateNegation(
+                destination_recurrent_expr->GetCoefficient())) {
+          if (WeakCrossingSIVTest(
+                  source_recurrent_expr->AsSERecurrentNode(),
+                  destination_recurrent_expr->AsSERecurrentNode(),
+                  source_recurrent_expr->AsSERecurrentNode()->GetCoefficient(),
+                  &distance_vector_entries[subscript])) {
+            distance_vector->direction = DistanceVector::Directions::NONE;
+            return true;
+          }
+        }
+      }
+    }
+
+    // We have multiple induction variables so should attempt an MIV test.
+    if (induction_variable_count > 1) {
     }
   }
 
   // We were unable to prove independence so must gather all of the direction
   // information we found.
-
   distance_vector->direction = DistanceVector::Directions::NONE;
   for (size_t subscript = 0; subscript < distance_vector_entries.size();
        ++subscript) {
@@ -502,315 +519,6 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
   // Must assume <=> direction.
   distance_vector->direction = DistanceVector::Directions::ALL;
   return false;
-}
-
-SENode* LoopDependenceAnalysis::GetLowerBound() {
-  ir::Instruction* cond_inst = loop_.GetConditionInst();
-  if (!cond_inst) {
-    return nullptr;
-  }
-  switch (cond_inst->opcode()) {
-    case SpvOpULessThan:
-    case SpvOpSLessThan:
-    case SpvOpULessThanEqual:
-    case SpvOpSLessThanEqual: {
-      ir::Instruction* lower_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(0));
-      if (lower_inst->opcode() == SpvOpPhi) {
-        lower_inst = context_->get_def_use_mgr()->GetDef(
-            lower_inst->GetSingleWordInOperand(0));
-        // We don't handle looking through multiple phis.
-        if (lower_inst->opcode() == SpvOpPhi) {
-          return nullptr;
-        }
-      }
-      SENode* lower_bound = scalar_evolution_.SimplifyExpression(
-          scalar_evolution_.AnalyzeInstruction(lower_inst));
-      return lower_bound;
-      break;
-    }
-    case SpvOpUGreaterThan:
-    case SpvOpSGreaterThan: {
-      ir::Instruction* lower_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(1));
-      if (lower_inst->opcode() == SpvOpPhi) {
-        lower_inst = context_->get_def_use_mgr()->GetDef(
-            lower_inst->GetSingleWordInOperand(0));
-        // We don't handle looking through multiple phis.
-        if (lower_inst->opcode() == SpvOpPhi) {
-          return nullptr;
-        }
-      }
-      SENode* lower_bound = scalar_evolution_.SimplifyExpression(
-          scalar_evolution_.AnalyzeInstruction(lower_inst));
-      if (lower_bound) {
-        return scalar_evolution_.SimplifyExpression(
-            scalar_evolution_.CreateAddNode(
-                lower_bound, scalar_evolution_.CreateConstant(1)));
-      }
-      break;
-    }
-    case SpvOpUGreaterThanEqual:
-    case SpvOpSGreaterThanEqual: {
-      ir::Instruction* lower_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(1));
-      if (lower_inst->opcode() == SpvOpPhi) {
-        lower_inst = context_->get_def_use_mgr()->GetDef(
-            lower_inst->GetSingleWordInOperand(0));
-        // We don't handle looking through multiple phis.
-        if (lower_inst->opcode() == SpvOpPhi) {
-          return nullptr;
-        }
-      }
-      SENode* lower_bound = scalar_evolution_.SimplifyExpression(
-          scalar_evolution_.AnalyzeInstruction(lower_inst));
-      return lower_bound;
-    } break;
-    default:
-      return nullptr;
-  }
-  return nullptr;
-}
-
-SENode* LoopDependenceAnalysis::GetUpperBound() {
-  ir::Instruction* cond_inst = loop_.GetConditionInst();
-  if (!cond_inst) {
-    return nullptr;
-  }
-  switch (cond_inst->opcode()) {
-    case SpvOpULessThan:
-    case SpvOpSLessThan: {
-      ir::Instruction* upper_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(1));
-      if (upper_inst->opcode() == SpvOpPhi) {
-        upper_inst = context_->get_def_use_mgr()->GetDef(
-            upper_inst->GetSingleWordInOperand(0));
-        // We don't handle looking through multiple phis.
-        if (upper_inst->opcode() == SpvOpPhi) {
-          return nullptr;
-        }
-      }
-      SENode* upper_bound = scalar_evolution_.SimplifyExpression(
-          scalar_evolution_.AnalyzeInstruction(upper_inst));
-      if (upper_bound) {
-        return scalar_evolution_.SimplifyExpression(
-            scalar_evolution_.CreateSubtraction(
-                upper_bound, scalar_evolution_.CreateConstant(1)));
-      }
-    }
-    case SpvOpULessThanEqual:
-    case SpvOpSLessThanEqual: {
-      ir::Instruction* upper_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(1));
-      if (upper_inst->opcode() == SpvOpPhi) {
-        upper_inst = context_->get_def_use_mgr()->GetDef(
-            upper_inst->GetSingleWordInOperand(0));
-        // We don't handle looking through multiple phis.
-        if (upper_inst->opcode() == SpvOpPhi) {
-          return nullptr;
-        }
-      }
-      SENode* upper_bound = scalar_evolution_.SimplifyExpression(
-          scalar_evolution_.AnalyzeInstruction(upper_inst));
-      return upper_bound;
-    } break;
-    case SpvOpUGreaterThan:
-    case SpvOpSGreaterThan:
-    case SpvOpUGreaterThanEqual:
-    case SpvOpSGreaterThanEqual: {
-      ir::Instruction* upper_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(0));
-      if (upper_inst->opcode() == SpvOpPhi) {
-        upper_inst = context_->get_def_use_mgr()->GetDef(
-            upper_inst->GetSingleWordInOperand(0));
-        // We don't handle looking through multiple phis.
-        if (upper_inst->opcode() == SpvOpPhi) {
-          return nullptr;
-        }
-      }
-      SENode* upper_bound = scalar_evolution_.SimplifyExpression(
-          scalar_evolution_.AnalyzeInstruction(upper_inst));
-      return upper_bound;
-      break;
-    }
-    default:
-      return nullptr;
-  }
-  return nullptr;
-}
-
-std::pair<SENode*, SENode*> LoopDependenceAnalysis::GetLoopLowerUpperBounds() {
-  SENode* lower_bound_SENode = GetLowerBound();
-  SENode* upper_bound_SENode = GetUpperBound();
-
-  return std::make_pair(lower_bound_SENode, upper_bound_SENode);
-}
-
-bool LoopDependenceAnalysis::IsWithinBounds(int64_t value, int64_t bound_one,
-                                            int64_t bound_two) {
-  if (bound_one < bound_two) {
-    // If |bound_one| is the lower bound.
-    return (value >= bound_one && value <= bound_two);
-  } else if (bound_one > bound_two) {
-    // If |bound_two| is the lower bound.
-    return (value >= bound_two && value <= bound_one);
-  } else {
-    // Both bounds have the same value.
-    return value == bound_one;
-  }
-}
-
-bool LoopDependenceAnalysis::IsProvablyOutwithLoopBounds(SENode* distance) {
-  SENode* lower_bound = GetLowerBound();
-  SENode* upper_bound = GetUpperBound();
-  if (!lower_bound || !upper_bound) {
-    return false;
-  }
-  // We can attempt to deal with symbolic cases by subtracting |distance| and
-  // the bound nodes. If we can subtract, simplify and produce a SEConstantNode
-  // we
-  // can produce some information.
-  SENode* bounds = scalar_evolution_.SimplifyExpression(
-      scalar_evolution_.CreateSubtraction(upper_bound, lower_bound));
-
-  SEConstantNode* distance_minus_bounds =
-      scalar_evolution_
-          .SimplifyExpression(
-              scalar_evolution_.CreateSubtraction(distance, bounds))
-          ->AsSEConstantNode();
-  if (distance_minus_bounds) {
-    // If distance - bounds > 0 we prove the distance is outwith the loop
-    // bounds.
-    if (distance_minus_bounds->FoldToSingleValue() > 0) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-SENode* LoopDependenceAnalysis::GetTripCount() {
-  ir::BasicBlock* condition_block = loop_.FindConditionBlock();
-  if (!condition_block) {
-    return nullptr;
-  }
-  ir::Instruction* induction_instr =
-      loop_.FindConditionVariable(condition_block);
-  if (!induction_instr) {
-    return nullptr;
-  }
-  ir::Instruction* cond_instr = loop_.GetConditionInst();
-  if (!cond_instr) {
-    return nullptr;
-  }
-
-  size_t iteration_count = 0;
-
-  // We have to check the instruction type here. If the condition instruction
-  // isn't of one of the below types we can't calculate the trip count.
-  switch (cond_instr->opcode()) {
-    case SpvOpULessThan:
-    case SpvOpSLessThan:
-    case SpvOpULessThanEqual:
-    case SpvOpSLessThanEqual:
-    case SpvOpUGreaterThan:
-    case SpvOpSGreaterThan:
-    case SpvOpUGreaterThanEqual:
-    case SpvOpSGreaterThanEqual:
-      if (loop_.FindNumberOfIterations(
-              induction_instr, &*condition_block->tail(), &iteration_count)) {
-        return scalar_evolution_.CreateConstant(
-            static_cast<int64_t>(iteration_count));
-      }
-      break;
-    default:
-      return nullptr;
-  }
-
-  return nullptr;
-}
-
-SENode* LoopDependenceAnalysis::GetFirstTripInductionNode() {
-  ir::BasicBlock* condition_block = loop_.FindConditionBlock();
-  if (!condition_block) {
-    return nullptr;
-  }
-  ir::Instruction* induction_instr =
-      loop_.FindConditionVariable(condition_block);
-  if (!induction_instr) {
-    return nullptr;
-  }
-  int64_t induction_initial_value = 0;
-  if (!loop_.GetInductionInitValue(induction_instr, &induction_initial_value)) {
-    return nullptr;
-  }
-
-  SENode* induction_init_SENode = scalar_evolution_.SimplifyExpression(
-      scalar_evolution_.CreateConstant(induction_initial_value));
-  return induction_init_SENode;
-}
-
-SENode* LoopDependenceAnalysis::GetFinalTripInductionNode() {
-  ir::BasicBlock* condition_block = loop_.FindConditionBlock();
-  if (!condition_block) {
-    return nullptr;
-  }
-  ir::Instruction* induction_instr =
-      loop_.FindConditionVariable(condition_block);
-  if (!induction_instr) {
-    return nullptr;
-  }
-  SENode* trip_count = GetTripCount();
-
-  int64_t induction_initial_value = 0;
-  if (!loop_.GetInductionInitValue(induction_instr, &induction_initial_value)) {
-    return nullptr;
-  }
-
-  ir::Instruction* step_instr =
-      loop_.GetInductionStepOperation(induction_instr);
-
-  SENode* induction_init_SENode =
-      scalar_evolution_.CreateConstant(induction_initial_value);
-  SENode* step_SENode = scalar_evolution_.AnalyzeInstruction(step_instr);
-  SENode* total_change_SENode =
-      scalar_evolution_.CreateMultiplyNode(step_SENode, trip_count);
-  SENode* final_iteration =
-      scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateAddNode(
-          induction_init_SENode, total_change_SENode));
-
-  return final_iteration;
-}
-
-ir::LoopDescriptor* LoopDependenceAnalysis::GetLoopDescriptor() {
-  return context_->GetLoopDescriptor(loop_.GetHeaderBlock()->GetParent());
-}
-
-void LoopDependenceAnalysis::DumpIterationSpaceAsDot(std::ostream& out_stream) {
-  out_stream << "digraph {\n";
-
-  for (uint32_t id : loop_.GetBlocks()) {
-    ir::BasicBlock* block = context_->cfg()->block(id);
-    for (ir::Instruction& inst : *block) {
-      if (inst.opcode() == SpvOp::SpvOpStore ||
-          inst.opcode() == SpvOp::SpvOpLoad) {
-        memory_access_to_indice_[&inst] = {};
-
-        const ir::Instruction* access_chain =
-            context_->get_def_use_mgr()->GetDef(inst.GetSingleWordInOperand(0));
-
-        for (uint32_t i = 1u; i < access_chain->NumInOperands(); ++i) {
-          const ir::Instruction* index = context_->get_def_use_mgr()->GetDef(
-              access_chain->GetSingleWordInOperand(i));
-          memory_access_to_indice_[&inst].push_back(
-              scalar_evolution_.AnalyzeInstruction(index));
-        }
-      }
-    }
-  }
-
-  scalar_evolution_.DumpAsDot(out_stream);
-  out_stream << "}\n";
 }
 
 }  // namespace opt
