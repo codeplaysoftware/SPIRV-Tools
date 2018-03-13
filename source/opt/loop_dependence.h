@@ -80,8 +80,8 @@ class LoopDependenceAnalysis {
   // direction =  = if distance = 0
   //              > if distance < 0
   // Returns true if independence is proven and false if it can't be proven.
-  bool StrongSIVTest(SERecurrentNode* source, SERecurrentNode* destination,
-                     SENode* coeff, DistanceVector* distance_vector);
+  bool StrongSIVTest(SENode* source, SENode* destination, SENode* coeff,
+                     DistanceVector* distance_vector);
 
   // Takes for form a*i + c1, a*i + c2
   // When c1 and c2 are loop invariant and a is constant
@@ -109,8 +109,8 @@ class LoopDependenceAnalysis {
   // When a1 = -a2
   // distance = (c2 - c1) / 2*a1
   // Returns true if independence is proven and false if it can't be proven.
-  bool WeakCrossingSIVTest(SERecurrentNode* source,
-                           SERecurrentNode* destination, SENode* coefficient,
+  bool WeakCrossingSIVTest(SENode* source, SENode* destination,
+                           SENode* coefficient,
                            DistanceVector* distance_vector);
 
   // Finds the lower bound of the loop as an SENode* and returns the resulting
@@ -152,7 +152,7 @@ class LoopDependenceAnalysis {
   // Finds the value of the induction variable at the final trip of the loop and
   // returns the resulting SENode.
   // If the operation can not be completed a nullptr is returned.
-  SENode* GetFinalTripInductionNode();
+  SENode* GetFinalTripInductionNode(SENode* induction_coefficient);
 
   // Finds the number of induction variables in |node|
   // Returns -1 on failure

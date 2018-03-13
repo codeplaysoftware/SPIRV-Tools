@@ -129,10 +129,6 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
           destination_node->CollectRecurrentNodes();
       if (source_recurrent_nodes.size() == 1 &&
           destination_recurrent_nodes.size() == 1) {
-        // If the coefficients are identical we can apply a StrongSIVTest.
-        // If the coefficients are of equal magnitude and opposite sign we can
-        // apply a WeakCrossingSIVTest.
-
         SERecurrentNode* source_recurrent_expr =
             *source_recurrent_nodes.begin();
         SERecurrentNode* destination_recurrent_expr =
@@ -141,11 +137,9 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
         // If the coefficients are identical we can apply a StrongSIVTest.
         if (source_recurrent_expr->GetCoefficient() ==
             destination_recurrent_expr->GetCoefficient()) {
-          if (StrongSIVTest(
-                  source_recurrent_expr->AsSERecurrentNode(),
-                  destination_recurrent_expr->AsSERecurrentNode(),
-                  source_recurrent_expr->AsSERecurrentNode()->GetCoefficient(),
-                  &distance_vector_entries[subscript])) {
+          if (StrongSIVTest(source_node, destination_node,
+                            source_recurrent_expr->GetCoefficient(),
+                            &distance_vector_entries[subscript])) {
             distance_vector->direction = DistanceVector::Directions::NONE;
             return true;
           }
@@ -156,11 +150,9 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
         if (source_recurrent_expr->GetCoefficient() ==
             scalar_evolution_.CreateNegation(
                 destination_recurrent_expr->GetCoefficient())) {
-          if (WeakCrossingSIVTest(
-                  source_recurrent_expr->AsSERecurrentNode(),
-                  destination_recurrent_expr->AsSERecurrentNode(),
-                  source_recurrent_expr->AsSERecurrentNode()->GetCoefficient(),
-                  &distance_vector_entries[subscript])) {
+          if (WeakCrossingSIVTest(source_node, destination_node,
+                                  source_recurrent_expr->GetCoefficient(),
+                                  &distance_vector_entries[subscript])) {
             distance_vector->direction = DistanceVector::Directions::NONE;
             return true;
           }
@@ -209,13 +201,19 @@ bool LoopDependenceAnalysis::ZIVTest(SENode* source, SENode* destination,
   }
 }
 
-bool LoopDependenceAnalysis::StrongSIVTest(SERecurrentNode* source,
-                                           SERecurrentNode* destination,
+bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
                                            SENode* coefficient,
                                            DistanceVector* distance_vector) {
+  // If both source and destination are SERecurrentNodes we can perform tests
+  // basedon distance. If one or both are not SERecurrentNodes we must attempt a
+  // symbolic test.
+  if (!source->AsSERecurrentNode() || !destination->AsSERecurrentNode()) {
+    return SymbolicStrongSIVTest(source, destination, distance_vector);
+  }
+
   // Build an SENode for distance.
-  SENode* source_offset = source->GetOffset();
-  SENode* destination_offset = destination->GetOffset();
+  SENode* source_offset = source->AsSERecurrentNode()->GetOffset();
+  SENode* destination_offset = destination->AsSERecurrentNode()->GetOffset();
   SENode* offset_delta = scalar_evolution_.SimplifyExpression(
       scalar_evolution_.CreateSubtraction(source_offset, destination_offset));
 
@@ -359,7 +357,7 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
           ->AsSEConstantNode();
 
   // If source == FirstTripValue, peel_first.
-  if (first_trip_SENode != nullptr) {
+  if (first_trip_SENode) {
     if (source == first_trip_SENode) {
       // We have found that peeling the first iteration will break dependency.
       distance_vector->peel_first = true;
@@ -370,7 +368,7 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
   // We get the LastTripValue as LastTripInduction * destination_coeff +
   // destination_offset.
   // We build the value of the final trip as an SENode.
-  SENode* induction_final_trip_SENode = GetFinalTripInductionNode();
+  SENode* induction_final_trip_SENode = GetFinalTripInductionNode(coefficient);
   SENode* induction_final_trip_mult_coefficient_SENode =
       scalar_evolution_.CreateMultiplyNode(induction_final_trip_SENode,
                                            coefficient);
@@ -381,7 +379,7 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
           ->AsSEConstantNode();
 
   // If source == LastTripValue, peel_last.
-  if (final_trip_SENode != nullptr) {
+  if (final_trip_SENode) {
     if (source == final_trip_SENode) {
       // We have found that peeling the last iteration will break dependency.
       distance_vector->peel_last = true;
@@ -447,7 +445,7 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
           induction_first_trip_mult_coefficient_SENode, source_offset));
 
   // If destination == FirstTripValue, peel_first.
-  if (first_trip_SENode != nullptr) {
+  if (first_trip_SENode) {
     if (destination == first_trip_SENode) {
       // We have found that peeling the first iteration will break dependency.
       distance_vector->peel_first = true;
@@ -458,7 +456,7 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
   // We get the LastTripValue as LastTripInduction * source_coeff +
   // source_offset.
   // We build the value of the final trip as an SENode.
-  SENode* induction_final_trip_SENode = GetFinalTripInductionNode();
+  SENode* induction_final_trip_SENode = GetFinalTripInductionNode(coefficient);
   SENode* induction_final_trip_mult_coefficient_SENode =
       scalar_evolution_.CreateMultiplyNode(induction_final_trip_SENode,
                                            coefficient);
@@ -467,7 +465,7 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
           induction_final_trip_mult_coefficient_SENode, source_offset));
 
   // If destination == LastTripValue, peel_last.
-  if (final_trip_SENode != nullptr) {
+  if (final_trip_SENode) {
     if (destination == final_trip_SENode) {
       // We have found that peeling the last iteration will break dependency.
       distance_vector->peel_last = true;
@@ -482,12 +480,20 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
 }
 
 bool LoopDependenceAnalysis::WeakCrossingSIVTest(
-    SERecurrentNode* source, SERecurrentNode* destination, SENode* coefficient,
+    SENode* source, SENode* destination, SENode* coefficient,
     DistanceVector* distance_vector) {
+  // We currently can't handle symbolic WeakCrossingSIVTests. If either source
+  // or destination are not SERecurrentNodes we must exit.
+  if (!source->AsSERecurrentNode() || !destination->AsSERecurrentNode()) {
+    distance_vector->direction = DistanceVector::Directions::ALL;
+    return false;
+  }
+
   // Build an SENode for distance.
   SENode* offset_delta =
       scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateSubtraction(
-          destination->GetOffset(), source->GetOffset()));
+          destination->AsSERecurrentNode()->GetOffset(),
+          source->AsSERecurrentNode()->GetOffset()));
 
   // Scalar evolution doesn't perform division, so we must fold to constants and
   // do it manually.

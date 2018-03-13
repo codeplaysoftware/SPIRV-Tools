@@ -262,36 +262,22 @@ SENode* LoopDependenceAnalysis::GetFirstTripInductionNode() {
   return induction_init_SENode;
 }
 
-SENode* LoopDependenceAnalysis::GetFinalTripInductionNode() {
-  ir::BasicBlock* condition_block = loop_.FindConditionBlock();
-  if (!condition_block) {
+SENode* LoopDependenceAnalysis::GetFinalTripInductionNode(
+    SENode* induction_coefficient) {
+  SENode* first_trip_induction_node = GetFirstTripInductionNode();
+  if (!first_trip_induction_node) {
     return nullptr;
   }
-  ir::Instruction* induction_instr =
-      loop_.FindConditionVariable(condition_block);
-  if (!induction_instr) {
-    return nullptr;
-  }
-  SENode* trip_count = GetTripCount();
-
-  int64_t induction_initial_value = 0;
-  if (!loop_.GetInductionInitValue(induction_instr, &induction_initial_value)) {
-    return nullptr;
-  }
-
-  ir::Instruction* step_instr =
-      loop_.GetInductionStepOperation(induction_instr);
-
-  SENode* induction_init_SENode =
-      scalar_evolution_.CreateConstant(induction_initial_value);
-  SENode* step_SENode = scalar_evolution_.AnalyzeInstruction(step_instr);
-  SENode* total_change_SENode =
-      scalar_evolution_.CreateMultiplyNode(step_SENode, trip_count);
-  SENode* final_iteration =
-      scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateAddNode(
-          induction_init_SENode, total_change_SENode));
-
-  return final_iteration;
+  // Get trip_count as GetTripCount - 1
+  // This is because the induction variable is not stepped on the first
+  // iteration of the loop
+  SENode* trip_count =
+      scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateSubtraction(
+          GetTripCount(), scalar_evolution_.CreateConstant(1)));
+  // Return first_trip_induction_node + trip_count * induction_coefficient
+  return scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateAddNode(
+      first_trip_induction_node,
+      scalar_evolution_.CreateMultiplyNode(trip_count, induction_coefficient)));
 }
 
 ir::LoopDescriptor* LoopDependenceAnalysis::GetLoopDescriptor() {
@@ -325,7 +311,7 @@ int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* source,
 
   std::vector<SERecurrentNode*> source_nodes = source->CollectRecurrentNodes();
   std::vector<SERecurrentNode*> destination_nodes =
-      source->CollectRecurrentNodes();
+      destination->CollectRecurrentNodes();
 
   // We don't handle loops with more than one induction variable. Therefore we
   // can identify the number of induction variables by collecting all of the
