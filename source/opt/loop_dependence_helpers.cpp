@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "opt/ir_context.h"
 #include "opt/loop_dependence.h"
+
 namespace spvtools {
 namespace opt {
 

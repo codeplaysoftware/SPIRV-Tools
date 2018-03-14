@@ -18,6 +18,10 @@
 #include "tree_iterator.h"
 
 namespace spvtools {
+namespace ir {
+class Loop;
+}  // namespace ir
+
 namespace opt {
 
 class ScalarEvolutionAnalysis;

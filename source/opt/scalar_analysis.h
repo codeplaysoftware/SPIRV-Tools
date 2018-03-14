@@ -19,14 +19,19 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 #include "opt/basic_block.h"
 #include "opt/instruction.h"
-#include "opt/ir_context.h"
 #include "opt/scalar_analysis_nodes.h"
 
 namespace spvtools {
+namespace ir {
+class IRContext;
+class Loop;
+}  // namespace ir
+
 namespace opt {
 
 // Manager for the Scalar Evolution analysis. Creates and maintains a DAG of

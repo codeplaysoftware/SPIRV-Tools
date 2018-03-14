@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "opt/loop_dependence.h"
+#include "opt/ir_context.h"
 namespace spvtools {
 namespace opt {
 

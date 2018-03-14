@@ -15,6 +15,8 @@
 #include "opt/scalar_analysis.h"
 #include <functional>
 
+#include "opt/ir_context.h"
+
 namespace spvtools {
 namespace opt {
 
