@@ -256,6 +256,12 @@ class LoopPeelingPass : public Pass {
   };
 
  public:
+  // Sets the loop peeling threshold. If the code size increase is above
+  // |code_grow_threshold|, the loop will not be peeled.
+  static void SetLoopPeelingThreshold(size_t code_grow_threshold) {
+    code_grow_threshold_ = code_grow_threshold;
+  }
+
   const char* name() const override { return "loop-peeling"; }
 
   // Processes the given |module|. Returns Status::Failure if errors occur when
@@ -264,7 +270,7 @@ class LoopPeelingPass : public Pass {
   Pass::Status Process(ir::IRContext* context) override;
 
  private:
-  unsigned code_grow_threshold_;
+  static size_t code_grow_threshold_;
 
   // Peel profitable loops in |f|.
   bool ProcessFunction(ir::Function* f);

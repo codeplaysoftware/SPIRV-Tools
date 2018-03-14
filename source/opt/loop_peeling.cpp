@@ -29,6 +29,7 @@
 
 namespace spvtools {
 namespace opt {
+size_t LoopPeelingPass::code_grow_threshold_ = 1000;
 
 void LoopPeeling::DuplicateAndConnectLoop(
     LoopUtils::LoopCloningResult* clone_results) {

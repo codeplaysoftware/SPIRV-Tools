@@ -801,7 +801,7 @@ opt::SENode* GetAnalysisFromInstruction(
 }
 
 void CheckNumberOfVariables(const ir::Instruction* instruction,
-                            int expected_count, ir::IRContext* context,
+                            size_t expected_count, ir::IRContext* context,
                             opt::ScalarEvolutionAnalysis* analysis) {
   opt::SENode* node =
       GetAnalysisFromInstruction(instruction, context, analysis);
