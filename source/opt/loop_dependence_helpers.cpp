@@ -202,8 +202,7 @@ bool LoopDependenceAnalysis::IsProvablyOutwithLoopBounds(SENode* distance) {
   }
   // We can attempt to deal with symbolic cases by subtracting |distance| and
   // the bound nodes. If we can subtract, simplify and produce a SEConstantNode
-  // we
-  // can produce some information.
+  // we can produce some information.
   SENode* bounds = scalar_evolution_.SimplifyExpression(
       scalar_evolution_.CreateSubtraction(upper_bound, lower_bound));
 

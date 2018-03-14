@@ -342,8 +342,10 @@ bool LoopDependenceAnalysis::SymbolicStrongSIVTest(
   PrintDebug("Performing SymbolicStrongSIVTest.");
   SENode* source_destination_delta = scalar_evolution_.SimplifyExpression(
       scalar_evolution_.CreateSubtraction(source, destination));
-  // Using the offset delta we can prove loop bounds independence under some
-  // symbolic cases
+  // By cancelling out the induction variables by subtracting the source and
+  // destination we can produce an expression of symbolics and constants. This
+  // expression can be compared to the loop bounds to find if the offset is
+  // outwith the bounds.
   if (IsProvablyOutwithLoopBounds(source_destination_delta)) {
     PrintDebug(
         "SymbolicStrongSIVTest proved independence through loop bounds.");

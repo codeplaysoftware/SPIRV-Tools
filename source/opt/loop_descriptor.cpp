@@ -143,26 +143,44 @@ int64_t Loop::GetResidualConditionValue(SpvOp condition, int64_t initial_value,
 }
 
 ir::Instruction* Loop::GetConditionInst() const {
-  return &*--FindConditionBlock()->tail();
+  ir::BasicBlock* condition_block = FindConditionBlock();
+  if (!condition_block) {
+    return nullptr;
+  }
+  ir::Instruction* branch_conditional = &*condition_block->tail();
+  if (!branch_conditional ||
+      branch_conditional->opcode() != SpvOpBranchConditional) {
+    return nullptr;
+  }
+  ir::Instruction* condition_inst = context_->get_def_use_mgr()->GetDef(
+      branch_conditional->GetSingleWordInOperand(0));
+
+  return condition_inst;
 }
 
 ir::Instruction* Loop::GetLowerBoundInst() const {
-  ir::Instruction* cond_inst = GetConditionInst();
+  ir::Instruction* condition_inst = GetConditionInst();
+  if (!condition_inst) {
+    return nullptr;
+  }
   opt::analysis::DefUseManager* def_use_manager = context_->get_def_use_mgr();
 
   ir::Instruction* lower_bound =
-      def_use_manager->GetDef(cond_inst->GetSingleWordInOperand(0));
+      def_use_manager->GetDef(condition_inst->GetSingleWordInOperand(0));
   return lower_bound;
 }
 
 ir::Instruction* Loop::GetUpperBoundInst() const {
-  ir::Instruction* cond_inst = GetConditionInst();
+  ir::Instruction* condition_inst = GetConditionInst();
+  if (!condition_inst) {
+    return nullptr;
+  }
   opt::analysis::DefUseManager* def_use_manager = context_->get_def_use_mgr();
 
   ir::Instruction* upper_bound =
-      def_use_manager->GetDef(cond_inst->GetSingleWordInOperand(1));
+      def_use_manager->GetDef(condition_inst->GetSingleWordInOperand(1));
   return upper_bound;
-  }
+}
 
 // Extract the initial value from the |induction| OpPhi instruction and store it
 // in |value|. If the function couldn't find the initial value of |induction|
