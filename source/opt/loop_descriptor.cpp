@@ -290,6 +290,8 @@ BasicBlock* Loop::GetOrCreatePreHeaderBlock() {
       new ir::BasicBlock(std::unique_ptr<ir::Instruction>(new ir::Instruction(
           context_, SpvOpLabel, 0, context_->TakeNextId(), {})))));
   loop_preheader_->SetParent(fn);
+  context_->get_def_use_mgr()->AnalyzeInstDefUse(
+      loop_preheader_->GetLabelInst());
   uint32_t loop_preheader_id = loop_preheader_->id();
 
   // Redirect the branches and patch the phi:
