@@ -154,8 +154,11 @@ ir::Instruction* Loop::GetConditionInst() const {
   }
   ir::Instruction* condition_inst = context_->get_def_use_mgr()->GetDef(
       branch_conditional->GetSingleWordInOperand(0));
+  if (IsSupportedCondition(condition_inst)) {
+    return condition_inst;
+  }
 
-  return condition_inst;
+  return nullptr;
 }
 
 ir::Instruction* Loop::GetLowerBoundInst() const {
