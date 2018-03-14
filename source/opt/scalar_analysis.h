@@ -52,7 +52,7 @@ class ScalarEvolutionAnalysis {
   SENode* CreateNegation(SENode* operand);
 
   // Creates a subtraction between the two operands by adding |operand_1| to the
-  // negation of |operand_2|
+  // negation of |operand_2|.
   SENode* CreateSubtraction(SENode* operand_1, SENode* operand_2);
 
   // Create an addition node between two operands.
