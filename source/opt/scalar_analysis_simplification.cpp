@@ -13,6 +13,12 @@
 // limitations under the License.
 
 #include <functional>
+#include <unordered_set>
+#include <map>
+#include <utility>
+#include <memory>
+#include <vector>
+#include <set>
 #include "opt/scalar_analysis.h"
 
 namespace spvtools {
@@ -179,7 +185,7 @@ SENode* SENodeSimplifyImpl::Simplify() {
     }
   }
 
-  if (recurrent_expr && recurrent_expressions_in_dag.size() == 1 ) {
+  if (recurrent_expr && recurrent_expressions_in_dag.size() == 1) {
     return SimplifyRecurrentExpression(recurrent_expr);
   }
 

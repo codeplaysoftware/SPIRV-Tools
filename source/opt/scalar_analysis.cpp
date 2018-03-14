@@ -14,6 +14,10 @@
 
 #include "opt/scalar_analysis.h"
 #include <functional>
+#include <string>
+#include <utility>
+
+#include "opt/ir_context.h"
 
 namespace spvtools {
 namespace opt {
@@ -22,7 +26,6 @@ SENode* ScalarEvolutionAnalysis::CreateNegation(SENode* operand) {
   if (operand->GetType() == SENode::Constant) {
     return CreateConstant(-operand->AsSEConstantNode()->FoldToSingleValue());
   }
-
   std::unique_ptr<SENode> negation_node{new SENegative(this)};
   negation_node->AddChild(operand);
   return GetCachedOrAdd(std::move(negation_node));
@@ -108,7 +111,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
       instruction_map_[inst] = output;
       break;
     }
-  };
+  }
   return output;
 }
 
@@ -217,7 +220,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
   }
 
   instruction_map_[phi] = GetCachedOrAdd(std::move(phi_node));
-  ;
+
   return instruction_map_[phi];
 }
 
