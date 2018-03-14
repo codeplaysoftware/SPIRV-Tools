@@ -19,6 +19,10 @@ namespace spvtools {
 namespace opt {
 
 SENode* ScalarEvolutionAnalysis::CreateNegation(SENode* operand) {
+  if (operand->GetType() == SENode::Constant) {
+    return CreateConstant(-operand->AsSEConstantNode()->FoldToSingleValue());
+  }
+
   std::unique_ptr<SENode> negation_node{new SENegative(this)};
   negation_node->AddChild(operand);
   return GetCachedOrAdd(std::move(negation_node));
@@ -190,10 +194,10 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
       SENode* operand_1 = value_node->GetChild(0);
       SENode* operand_2 = value_node->GetChild(1);
 
-      // Find which node is the constant.
-      if (operand_1->AsSEConstantNode())
+      // Find which node is the step term.
+      if (!operand_1->AsSERecurrentNode())
         constant_node = operand_1;
-      else if (operand_2->AsSEConstantNode())
+      else if (!operand_2->AsSERecurrentNode())
         constant_node = operand_2;
 
       // Find which node is the recurrent expression.
@@ -212,7 +216,9 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     }
   }
 
-  return GetCachedOrAdd(std::move(phi_node));
+  instruction_map_[phi] = GetCachedOrAdd(std::move(phi_node));
+  ;
+  return instruction_map_[phi];
 }
 
 SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode() {
@@ -259,7 +265,21 @@ std::string SENode::AsString() const {
 }
 
 bool SENode::operator==(const SENode& other) const {
-  return SENodeHash{}(this) == SENodeHash{}(&other);
+  if (GetType() != other.GetType()) return false;
+
+  if (other.GetChildren().size() != children_.size()) return false;
+
+  for (size_t index = 0; index < children_.size(); ++index) {
+    if (other.GetChildren()[index] != children_[index]) return false;
+  }
+
+  if (AsSEConstantNode()) {
+    if (AsSEConstantNode()->FoldToSingleValue() !=
+        other.AsSEConstantNode()->FoldToSingleValue())
+      return false;
+  }
+
+  return true;
 }
 
 bool SENode::operator!=(const SENode& other) const { return !(*this == other); }
