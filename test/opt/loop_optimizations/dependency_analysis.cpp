@@ -2173,4 +2173,340 @@ TEST(DependencyAnalysis, MultipleSubscriptZIVSIV) {
   }
 }
 
+void CheckDependenceAndDirection(
+    const ir::Instruction* source, const ir::Instruction* destination,
+    bool expected_dependence,
+    opt::DistanceVector::Directions expected_direction,
+    opt::LoopDependenceAnalysis* analysis) {
+  opt::DistanceVector dv_entry{};
+  EXPECT_EQ(expected_dependence,
+            analysis->GetDependence(source, destination, &dv_entry));
+  EXPECT_EQ(expected_direction, dv_entry.direction);
+}
+
+/*
+  Generated from the following GLSL fragment shader
+  with --eliminate-local-multi-store
+#version 440 core
+layout(location = 0) in vec4 c;
+void main(){
+  int[10] arr;
+  int a = 2;
+  int b = 3;
+  int N = int(c.x);
+  for (int i = 0; i < 10; i++) {
+    for (int j = 2; j < 10; j++) {
+      arr[i] = arr[j]; // 0
+      arr[j] = arr[i]; // 1
+      arr[j-2] = arr[i+3]; // 2
+      arr[j-a] = arr[i+b]; // 3
+      arr[2*i] = arr[4*j+3]; // 4
+      arr[2*i] = arr[4*j]; // 5
+      arr[i+j] = arr[i+j]; // 6
+      arr[10*i+j] = arr[10*i+j]; // 7
+      arr[10*i+10*j] = arr[10*i+10*j+3]; // 8
+      arr[10*i+10*j] = arr[10*i+N*j+3]; // 9, bail out because of N coefficient
+      arr[10*i+10*j] = arr[10*i+10*j+N]; // 10, bail out because of N constant term
+      arr[10*i+N*j] = arr[10*i+10*j+3]; // 11, bail out because of N coefficient
+      arr[10*i+10*j+N] = arr[10*i+10*j]; // 12, bail out because of N constant term
+      arr[10*i] = arr[5*j]; // 13
+      arr[5*i] = arr[10*j]; // 14
+      arr[9*i] = arr[3*j]; // 15
+      arr[3*i] = arr[9*j]; // 16
+    }
+  }
+}
+*/
+TEST(DependencyAnalysis, MIV) {
+  const std::string text = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %4 "main" %16
+               OpExecutionMode %4 OriginUpperLeft
+               OpSource GLSL 440
+               OpName %4 "main"
+               OpName %8 "a"
+               OpName %10 "b"
+               OpName %12 "N"
+               OpName %16 "c"
+               OpName %23 "i"
+               OpName %34 "j"
+               OpName %45 "arr"
+               OpDecorate %16 Location 0
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeInt 32 1
+          %7 = OpTypePointer Function %6
+          %9 = OpConstant %6 2
+         %11 = OpConstant %6 3
+         %13 = OpTypeFloat 32
+         %14 = OpTypeVector %13 4
+         %15 = OpTypePointer Input %14
+         %16 = OpVariable %15 Input
+         %17 = OpTypeInt 32 0
+         %18 = OpConstant %17 0
+         %19 = OpTypePointer Input %13
+         %24 = OpConstant %6 0
+         %31 = OpConstant %6 10
+         %32 = OpTypeBool
+         %42 = OpConstant %17 10
+         %43 = OpTypeArray %6 %42
+         %44 = OpTypePointer Function %43
+         %74 = OpConstant %6 4
+        %184 = OpConstant %6 5
+        %197 = OpConstant %6 9
+        %213 = OpConstant %6 1
+        %218 = OpUndef %6
+          %4 = OpFunction %2 None %3
+          %5 = OpLabel
+          %8 = OpVariable %7 Function
+         %10 = OpVariable %7 Function
+         %12 = OpVariable %7 Function
+         %23 = OpVariable %7 Function
+         %34 = OpVariable %7 Function
+         %45 = OpVariable %44 Function
+               OpStore %8 %9
+               OpStore %10 %11
+         %20 = OpAccessChain %19 %16 %18
+         %21 = OpLoad %13 %20
+         %22 = OpConvertFToS %6 %21
+               OpStore %12 %22
+               OpStore %23 %24
+               OpBranch %25
+         %25 = OpLabel
+        %217 = OpPhi %6 %24 %5 %216 %28
+        %219 = OpPhi %6 %218 %5 %220 %28
+               OpLoopMerge %27 %28 None
+               OpBranch %29
+         %29 = OpLabel
+         %33 = OpSLessThan %32 %217 %31
+               OpBranchConditional %33 %26 %27
+         %26 = OpLabel
+               OpStore %34 %9
+               OpBranch %35
+         %35 = OpLabel
+        %220 = OpPhi %6 %9 %26 %214 %38
+               OpLoopMerge %37 %38 None
+               OpBranch %39
+         %39 = OpLabel
+         %41 = OpSLessThan %32 %220 %31
+               OpBranchConditional %41 %36 %37
+         %36 = OpLabel
+         %48 = OpAccessChain %7 %45 %220
+         %49 = OpLoad %6 %48
+         %50 = OpAccessChain %7 %45 %217
+               OpStore %50 %49
+         %53 = OpAccessChain %7 %45 %217
+         %54 = OpLoad %6 %53
+         %55 = OpAccessChain %7 %45 %220
+               OpStore %55 %54
+         %57 = OpISub %6 %220 %9
+         %59 = OpIAdd %6 %217 %11
+         %60 = OpAccessChain %7 %45 %59
+         %61 = OpLoad %6 %60
+         %62 = OpAccessChain %7 %45 %57
+               OpStore %62 %61
+         %65 = OpISub %6 %220 %9
+         %68 = OpIAdd %6 %217 %11
+         %69 = OpAccessChain %7 %45 %68
+         %70 = OpLoad %6 %69
+         %71 = OpAccessChain %7 %45 %65
+               OpStore %71 %70
+         %73 = OpIMul %6 %9 %217
+         %76 = OpIMul %6 %74 %220
+         %77 = OpIAdd %6 %76 %11
+         %78 = OpAccessChain %7 %45 %77
+         %79 = OpLoad %6 %78
+         %80 = OpAccessChain %7 %45 %73
+               OpStore %80 %79
+         %82 = OpIMul %6 %9 %217
+         %84 = OpIMul %6 %74 %220
+         %85 = OpAccessChain %7 %45 %84
+         %86 = OpLoad %6 %85
+         %87 = OpAccessChain %7 %45 %82
+               OpStore %87 %86
+         %90 = OpIAdd %6 %217 %220
+         %93 = OpIAdd %6 %217 %220
+         %94 = OpAccessChain %7 %45 %93
+         %95 = OpLoad %6 %94
+         %96 = OpAccessChain %7 %45 %90
+               OpStore %96 %95
+         %98 = OpIMul %6 %31 %217
+        %100 = OpIAdd %6 %98 %220
+        %102 = OpIMul %6 %31 %217
+        %104 = OpIAdd %6 %102 %220
+        %105 = OpAccessChain %7 %45 %104
+        %106 = OpLoad %6 %105
+        %107 = OpAccessChain %7 %45 %100
+               OpStore %107 %106
+        %109 = OpIMul %6 %31 %217
+        %111 = OpIMul %6 %31 %220
+        %112 = OpIAdd %6 %109 %111
+        %114 = OpIMul %6 %31 %217
+        %116 = OpIMul %6 %31 %220
+        %117 = OpIAdd %6 %114 %116
+        %118 = OpIAdd %6 %117 %11
+        %119 = OpAccessChain %7 %45 %118
+        %120 = OpLoad %6 %119
+        %121 = OpAccessChain %7 %45 %112
+               OpStore %121 %120
+        %123 = OpIMul %6 %31 %217
+        %125 = OpIMul %6 %31 %220
+        %126 = OpIAdd %6 %123 %125
+        %128 = OpIMul %6 %31 %217
+        %131 = OpIMul %6 %22 %220
+        %132 = OpIAdd %6 %128 %131
+        %133 = OpIAdd %6 %132 %11
+        %134 = OpAccessChain %7 %45 %133
+        %135 = OpLoad %6 %134
+        %136 = OpAccessChain %7 %45 %126
+               OpStore %136 %135
+        %138 = OpIMul %6 %31 %217
+        %140 = OpIMul %6 %31 %220
+        %141 = OpIAdd %6 %138 %140
+        %143 = OpIMul %6 %31 %217
+        %145 = OpIMul %6 %31 %220
+        %146 = OpIAdd %6 %143 %145
+        %148 = OpIAdd %6 %146 %22
+        %149 = OpAccessChain %7 %45 %148
+        %150 = OpLoad %6 %149
+        %151 = OpAccessChain %7 %45 %141
+               OpStore %151 %150
+        %153 = OpIMul %6 %31 %217
+        %156 = OpIMul %6 %22 %220
+        %157 = OpIAdd %6 %153 %156
+        %159 = OpIMul %6 %31 %217
+        %161 = OpIMul %6 %31 %220
+        %162 = OpIAdd %6 %159 %161
+        %163 = OpIAdd %6 %162 %11
+        %164 = OpAccessChain %7 %45 %163
+        %165 = OpLoad %6 %164
+        %166 = OpAccessChain %7 %45 %157
+               OpStore %166 %165
+        %168 = OpIMul %6 %31 %217
+        %170 = OpIMul %6 %31 %220
+        %171 = OpIAdd %6 %168 %170
+        %173 = OpIAdd %6 %171 %22
+        %175 = OpIMul %6 %31 %217
+        %177 = OpIMul %6 %31 %220
+        %178 = OpIAdd %6 %175 %177
+        %179 = OpAccessChain %7 %45 %178
+        %180 = OpLoad %6 %179
+        %181 = OpAccessChain %7 %45 %173
+               OpStore %181 %180
+        %183 = OpIMul %6 %31 %217
+        %186 = OpIMul %6 %184 %220
+        %187 = OpAccessChain %7 %45 %186
+        %188 = OpLoad %6 %187
+        %189 = OpAccessChain %7 %45 %183
+               OpStore %189 %188
+        %191 = OpIMul %6 %184 %217
+        %193 = OpIMul %6 %31 %220
+        %194 = OpAccessChain %7 %45 %193
+        %195 = OpLoad %6 %194
+        %196 = OpAccessChain %7 %45 %191
+               OpStore %196 %195
+        %199 = OpIMul %6 %197 %217
+        %201 = OpIMul %6 %11 %220
+        %202 = OpAccessChain %7 %45 %201
+        %203 = OpLoad %6 %202
+        %204 = OpAccessChain %7 %45 %199
+               OpStore %204 %203
+        %206 = OpIMul %6 %11 %217
+        %208 = OpIMul %6 %197 %220
+        %209 = OpAccessChain %7 %45 %208
+        %210 = OpLoad %6 %209
+        %211 = OpAccessChain %7 %45 %206
+               OpStore %211 %210
+               OpBranch %38
+         %38 = OpLabel
+        %214 = OpIAdd %6 %220 %213
+               OpStore %34 %214
+               OpBranch %35
+         %37 = OpLabel
+               OpBranch %28
+         %28 = OpLabel
+        %216 = OpIAdd %6 %217 %213
+               OpStore %23 %216
+               OpBranch %25
+         %27 = OpLabel
+               OpReturn
+               OpFunctionEnd
+)";
+
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 4);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+
+  constexpr int instructions_expected = 17;
+  const ir::Instruction* store[instructions_expected];
+  const ir::Instruction* load[instructions_expected];
+  int stores_found = 0;
+  int loads_found = 0;
+
+  int block_id = 36;
+  ASSERT_TRUE(spvtest::GetBasicBlock(f, block_id));
+
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, block_id)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store[stores_found] = &inst;
+      ++stores_found;
+    }
+
+    if (inst.opcode() == SpvOp::SpvOpLoad) {
+      load[loads_found] = &inst;
+      ++loads_found;
+    }
+  }
+
+  EXPECT_EQ(instructions_expected, stores_found);
+  EXPECT_EQ(instructions_expected, loads_found);
+
+  constexpr auto directions_all = opt::DistanceVector::Directions::ALL;
+  constexpr auto directions_none = opt::DistanceVector::Directions::NONE;
+
+  CheckDependenceAndDirection(load[0], store[0], false, directions_all,
+                              &analysis);
+  CheckDependenceAndDirection(load[1], store[1], false, directions_all,
+                              &analysis);
+  CheckDependenceAndDirection(load[2], store[2], false, directions_all,
+                              &analysis);
+  CheckDependenceAndDirection(load[3], store[3], false, directions_all,
+                              &analysis);
+  CheckDependenceAndDirection(load[4], store[4], true, directions_none,
+                              &analysis);
+  CheckDependenceAndDirection(load[5], store[5], false, directions_all,
+                              &analysis);
+  CheckDependenceAndDirection(load[6], store[6], false, directions_all,
+                              &analysis);
+  CheckDependenceAndDirection(load[7], store[7], false, directions_all,
+                              &analysis);
+  CheckDependenceAndDirection(load[8], store[8], true, directions_none,
+                              &analysis);
+  CheckDependenceAndDirection(load[9], store[9], false, directions_all,
+                              &analysis);
+  CheckDependenceAndDirection(load[10], store[10], false, directions_all,
+                              &analysis);
+  CheckDependenceAndDirection(load[11], store[11], false, directions_all,
+                              &analysis);
+  CheckDependenceAndDirection(load[12], store[12], false, directions_all,
+                              &analysis);
+  CheckDependenceAndDirection(load[13], store[13], true, directions_none,
+                              &analysis);
+  CheckDependenceAndDirection(load[14], store[14], true, directions_none,
+                              &analysis);
+  CheckDependenceAndDirection(load[15], store[15], true, directions_none,
+                              &analysis);
+  CheckDependenceAndDirection(load[16], store[16], true, directions_none,
+                              &analysis);
+}
+
 }  // namespace

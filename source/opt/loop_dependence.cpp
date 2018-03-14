@@ -168,12 +168,10 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
 
     // We have multiple induction variables so should attempt an MIV test.
     if (induction_variable_count > 1) {
-      // Currently not handled
-      PrintDebug(
-          "Found multiple induction variables. MIV is currently unhandled. "
-          "Exiting.");
-      distance_vector->direction = DistanceVector::Directions::ALL;
-      return false;
+      if (GCDMIVTest(source_node, destination_node)) {
+        distance_vector->direction = DistanceVector::Directions::NONE;
+        return true;
+      }
     }
   }
 
@@ -640,6 +638,162 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
       "information.");
   distance_vector->direction = DistanceVector::Directions::ALL;
   return false;
+}
+
+// Calculate the greatest common divisor of a & b using Stein's algorithm.
+int64_t GreatestCommonDivisor(int64_t a, int64_t b) {
+  // Simple cases
+  if (a == b) {
+    return a;
+  } else if (a == 0) {
+    return b;
+  } else if (b == 0) {
+    return a;
+  }
+
+  // Both even
+  if (a % 2 == 0 && b % 2 == 0) {
+    return 2 * GreatestCommonDivisor(a / 2, b / 2);
+  }
+
+  // Even a, odd b
+  if (a % 2 == 0 && b % 2 == 1) {
+    return GreatestCommonDivisor(a / 2, b);
+  }
+
+  // Odd a, even b
+  if (a % 2 == 1 && b % 2 == 0) {
+    return GreatestCommonDivisor(a, b / 2);
+  }
+
+  // Both odd, reduce the larger argument
+  if (a > b) {
+    return GreatestCommonDivisor((a - b) / 2, b);
+  } else {
+    return GreatestCommonDivisor((b - a) / 2, a);
+  }
+}
+
+// Check if node is affine, ie in the form: a0*i0 + a1*i1 + ... an*in + c
+// and ontaining only SERecurrentNode, SEAddNode and SEConstantNode
+bool IsInCorrectFormForGCD(SENode* node) {
+  bool children_ok = true;
+
+  if (auto add_node = node->AsSEAddNode()) {
+    for (auto child : add_node->GetChildren()) {
+      children_ok = children_ok && IsInCorrectFormForGCD(child);
+    }
+  }
+
+  bool this_ok = node->AsSERecurrentNode() || node->AsSEAddNode() ||
+                 node->AsSEConstantNode();
+
+  return children_ok && this_ok;
+}
+
+std::vector<SERecurrentNode*> GetAllTopLevelRecurrences(SENode* node) {
+  auto nodes = std::vector<SERecurrentNode*>{};
+  if (auto recurrent_node = node->AsSERecurrentNode()) {
+    nodes.push_back(recurrent_node);
+  }
+
+  if (auto add_node = node->AsSEAddNode()) {
+    for (auto child : add_node->GetChildren()) {
+      auto child_nodes = GetAllTopLevelRecurrences(child);
+      nodes.insert(nodes.end(), child_nodes.begin(), child_nodes.end());
+    }
+  }
+
+  return nodes;
+}
+
+std::vector<SEConstantNode*> GetAllTopLevelConstants(SENode* node) {
+  auto nodes = std::vector<SEConstantNode*>{};
+  if (auto recurrent_node = node->AsSEConstantNode()) {
+    nodes.push_back(recurrent_node);
+  }
+
+  if (auto add_node = node->AsSEAddNode()) {
+    for (auto child : add_node->GetChildren()) {
+      auto child_nodes = GetAllTopLevelConstants(child);
+      nodes.insert(nodes.end(), child_nodes.begin(), child_nodes.end());
+    }
+  }
+
+  return nodes;
+}
+
+bool AreOffsetsAndCoefficientsConstant(
+    const std::vector<SERecurrentNode*>& nodes) {
+  for (auto node : nodes) {
+    if (!node->GetOffset()->AsSEConstantNode() ||
+        !node->GetOffset()->AsSEConstantNode()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+int64_t CalculateConstantTerm(const std::vector<SERecurrentNode*>& recurrences,
+                              const std::vector<SEConstantNode*>& constants) {
+  int64_t constant_term = 0;
+  for (auto recurrence : recurrences) {
+    constant_term +=
+        recurrence->GetOffset()->AsSEConstantNode()->FoldToSingleValue();
+  }
+
+  for (auto constant : constants) {
+    constant_term += constant->FoldToSingleValue();
+  }
+
+  return constant_term;
+}
+
+int64_t CalculateGCDFromCoefficients(
+    const std::vector<SERecurrentNode*>& recurrences, int64_t running_gcd) {
+  for (SERecurrentNode* recurrence : recurrences) {
+    auto coefficient = recurrence->GetCoefficient()->AsSEConstantNode();
+
+    running_gcd = GreatestCommonDivisor(
+        running_gcd, std::abs(coefficient->FoldToSingleValue()));
+  }
+
+  return running_gcd;
+}
+
+// Perform the GCD test if both, the source and the destination nodes, are in
+// the form a0*i0 + a1*i1 + ... an*in + c.
+bool LoopDependenceAnalysis::GCDMIVTest(SENode* source, SENode* destination) {
+  // Bail out if source/destination is in an unexpected form.
+  if (!IsInCorrectFormForGCD(source) || !IsInCorrectFormForGCD(destination)) {
+    return false;
+  }
+
+  auto source_recurrences = GetAllTopLevelRecurrences(source);
+  auto dest_recurrences = GetAllTopLevelRecurrences(destination);
+
+  // Bail out if all offsets and coefficients aren't constant.
+  if (!AreOffsetsAndCoefficientsConstant(source_recurrences) ||
+      !AreOffsetsAndCoefficientsConstant(dest_recurrences)) {
+    return false;
+  }
+
+  auto source_constants = GetAllTopLevelConstants(source);
+  int64_t source_constant =
+      CalculateConstantTerm(source_recurrences, source_constants);
+
+  auto dest_constants = GetAllTopLevelConstants(destination);
+  int64_t destination_constant =
+      CalculateConstantTerm(dest_recurrences, dest_constants);
+
+  int64_t delta = std::abs(source_constant - destination_constant);
+
+  int64_t running_gcd = 0;
+
+  running_gcd = CalculateGCDFromCoefficients(source_recurrences, running_gcd);
+  running_gcd = CalculateGCDFromCoefficients(dest_recurrences, running_gcd);
+
+  return delta % running_gcd != 0;
 }
 
 }  // namespace opt

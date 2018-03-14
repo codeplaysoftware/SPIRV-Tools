@@ -128,6 +128,10 @@ class LoopDependenceAnalysis {
                            SENode* coefficient,
                            DistanceVector* distance_vector);
 
+  // Perform the GCD test if both, the source and the destination nodes, are in
+  // the form a0*i0 + a1*i1 + ... an*in + c.
+  bool GCDMIVTest(SENode* source, SENode* destination);
+
   // Finds the lower bound of the loop as an SENode* and returns the resulting
   // SENode. The lower bound is evaluated as the bound with the lesser signed
   // value.
