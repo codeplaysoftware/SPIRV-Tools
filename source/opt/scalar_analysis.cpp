@@ -45,8 +45,8 @@ SENode* ScalarEvolutionAnalysis::CreateMultiplyNode(SENode* operand_1,
                                                     SENode* operand_2) {
   if (operand_1->GetType() == SENode::Constant &&
       operand_2->GetType() == SENode::Constant) {
-    return CreateConstant(operand_1->FoldToSingleValue() *
-                          operand_2->FoldToSingleValue());
+    return CreateConstant(operand_1->AsSEConstantNode()->FoldToSingleValue() *
+                          operand_2->AsSEConstantNode()->FoldToSingleValue());
   }
 
   std::unique_ptr<SENode> add_node{new SEMultiplyNode(this)};
@@ -95,16 +95,12 @@ SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
       output = AnalyzeAddOp(inst, true);
       break;
     }
-    case SpvOp::SpvOpLoad: {
-      output = CreateValueUnknownNode();
-      break;
-    }
     case SpvOp::SpvOpIMul: {
       output = AnalyzeMultiplyOp(inst);
       break;
     }
     default: {
-      output = new SECantCompute(this);
+      output = CreateValueUnknownNode();
       instruction_map_[inst] = output;
       break;
     }
@@ -229,32 +225,6 @@ SENode* ScalarEvolutionAnalysis::CreateCantComputeNode() {
       std::unique_ptr<SECantCompute>(new SECantCompute(this)));
 }
 
-bool ScalarEvolutionAnalysis::CanProveEqual(const SENode& source,
-                                            const SENode& destination) {
-  return source == destination;
-}
-
-bool ScalarEvolutionAnalysis::CanProveNotEqual(const SENode& source,
-                                               const SENode& destination) {
-  return source != destination;
-}
-
-int64_t SEMultiplyNode::FoldToSingleValue() const {
-  int64_t val = 0;
-  for (SENode* child : children_) {
-    val *= child->FoldToSingleValue();
-  }
-  return val;
-}
-
-int64_t SEAddNode::FoldToSingleValue() const {
-  int64_t val = 0;
-  for (SENode* child : children_) {
-    val += child->FoldToSingleValue();
-  }
-  return val;
-}
-
 // Add the created node into the cache of nodes. If it already exists return it.
 SENode* ScalarEvolutionAnalysis::GetCachedOrAdd(
     std::unique_ptr<SENode> prospective_node) {
@@ -303,11 +273,18 @@ size_t SENodeHash::operator()(const SENode* node) const {
   // We just ignore the literal value unless it is a constant.
   int64_t literal_value = 0;
   if (node->GetType() == SENode::Constant)
-    literal_value = node->FoldToSingleValue();
+    literal_value = node->AsSEConstantNode()->FoldToSingleValue();
 
   // Hash the type string and the constant value if any.
   size_t resulting_hash =
       std::hash<std::string>{}(type) ^ std::hash<int64_t>{}(literal_value);
+
+  // If we're dealing with a recurrent expression hash the loop as well so that
+  // nested inductions like i=0,i++ and j=0,j++ correspond to different nodes.
+  if (node->GetType() == SENode::RecurrentExpr) {
+    resulting_hash ^=
+        std::hash<const ir::Loop*>{}(node->AsSERecurrentNode()->GetLoop());
+  }
 
   // Hash the pointers of the child nodes, each SENode has a unique pointer
   // associated with it.
@@ -328,7 +305,7 @@ void SENode::DumpDot(std::ostream& out, bool recurse) const {
   size_t unique_id = std::hash<const SENode*>{}(this);
   out << unique_id << " [label=\"" << AsString() << " ";
   if (GetType() == SENode::Constant) {
-    out << "\nwith value: " << FoldToSingleValue();
+    out << "\nwith value: " << this->AsSEConstantNode()->FoldToSingleValue();
   }
   out << "\"]\n";
   for (const SENode* child : children_) {
@@ -337,19 +314,6 @@ void SENode::DumpDot(std::ostream& out, bool recurse) const {
     if (recurse) child->DumpDot(out, true);
   }
 }
-
-// SENodeDSL operator+(int64_t lhs, SENodeDSL rhs) { return rhs + lhs; }
-// SENodeDSL operator+(SENode* lhs, SENodeDSL rhs) { return rhs + lhs; }
-
-// SENodeDSL operator-(int64_t lhs, SENodeDSL rhs) {
-//   return SENodeDSL{rhs.scev_->CreateConstant(lhs)} - rhs;
-// }
-// SENodeDSL operator-(SENode* lhs, SENodeDSL rhs) {
-//   return SENodeDSL{lhs} - rhs;
-// }
-
-// SENodeDSL operator*(int64_t lhs, SENodeDSL rhs) { return rhs * lhs; }
-// SENodeDSL operator*(SENode* lhs, SENodeDSL rhs) { return rhs * lhs; }
 
 }  // namespace opt
 }  // namespace spvtools

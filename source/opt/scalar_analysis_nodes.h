@@ -46,8 +46,8 @@ class SENode {
     CanNotCompute
   };
 
-  explicit SENode(opt::ScalarEvolutionAnalysis* scev_analysis)
-      : scev_analysis_(scev_analysis) {}
+  explicit SENode(opt::ScalarEvolutionAnalysis* parent_analysis)
+      : parent_analysis_(parent_analysis) {}
 
   virtual SENodeType GetType() const = 0;
 
@@ -68,8 +68,6 @@ class SENode {
   // will recurse through all children to print the DAG starting from this node
   // as a root.
   void DumpDot(std::ostream& out, bool recurse = false) const;
-
-  virtual int64_t FoldToSingleValue() const { return 0; }
 
   // Checks if two nodes are the same by hashing them.
   bool operator==(const SENode& other) const;
@@ -95,6 +93,42 @@ class SENode {
   const_iterator cbegin() { return children_.cbegin(); }
   const_iterator cend() { return children_.cend(); }
 
+  // Collect all the recurrent nodes in this SENode
+  std::vector<SERecurrentNode*> CollectRecurrentNodes() {
+    std::vector<SERecurrentNode*> recurrent_nodes{};
+
+    if (auto recurrent_node = AsSERecurrentNode()) {
+      recurrent_nodes.push_back(recurrent_node);
+    }
+
+    for (auto child : GetChildren()) {
+      auto child_recurrent_nodes = child->CollectRecurrentNodes();
+      recurrent_nodes.insert(recurrent_nodes.end(),
+                             child_recurrent_nodes.begin(),
+                             child_recurrent_nodes.end());
+    }
+
+    return recurrent_nodes;
+  }
+
+  // Collect all the value unknown nodes in this SENode
+  std::vector<SEValueUnknown*> CollectValueUnknownNodes() {
+    std::vector<SEValueUnknown*> value_unknown_nodes{};
+
+    if (auto value_unknown_node = AsSEValueUnknown()) {
+      value_unknown_nodes.push_back(value_unknown_node);
+    }
+
+    for (auto child : GetChildren()) {
+      auto child_value_unknown_nodes = child->CollectValueUnknownNodes();
+      value_unknown_nodes.insert(value_unknown_nodes.end(),
+                                 child_value_unknown_nodes.begin(),
+                                 child_value_unknown_nodes.end());
+    }
+
+    return value_unknown_nodes;
+  }
+
   // Iterator to iterate over the entire DAG. Even though we are using the tree
   // iterator it should still be safe to iterate over. However, nodes with
   // multiple parents will be visited multiple times, unlike in a tree.
@@ -113,7 +147,7 @@ class SENode {
   const std::vector<SENode*>& GetChildren() const { return children_; }
   std::vector<SENode*>& GetChildren() { return children_; }
 
-    // Implements a casting method for each type.
+// Implements a casting method for each type.
 #define DeclareCastMethod(target)                  \
   virtual target* As##target() { return nullptr; } \
   virtual const target* As##target() const { return nullptr; }
@@ -126,13 +160,15 @@ class SENode {
   DeclareCastMethod(SECantCompute);
 #undef DeclareCastMethod
 
-  opt::ScalarEvolutionAnalysis* GetSCEVAnalysis() const {
-    return scev_analysis_;
+  // Get the analysis which has this node in its cache.
+  inline opt::ScalarEvolutionAnalysis* GetParentAnalysis() const {
+    return parent_analysis_;
   }
 
  protected:
-  opt::ScalarEvolutionAnalysis* scev_analysis_;
   std::vector<SENode*> children_;
+
+  opt::ScalarEvolutionAnalysis* parent_analysis_;
 };
 
 // Function object to handle the hashing of SENodes. Hashing algorithm hashes
@@ -146,12 +182,12 @@ struct SENodeHash {
 // A node representing a constant integer.
 class SEConstantNode : public SENode {
  public:
-  SEConstantNode(opt::ScalarEvolutionAnalysis* scev_analysis, int64_t value)
-      : SENode(scev_analysis), literal_value_(value) {}
+  SEConstantNode(opt::ScalarEvolutionAnalysis* parent_analysis, int64_t value)
+      : SENode(parent_analysis), literal_value_(value) {}
 
   SENodeType GetType() const final { return Constant; }
 
-  int64_t FoldToSingleValue() const override { return literal_value_; }
+  int64_t FoldToSingleValue() const { return literal_value_; }
 
   SEConstantNode* AsSEConstantNode() override { return this; }
   const SEConstantNode* AsSEConstantNode() const override { return this; }
@@ -165,9 +201,9 @@ class SEConstantNode : public SENode {
 // induction variable.
 class SERecurrentNode : public SENode {
  public:
-  SERecurrentNode(opt::ScalarEvolutionAnalysis* scev_analysis,
+  SERecurrentNode(opt::ScalarEvolutionAnalysis* parent_analysis,
                   const ir::Loop* loop)
-      : SENode(scev_analysis), loop_(loop) {}
+      : SENode(parent_analysis), loop_(loop) {}
 
   SENodeType GetType() const final { return RecurrentExpr; }
 
@@ -202,12 +238,10 @@ class SERecurrentNode : public SENode {
 // A node representing an addition operation between child nodes.
 class SEAddNode : public SENode {
  public:
-  SEAddNode(opt::ScalarEvolutionAnalysis* scev_analysis)
-      : SENode(scev_analysis) {}
+  SEAddNode(opt::ScalarEvolutionAnalysis* parent_analysis)
+      : SENode(parent_analysis) {}
 
   SENodeType GetType() const final { return Add; }
-
-  int64_t FoldToSingleValue() const override;
 
   SEAddNode* AsSEAddNode() override { return this; }
   const SEAddNode* AsSEAddNode() const override { return this; }
@@ -216,12 +250,10 @@ class SEAddNode : public SENode {
 // A node representing a multiply operation between child nodes.
 class SEMultiplyNode : public SENode {
  public:
-  SEMultiplyNode(opt::ScalarEvolutionAnalysis* scev_analysis)
-      : SENode(scev_analysis) {}
+  SEMultiplyNode(opt::ScalarEvolutionAnalysis* parent_analysis)
+      : SENode(parent_analysis) {}
 
   SENodeType GetType() const final { return Multiply; }
-
-  int64_t FoldToSingleValue() const override;
 
   SEMultiplyNode* AsSEMultiplyNode() override { return this; }
   const SEMultiplyNode* AsSEMultiplyNode() const override { return this; }
@@ -230,12 +262,8 @@ class SEMultiplyNode : public SENode {
 // A node representing a unary negative operation.
 class SENegative : public SENode {
  public:
-  SENegative(opt::ScalarEvolutionAnalysis* scev_analysis)
-      : SENode(scev_analysis) {}
-
-  int64_t FoldToSingleValue() const override {
-    return -children_[0]->FoldToSingleValue();
-  }
+  SENegative(opt::ScalarEvolutionAnalysis* parent_analysis)
+      : SENode(parent_analysis) {}
 
   SENodeType GetType() const final { return Negative; }
 
@@ -247,8 +275,8 @@ class SENegative : public SENode {
 // instruction.
 class SEValueUnknown : public SENode {
  public:
-  SEValueUnknown(opt::ScalarEvolutionAnalysis* scev_analysis)
-      : SENode(scev_analysis) {}
+  SEValueUnknown(opt::ScalarEvolutionAnalysis* parent_analysis)
+      : SENode(parent_analysis) {}
 
   SENodeType GetType() const final { return ValueUnknown; }
 
@@ -259,8 +287,8 @@ class SEValueUnknown : public SENode {
 // A node which we cannot reason about at all.
 class SECantCompute : public SENode {
  public:
-  SECantCompute(opt::ScalarEvolutionAnalysis* scev_analysis)
-      : SENode(scev_analysis) {}
+  SECantCompute(opt::ScalarEvolutionAnalysis* parent_analysis)
+      : SENode(parent_analysis) {}
 
   SENodeType GetType() const final { return CanNotCompute; }
 

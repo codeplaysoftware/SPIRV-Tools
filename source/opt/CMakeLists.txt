@@ -135,6 +135,7 @@ add_library(SPIRV-Tools-opt
   local_single_store_elim_pass.cpp
   local_ssa_elim_pass.cpp
   loop_dependence.cpp
+  loop_dependence_helpers.cpp
   loop_descriptor.cpp
   loop_peeling.cpp
   loop_utils.cpp

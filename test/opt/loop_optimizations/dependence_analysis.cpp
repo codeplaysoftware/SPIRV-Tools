@@ -109,7 +109,6 @@ TEST_F(PassClassTest, BasicDependenceTest) {
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
   opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
-  analysis.DumpIterationSpaceAsDot(std::cout);
 
   const ir::Instruction* store = nullptr;
   for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 11)) {
@@ -120,10 +119,9 @@ TEST_F(PassClassTest, BasicDependenceTest) {
 
   EXPECT_TRUE(store);
 
-  opt::DVEntry dv_entry{};
+  opt::DistanceVector dv_entry{};
   EXPECT_FALSE(analysis.GetDependence(
       store, context->get_def_use_mgr()->GetDef(31), &dv_entry));
-  analysis.DumpIterationSpaceAsDot(std::cout);
 }
 
 /*
@@ -198,7 +196,6 @@ TEST_F(PassClassTest, BasicZIV) {
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
   opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
-  analysis.DumpIterationSpaceAsDot(std::cout);
 
   const ir::Instruction* store = nullptr;
   for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 28)) {
