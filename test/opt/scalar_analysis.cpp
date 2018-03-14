@@ -756,11 +756,11 @@ TEST_F(PassClassTest, SimplifyMultiplyInductions) {
 
   for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 31)) {
     if (inst.opcode() == SpvOp::SpvOpLoad) {
-      load = &inst;
+      loads[load_count] = &inst;
       ++load_count;
     }
     if (inst.opcode() == SpvOp::SpvOpStore) {
-      store = &inst;
+      stores[store_count] = &inst;
       ++store_count;
     }
   }
@@ -769,9 +769,9 @@ TEST_F(PassClassTest, SimplifyMultiplyInductions) {
   EXPECT_EQ(store_count, 2);
 
   ir::Instruction* load_access_chain =
-      context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
+      context->get_def_use_mgr()->GetDef(loads[0]->GetSingleWordInOperand(0));
   ir::Instruction* store_access_chain =
-      context->get_def_use_mgr()->GetDef(store->GetSingleWordInOperand(0));
+      context->get_def_use_mgr()->GetDef(stores[0]->GetSingleWordInOperand(0));
 
   ir::Instruction* load_child = context->get_def_use_mgr()->GetDef(
       load_access_chain->GetSingleWordInOperand(1));
