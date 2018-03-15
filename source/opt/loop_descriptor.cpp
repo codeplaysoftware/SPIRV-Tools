@@ -714,6 +714,10 @@ bool Loop::FindNumberOfIterations(const ir::Instruction* induction,
   const opt::analysis::Integer* type =
       upper_bound->AsIntConstant()->type()->AsInteger();
 
+  if (type->width() > 32) {
+    return false;
+  }
+
   if (type->IsSigned()) {
     condition_value = upper_bound->AsIntConstant()->GetS32BitValue();
   } else {

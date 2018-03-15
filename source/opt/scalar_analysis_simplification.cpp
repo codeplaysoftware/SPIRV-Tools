@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include <functional>
-#include <unordered_set>
 #include "opt/scalar_analysis.h"
 
 namespace spvtools {

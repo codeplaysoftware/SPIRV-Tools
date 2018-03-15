@@ -317,5 +317,38 @@ void SENode::DumpDot(std::ostream& out, bool recurse) const {
   }
 }
 
+std::pair<SENodeDSL, int64_t> SENodeDSL::operator/(
+    SENodeDSL rhs_wrapper) const {
+  SENode* lhs = node_;
+  SENode* rhs = rhs_wrapper.node_;
+
+  // Trivial case.
+  if (lhs->AsSEConstantNode() && rhs->AsSEConstantNode()) {
+    int64_t lhs_value = lhs->AsSEConstantNode()->FoldToSingleValue();
+    int64_t rhs_value = lhs->AsSEConstantNode()->FoldToSingleValue();
+    if (!rhs_value) {
+      // Division by 0.
+      return {scev_->CreateCantComputeNode(), 0};
+    }
+    return {scev_->CreateConstant(lhs_value / rhs_value),
+            lhs_value % rhs_value};
+  }
+
+  // look for a "c U / U" pattern.
+  if (lhs->AsSEConstantNode()) {
+    assert(lhs->GetChildren().size() == 2 &&
+           "More than 2 operand for a multiply node.");
+
+    if (lhs->GetChildren()[0] == rhs) {
+      return {lhs->GetChildren()[1], 0};
+    }
+    if (lhs->GetChildren()[1] == rhs) {
+      return {lhs->GetChildren()[0], 0};
+    }
+  }
+
+  return {scev_->CreateCantComputeNode(), 0};
+}
+
 }  // namespace opt
 }  // namespace spvtools

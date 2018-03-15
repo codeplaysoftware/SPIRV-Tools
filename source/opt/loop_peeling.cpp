@@ -541,25 +541,38 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
 
     // This does not take into account branch elimination opportunities and the
     // unrolling.
-    if (loop_size.roi_size_ * 2 < code_grow_threshold_) {
-      continue;
-    }
-    // FIXME
-    LoopPeeling peeler(loop, nullptr);
-
-    if (!peeler.CanPeelLoop()) {
+    if (loop_size.roi_size_ * 2 > code_grow_threshold_) {
       continue;
     }
 
     ir::BasicBlock* exit_block = loop->FindConditionBlock();
+    if (!exit_block) {
+      continue;
+    }
 
     ir::Instruction* exiting_iv = loop->FindConditionVariable(exit_block);
+    if (!exiting_iv) {
+      continue;
+    }
     size_t iterations = 0;
     if (!loop->FindNumberOfIterations(exiting_iv, &*exit_block->tail(),
                                       &iterations)) {
       continue;
     }
     if (!iterations) continue;
+
+    // FIXME
+    LoopPeeling peeler(
+        loop,
+        InstructionBuilder(context(), loop->GetHeaderBlock(),
+                           ir::IRContext::kAnalysisDefUse |
+                               ir::IRContext::kAnalysisInstrToBlockMapping)
+            .Add32BitConstantInteger<uint32_t>(
+                static_cast<uint32_t>(iterations), false));
+
+    if (!peeler.CanPeelLoop()) {
+      continue;
+    }
 
     // For each basic block in the loop, check if it is can be peeled. If it
     // can, get the direction (before/after) and by which factor.
@@ -569,12 +582,15 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
     uint32_t peel_after_factor = 0;
 
     for (uint32_t block : loop->GetBlocks()) {
-      if (block != exit_block->id()) continue;
+      if (block == exit_block->id()) continue;
       ir::BasicBlock* bb = cfg()->block(block);
       PeelDirection direction;
       uint32_t factor;
       std::tie(direction, factor) = peel_info.GetPeelingInfo(bb);
 
+      if (direction == PeelDirection::kNone) {
+        continue;
+      }
       if (direction == PeelDirection::kBefore) {
         peel_before_factor = std::max(peel_before_factor, factor);
       } else {
@@ -590,10 +606,11 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
     if (peel_before_factor) {
       peeler.PeelBefore(peel_before_factor);
       modified = true;
-    }
-    if (peel_after_factor) {
-      peeler.PeelAfter(peel_after_factor);
-      modified = true;
+    } else {
+      if (peel_after_factor) {
+        peeler.PeelAfter(peel_after_factor);
+        modified = true;
+      }
     }
   }
 
@@ -603,8 +620,9 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
 uint32_t LoopPeelingPass::LoopPeelingInfo::GetFirstLoopInvariantOperand(
     ir::Instruction* condition) const {
   for (uint32_t i = 0; i < condition->NumInOperands(); i++) {
-    if (loop_->IsInsideLoop(
-            context_->get_instr_block(condition->GetSingleWordInOperand(i)))) {
+    ir::BasicBlock* bb =
+        context_->get_instr_block(condition->GetSingleWordInOperand(i));
+    if (bb && loop_->IsInsideLoop(bb)) {
       return condition->GetSingleWordInOperand(i);
     }
   }
@@ -615,8 +633,9 @@ uint32_t LoopPeelingPass::LoopPeelingInfo::GetFirstLoopInvariantOperand(
 uint32_t LoopPeelingPass::LoopPeelingInfo::GetFirstNonLoopInvariantOperand(
     ir::Instruction* condition) const {
   for (uint32_t i = 0; i < condition->NumInOperands(); i++) {
-    if (!loop_->IsInsideLoop(
-            context_->get_instr_block(condition->GetSingleWordInOperand(i)))) {
+    ir::BasicBlock* bb =
+        context_->get_instr_block(condition->GetSingleWordInOperand(i));
+    if (bb || !loop_->IsInsideLoop(bb)) {
       return condition->GetSingleWordInOperand(i);
     }
   }
@@ -667,7 +686,7 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
 
   // Left hand-side.
   SENode* lhs = scev_analysis_->AnalyzeInstruction(
-      def_use_mgr->GetDef(condition->GetSingleWordInOperand(1)));
+      def_use_mgr->GetDef(condition->GetSingleWordInOperand(0)));
   if (lhs->GetType() == SENode::CanNotCompute) {
     // Can't make any conclusion.
     return GetNoneDirection();
@@ -675,7 +694,7 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
 
   // Right hand-side.
   SENode* rhs = scev_analysis_->AnalyzeInstruction(
-      def_use_mgr->GetDef(condition->GetSingleWordInOperand(2)));
+      def_use_mgr->GetDef(condition->GetSingleWordInOperand(1)));
   if (rhs->GetType() == SENode::CanNotCompute) {
     // Can't make any conclusion.
     return GetNoneDirection();
@@ -822,8 +841,9 @@ LoopPeelingPass::LoopPeelingInfo::HandleInequality(SENode* lhs,
   assert(divisor && "The recurring expression's coefficient is 0");
   // !!(dividend % divisor) => 1 if |dividend| is not divisible by |divisor|.
   int64_t flip_iteration = dividend / divisor + !!(dividend % divisor);
+  // FIXME: flip_iteration can be negative ...
   if (flip_iteration < 0 ||
-      loop_max_iterations_ >= static_cast<uint64_t>(flip_iteration)) {
+      loop_max_iterations_ <= static_cast<uint64_t>(flip_iteration)) {
     // Always true or false within the loop bounds.
     return GetNoneDirection();
   }

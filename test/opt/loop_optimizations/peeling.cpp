@@ -468,7 +468,6 @@ TEST_F(PeelingTest, SimplePeeling) {
 
       Match(check, context.get());
     }
-    SinglePassRunAndMatch<opt::LoopUnswitchPass>(check + text, true);
   }
 
   // Peel after.

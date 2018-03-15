@@ -161,6 +161,14 @@ struct SENodeDSL {
   }
   SENodeDSL operator*(SENodeDSL rhs) const { return *this * rhs.node_; }
 
+  std::pair<SENodeDSL, int64_t> operator/(int64_t integer) const {
+    return *this / scev_->CreateConstant(integer);
+  }
+  // Try to perform a division. Returns the pair <this.node_ / rhs, division
+  // remainder>. If it fails to simplify it, the function returns a
+  // CanNotCompute node.
+  std::pair<SENodeDSL, int64_t> operator/(SENodeDSL rhs) const;
+
   SENode* node_;
   ScalarEvolutionAnalysis* scev_;
 };
@@ -177,6 +185,13 @@ inline SENodeDSL operator-(SENode* lhs, SENodeDSL rhs) {
 
 inline SENodeDSL operator*(int64_t lhs, SENodeDSL rhs) { return rhs * lhs; }
 inline SENodeDSL operator*(SENode* lhs, SENodeDSL rhs) { return rhs * lhs; }
+
+inline std::pair<SENodeDSL, int64_t> operator/(int64_t lhs, SENodeDSL rhs) {
+  return SENodeDSL{rhs.scev_->CreateConstant(lhs)} / rhs;
+}
+inline std::pair<SENodeDSL, int64_t> operator/(SENode* lhs, SENodeDSL rhs) {
+  return SENodeDSL{lhs} / rhs;
+}
 
 }  // namespace opt
 }  // namespace spvtools
