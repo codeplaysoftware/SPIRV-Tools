@@ -1248,7 +1248,7 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
     // 53 -> 54
     {
       opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(47),
+      EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(47),
                                          stores[1], &distance_vector));
     }
   }
@@ -1274,14 +1274,14 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
     // 78 -> 79
     {
       opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(78),
+      EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(78),
                                          stores[0], &distance_vector));
     }
 
     // 85 -> 86
     {
       opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(85),
+      EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(85),
                                          stores[1], &distance_vector));
     }
   }
@@ -1315,7 +1315,7 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
     // 116 -> 117
     {
       opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(
+      EXPECT_FALSE(
           analysis.GetDependence(context->get_def_use_mgr()->GetDef(116),
                                  stores[1], &distance_vector));
     }
@@ -1350,7 +1350,7 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
     // 146 -> 147
     {
       opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(
+      EXPECT_FALSE(
           analysis.GetDependence(context->get_def_use_mgr()->GetDef(146),
                                  stores[1], &distance_vector));
     }

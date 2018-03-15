@@ -283,13 +283,22 @@ class SENegative : public SENode {
 // instruction.
 class SEValueUnknown : public SENode {
  public:
-  explicit SEValueUnknown(opt::ScalarEvolutionAnalysis* parent_analysis)
-      : SENode(parent_analysis) {}
+  // SEValueUnknowns must come from an instruction |unique_id| is the unique id
+  // of that instruction. This is so we can compare value unknowns and have a
+  // unique value unknown for each instruction.
+  SEValueUnknown(opt::ScalarEvolutionAnalysis* parent_analysis,
+                 uint32_t unique_id)
+      : SENode(parent_analysis), unique_id_(unique_id) {}
 
   SENodeType GetType() const final { return ValueUnknown; }
 
   SEValueUnknown* AsSEValueUnknown() override { return this; }
   const SEValueUnknown* AsSEValueUnknown() const override { return this; }
+
+  inline uint32_t UniqueId() const { return unique_id_; }
+
+ private:
+  uint32_t unique_id_;
 };
 
 // A node which we cannot reason about at all.
@@ -306,4 +315,4 @@ class SECantCompute : public SENode {
 
 }  // namespace opt
 }  // namespace spvtools
-#endif // SOURCE_OPT_SCALAR_ANALYSIS_NODES_H_
+#endif  // SOURCE_OPT_SCALAR_ANALYSIS_NODES_H_
