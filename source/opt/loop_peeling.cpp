@@ -561,7 +561,6 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
     }
     if (!iterations) continue;
 
-    // FIXME
     LoopPeeling peeler(
         loop,
         InstructionBuilder(context(), loop->GetHeaderBlock(),
@@ -599,17 +598,21 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
       }
     }
 
-    // To build the constant, insert point will not be used.
-    InstructionBuilder builder(context(), loop->GetHeaderBlock(),
-                               ir::IRContext::kAnalysisDefUse |
-                                   ir::IRContext::kAnalysisInstrToBlockMapping);
     if (peel_before_factor) {
       peeler.PeelBefore(peel_before_factor);
       modified = true;
+      if (stats_) {
+        stats_->peeled_loops_[loop] = {PeelDirection::kBefore,
+                                       peel_before_factor};
+      }
     } else {
       if (peel_after_factor) {
         peeler.PeelAfter(peel_after_factor);
         modified = true;
+        if (stats_) {
+          stats_->peeled_loops_[loop] = {PeelDirection::kAfter,
+                                         peel_after_factor};
+        }
       }
     }
   }
@@ -635,7 +638,7 @@ uint32_t LoopPeelingPass::LoopPeelingInfo::GetFirstNonLoopInvariantOperand(
   for (uint32_t i = 0; i < condition->NumInOperands(); i++) {
     ir::BasicBlock* bb =
         context_->get_instr_block(condition->GetSingleWordInOperand(i));
-    if (bb || !loop_->IsInsideLoop(bb)) {
+    if (!bb || !loop_->IsInsideLoop(bb)) {
       return condition->GetSingleWordInOperand(i);
     }
   }
@@ -646,6 +649,7 @@ uint32_t LoopPeelingPass::LoopPeelingInfo::GetFirstNonLoopInvariantOperand(
 static bool IsHandledCondition(SpvOp opcode) {
   switch (opcode) {
     case SpvOpIEqual:
+    case SpvOpINotEqual:
     case SpvOpUGreaterThan:
     case SpvOpSGreaterThan:
     case SpvOpUGreaterThanEqual:
@@ -700,23 +704,10 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
     return GetNoneDirection();
   }
 
-  // One side should be a recurrent expression over the current loop, the
-  // other should be a constant over the loop.
-  auto is_recurent_expr_over_current_loop =
-      [this](const SERecurrentNode* rec_expr) -> bool {
-    if (!rec_expr) return false;
-    return std::any_of(
-        rec_expr->graph_cbegin(), rec_expr->graph_cend(),
-        [this](const SENode& node) {
-          const SERecurrentNode* rec = node.AsSERecurrentNode();
-          return loop_->IsInsideLoop(rec->GetLoop()->GetHeaderBlock());
-        });
-  };
   // Only take into account recurrent expression over the current loop.
-  bool is_lhs_rec =
-      is_recurent_expr_over_current_loop(lhs->AsSERecurrentNode());
-  bool is_rhs_rec =
-      is_recurent_expr_over_current_loop(rhs->AsSERecurrentNode());
+  bool is_lhs_rec = !scev_analysis_->IsLoopInvariant(loop_, lhs);
+  bool is_rhs_rec = !scev_analysis_->IsLoopInvariant(loop_, rhs);
+
   if ((is_lhs_rec && is_rhs_rec) || (!is_lhs_rec && !is_rhs_rec)) {
     return GetNoneDirection();
   }
@@ -737,6 +728,7 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
     default:
       return GetNoneDirection();
     case SpvOpIEqual:
+    case SpvOpINotEqual:
       return HandleEqual(lhs, rhs);
     case SpvOpUGreaterThan:
     case SpvOpSGreaterThan:
@@ -746,11 +738,11 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
     // We add one to transform >= into > and <= into <.
     case SpvOpUGreaterThanEqual:
     case SpvOpSGreaterThanEqual:
-      rhs = SENodeDSL(rhs) + 1;
+      lhs = SENodeDSL(lhs) + 1;
       break;
     case SpvOpULessThanEqual:
     case SpvOpSLessThanEqual:
-      lhs = SENodeDSL(lhs) + 1;
+      rhs = SENodeDSL(rhs) + 1;
       break;
   }
 
@@ -759,7 +751,6 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
     std::swap(lhs, rhs);
     std::swap(is_lhs_rec, is_rhs_rec);
   }
-
   return HandleInequality(lhs, rhs->AsSERecurrentNode());
 }
 
@@ -814,7 +805,7 @@ LoopPeelingPass::LoopPeelingInfo::HandleEqual(SENode* lhs, SENode* rhs) const {
 LoopPeelingPass::LoopPeelingInfo::Direction
 LoopPeelingPass::LoopPeelingInfo::HandleInequality(SENodeDSL lhs,
                                                    SERecurrentNode* rhs) const {
-  // Compute (cst - B) / A
+  // Compute (cst - B) / A.
   std::pair<SENodeDSL, int64_t> flip_iteration =
       (lhs - rhs->GetOffset()->AsSEConstantNode()) / rhs->GetCoefficient();
   if (!flip_iteration.first->AsSEConstantNode()) {
@@ -829,19 +820,20 @@ LoopPeelingPass::LoopPeelingInfo::HandleInequality(SENodeDSL lhs,
     return GetNoneDirection();
   }
 
-  uint32_t factor = 0;
+  uint32_t cast_iteration = 0;
   /* sanity check: can we fit |iteration| in a uint32_t ? */
   if (static_cast<uint64_t>(iteration) < std::numeric_limits<uint32_t>::max()) {
-    factor = static_cast<uint32_t>(iteration);
+    cast_iteration = static_cast<uint32_t>(iteration);
   }
 
-  if (factor) {
+  if (cast_iteration) {
     // Peel before if we are closer to the start, after if closer to the end.
-    LoopPeelingPass::PeelDirection direction =
-        loop_max_iterations_ / 2 > factor
-            ? LoopPeelingPass::PeelDirection::kBefore
-            : LoopPeelingPass::PeelDirection::kAfter;
-    return Direction{direction, factor};
+    if (loop_max_iterations_ / 2 > cast_iteration) {
+      return Direction{LoopPeelingPass::PeelDirection::kBefore, cast_iteration};
+    } else {
+      return Direction{LoopPeelingPass::PeelDirection::kAfter,
+                       loop_max_iterations_ - cast_iteration};
+    }
   }
 
   return GetNoneDirection();

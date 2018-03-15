@@ -420,31 +420,31 @@ TEST_F(PeelingTest, SimplePeeling) {
   {
     SCOPED_TRACE("Peel before");
     const std::string check = R"(
-; CHECK: [[CST_TEN:%\w+]] = OpConstant {{%\w+}} 10
-; CHECK: [[CST_TWO:%\w+]] = OpConstant {{%\w+}} 2
-; CHECK:      OpFunction
-; CHECK-NEXT: [[ENTRY:%\w+]] = OpLabel
-; CHECK: [[MIN_LOOP_COUNT:%\w+]] = OpSLessThan {{%\w+}} [[CST_TWO]] [[CST_TEN]]
-; CHECK-NEXT: [[LOOP_COUNT:%\w+]] = OpSelect {{%\w+}} [[MIN_LOOP_COUNT]] [[CST_TWO]] [[CST_TEN]]
-; CHECK:      [[BEFORE_LOOP:%\w+]] = OpLabel
-; CHECK-NEXT: [[DUMMY_IT:%\w+]] = OpPhi {{%\w+}} {{%\w+}} [[ENTRY]] [[DUMMY_IT_1:%\w+]] [[BE:%\w+]]
-; CHECK-NEXT: [[i:%\w+]] = OpPhi {{%\w+}} {{%\w+}} [[ENTRY]] [[I_1:%\w+]] [[BE]]
-; CHECK-NEXT: OpLoopMerge [[AFTER_LOOP_PREHEADER:%\w+]] [[BE]] None
-; CHECK:      [[COND_BLOCK:%\w+]] = OpLabel
-; CHECK-NEXT: OpSLessThan
-; CHECK-NEXT: [[EXIT_COND:%\w+]] = OpSLessThan {{%\w+}} [[DUMMY_IT]]
-; CHECK-NEXT: OpBranchConditional [[EXIT_COND]] {{%\w+}} [[AFTER_LOOP_PREHEADER]]
-; CHECK:      [[I_1]] = OpIAdd {{%\w+}} [[i]]
-; CHECK-NEXT: [[DUMMY_IT_1]] = OpIAdd {{%\w+}} [[DUMMY_IT]]
-; CHECK-NEXT: OpBranch [[BEFORE_LOOP]]
-; 
-; CHECK: [[AFTER_LOOP_PREHEADER]] = OpLabel
-; CHECK-NEXT: OpSelectionMerge [[IF_MERGE:%\w+]]
-; CHECK-NEXT: OpBranchConditional [[MIN_LOOP_COUNT]] [[AFTER_LOOP:%\w+]] [[IF_MERGE]]
-; 
-; CHECK:      [[AFTER_LOOP]] = OpLabel
-; CHECK-NEXT: OpPhi {{%\w+}} {{%\w+}} {{%\w+}} [[i]] [[AFTER_LOOP_PREHEADER]]
-; CHECK-NEXT: OpLoopMerge
+CHECK: [[CST_TEN:%\w+]] = OpConstant {{%\w+}} 10
+CHECK: [[CST_TWO:%\w+]] = OpConstant {{%\w+}} 2
+CHECK:      OpFunction
+CHECK-NEXT: [[ENTRY:%\w+]] = OpLabel
+CHECK:      [[MIN_LOOP_COUNT:%\w+]] = OpSLessThan {{%\w+}} [[CST_TWO]] [[CST_TEN]]
+CHECK-NEXT: [[LOOP_COUNT:%\w+]] = OpSelect {{%\w+}} [[MIN_LOOP_COUNT]] [[CST_TWO]] [[CST_TEN]]
+CHECK:      [[BEFORE_LOOP:%\w+]] = OpLabel
+CHECK-NEXT: [[DUMMY_IT:%\w+]] = OpPhi {{%\w+}} {{%\w+}} [[ENTRY]] [[DUMMY_IT_1:%\w+]] [[BE:%\w+]]
+CHECK-NEXT: [[i:%\w+]] = OpPhi {{%\w+}} {{%\w+}} [[ENTRY]] [[I_1:%\w+]] [[BE]]
+CHECK-NEXT: OpLoopMerge [[AFTER_LOOP_PREHEADER:%\w+]] [[BE]] None
+CHECK:      [[COND_BLOCK:%\w+]] = OpLabel
+CHECK-NEXT: OpSLessThan
+CHECK-NEXT: [[EXIT_COND:%\w+]] = OpSLessThan {{%\w+}} [[DUMMY_IT]]
+CHECK-NEXT: OpBranchConditional [[EXIT_COND]] {{%\w+}} [[AFTER_LOOP_PREHEADER]]
+CHECK:      [[I_1]] = OpIAdd {{%\w+}} [[i]]
+CHECK-NEXT: [[DUMMY_IT_1]] = OpIAdd {{%\w+}} [[DUMMY_IT]]
+CHECK-NEXT: OpBranch [[BEFORE_LOOP]]
+
+CHECK: [[AFTER_LOOP_PREHEADER]] = OpLabel
+CHECK-NEXT: OpSelectionMerge [[IF_MERGE:%\w+]]
+CHECK-NEXT: OpBranchConditional [[MIN_LOOP_COUNT]] [[AFTER_LOOP:%\w+]] [[IF_MERGE]]
+
+CHECK:      [[AFTER_LOOP]] = OpLabel
+CHECK-NEXT: OpPhi {{%\w+}} {{%\w+}} {{%\w+}} [[i]] [[AFTER_LOOP_PREHEADER]]
+CHECK-NEXT: OpLoopMerge
 )";
     {
       std::unique_ptr<ir::IRContext> context =

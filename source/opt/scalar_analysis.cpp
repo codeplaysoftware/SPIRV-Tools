@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "opt/scalar_analysis.h"
+#include <algorithm>
 #include <functional>
 #include <string>
 #include <utility>
@@ -109,7 +110,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
       break;
     }
     default: {
-      output = CreateValueUnknownNode();
+      output = CreateValueUnknownNode(inst->result_id());
       instruction_map_[inst] = output;
       break;
     }
@@ -226,8 +227,9 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
   return instruction_map_[phi];
 }
 
-SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode() {
-  std::unique_ptr<SEValueUnknown> load_node{new SEValueUnknown(this)};
+SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode(uint32_t ssa_value) {
+  std::unique_ptr<SEValueUnknown> load_node{
+      new SEValueUnknown(this, ssa_value)};
   return GetCachedOrAdd(std::move(load_node));
 }
 
@@ -247,6 +249,20 @@ SENode* ScalarEvolutionAnalysis::GetCachedOrAdd(
   SENode* raw_ptr_to_node = prospective_node.get();
   node_cache_.insert(std::move(prospective_node));
   return raw_ptr_to_node;
+}
+
+bool ScalarEvolutionAnalysis::IsLoopInvariant(ir::Loop* loop,
+                                              SENode* node) const {
+  return std::none_of(
+      node->graph_cbegin(), node->graph_cend(), [loop](const SENode& expr) {
+        if (const SERecurrentNode* rec = expr.AsSERecurrentNode()) {
+          return loop->IsInsideLoop(rec->GetLoop()->GetHeaderBlock());
+        }
+        if (const SEValueUnknown* unknown = expr.AsSEValueUnknown()) {
+          return loop->IsInsideLoop(unknown->GetValue());
+        }
+        return false;
+      });
 }
 
 std::string SENode::AsString() const {
@@ -283,6 +299,10 @@ bool SENode::operator==(const SENode& other) const {
         other.AsSEConstantNode()->FoldToSingleValue())
       return false;
   }
+  if (AsSEValueUnknown()) {
+    return AsSEValueUnknown()->GetValue() ==
+           other.AsSEValueUnknown()->GetValue();
+  }
 
   return true;
 }
@@ -309,6 +329,11 @@ size_t SENodeHash::operator()(const SENode* node) const {
   if (node->GetType() == SENode::RecurrentExpr) {
     resulting_hash ^=
         std::hash<const ir::Loop*>{}(node->AsSERecurrentNode()->GetLoop());
+  }
+
+  if (node->GetType() == SENode::ValueUnknown) {
+    resulting_hash ^=
+        std::hash<uint32_t>{}(node->AsSEValueUnknown()->GetValue());
   }
 
   // Hash the pointers of the child nodes, each SENode has a unique pointer
@@ -340,33 +365,60 @@ void SENode::DumpDot(std::ostream& out, bool recurse) const {
   }
 }
 
+namespace {
+
+// Remove N from chains like A * ... * N * ... * Z, if N is not in the chain,
+// returns the original chain.
+static SENode* RemoveOneNodeFromMultiplyChain(SEMultiplyNode* mul,
+                                              const SENode* node) {
+  SENode* lhs = mul->GetChildren()[0];
+  SENode* rhs = mul->GetChildren()[1];
+  if (lhs == node) {
+    return rhs;
+  }
+  if (rhs == node) {
+    return lhs;
+  }
+  if (lhs->AsSEMultiplyNode()) {
+    SENode* res = RemoveOneNodeFromMultiplyChain(lhs->AsSEMultiplyNode(), node);
+    if (res != lhs)
+      return mul->GetParentAnalysis()->CreateMultiplyNode(res, rhs);
+  }
+  if (rhs->AsSEMultiplyNode()) {
+    SENode* res = RemoveOneNodeFromMultiplyChain(rhs->AsSEMultiplyNode(), node);
+    if (res != rhs)
+      return mul->GetParentAnalysis()->CreateMultiplyNode(res, rhs);
+  }
+
+  return mul;
+}
+}  // namespace
+
 std::pair<SENodeDSL, int64_t> SENodeDSL::operator/(
     SENodeDSL rhs_wrapper) const {
   SENode* lhs = node_;
   SENode* rhs = rhs_wrapper.node_;
+  // Check for division by 0.
+  if (rhs->AsSEConstantNode() &&
+      !rhs->AsSEConstantNode()->FoldToSingleValue()) {
+    return {scev_->CreateCantComputeNode(), 0};
+  }
 
   // Trivial case.
   if (lhs->AsSEConstantNode() && rhs->AsSEConstantNode()) {
     int64_t lhs_value = lhs->AsSEConstantNode()->FoldToSingleValue();
-    int64_t rhs_value = lhs->AsSEConstantNode()->FoldToSingleValue();
-    if (!rhs_value) {
-      // Division by 0.
-      return {scev_->CreateCantComputeNode(), 0};
-    }
+    int64_t rhs_value = rhs->AsSEConstantNode()->FoldToSingleValue();
     return {scev_->CreateConstant(lhs_value / rhs_value),
             lhs_value % rhs_value};
   }
 
   // look for a "c U / U" pattern.
-  if (lhs->AsSEConstantNode()) {
+  if (lhs->AsSEMultiplyNode()) {
     assert(lhs->GetChildren().size() == 2 &&
            "More than 2 operand for a multiply node.");
-
-    if (lhs->GetChildren()[0] == rhs) {
-      return {lhs->GetChildren()[1], 0};
-    }
-    if (lhs->GetChildren()[1] == rhs) {
-      return {lhs->GetChildren()[0], 0};
+    SENode* res = RemoveOneNodeFromMultiplyChain(lhs->AsSEMultiplyNode(), rhs);
+    if (res != lhs) {
+      return {res, 0};
     }
   }
 

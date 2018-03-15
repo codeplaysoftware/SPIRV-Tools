@@ -70,7 +70,7 @@ class ScalarEvolutionAnalysis {
   SENode* CreateConstant(int64_t integer);
 
   // Create a value unknown node, such as a load.
-  SENode* CreateValueUnknownNode();
+  SENode* CreateValueUnknownNode(uint32_t ssa_value);
 
   // Create a CantComputeNode. Used to exit out of analysis.
   SENode* CreateCantComputeNode();
@@ -93,6 +93,13 @@ class ScalarEvolutionAnalysis {
   // Add |prospective_node| into the cache and return a raw pointer to it. If
   // |prospective_node| is already in the cache just return the raw pointer.
   SENode* GetCachedOrAdd(std::unique_ptr<SENode> prospective_node);
+
+  // Returns true if the value of |node| does not change during the iterations
+  // of |loop|.
+  bool IsLoopInvariant(ir::Loop* loop, SENode* node) const;
+
+  // Returns the value of |node| .
+  SENode* EvalutateAtLoopIeration(ir::Loop* loop, SENode* node) const;
 
  private:
   ir::IRContext* context_;

@@ -215,11 +215,38 @@ class LoopPeeling {
 // are true for the "N" first or last iterations of the loop.
 // To avoid code size explosion, too large loops will not be peeled.
 class LoopPeelingPass : public Pass {
+ public:
+  // Describes the peeling direction.
   enum class PeelDirection {
     kNone,    // Cannot peel
     kBefore,  // Can peel before
     kAfter    // Can peel last
   };
+
+  // Holds some statistics about peeled function.
+  struct LoopPeelingStats {
+    std::unordered_map<const ir::Loop*, std::pair<PeelDirection, size_t> >
+        peeled_loops_;
+  };
+
+  LoopPeelingPass(LoopPeelingStats* stats = nullptr) : stats_(stats) {}
+
+  // Sets the loop peeling threshold. If the code size increase is above
+  // |code_grow_threshold|, the loop will not be peeled.
+  static void SetLoopPeelingThreshold(size_t code_grow_threshold) {
+    code_grow_threshold_ = code_grow_threshold;
+  }
+
+  const char* name() const override { return "loop-peeling"; }
+
+  // Processes the given |module|. Returns Status::Failure if errors occur when
+  // processing. Returns the corresponding Status::Success if processing is
+  // succesful to indicate whether changes have been made to the modue.
+  Pass::Status Process(ir::IRContext* context) override;
+
+ private:
+  static size_t code_grow_threshold_;
+  LoopPeelingStats* stats_;
 
   class LoopPeelingInfo {
    public:
@@ -252,23 +279,6 @@ class LoopPeelingPass : public Pass {
       return Direction{LoopPeelingPass::PeelDirection::kNone, 0};
     }
   };
-
- public:
-  // Sets the loop peeling threshold. If the code size increase is above
-  // |code_grow_threshold|, the loop will not be peeled.
-  static void SetLoopPeelingThreshold(size_t code_grow_threshold) {
-    code_grow_threshold_ = code_grow_threshold;
-  }
-
-  const char* name() const override { return "loop-peeling"; }
-
-  // Processes the given |module|. Returns Status::Failure if errors occur when
-  // processing. Returns the corresponding Status::Success if processing is
-  // succesful to indicate whether changes have been made to the modue.
-  Pass::Status Process(ir::IRContext* context) override;
-
- private:
-  static size_t code_grow_threshold_;
 
   // Peel profitable loops in |f|.
   bool ProcessFunction(ir::Function* f);
