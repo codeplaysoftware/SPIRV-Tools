@@ -66,6 +66,32 @@ class LoopDependenceAnalysis {
                      const ir::Instruction* destination,
                      DistanceVector* distance_vector);
 
+  // Finds the lower bound of the loop as an SENode* and returns the result.
+  // The lower bound is the starting value of the loops induction variable
+  SENode* GetLowerBound();
+
+  // Finds the upper bound of the loop as an SENode* and returns the result.
+  // The upper bound is the last value before the loop exit condition is met.
+  SENode* GetUpperBound();
+
+  // Returns true if |value| is between |bound_one| and |bound_two| (inclusive).
+  bool IsWithinBounds(int64_t value, int64_t bound_one, int64_t bound_two);
+
+  // Finds the loop bounds as upper_bound - lower_bound and returns the
+  // resulting SENode.
+  // If the operations can not be completed a nullptr is returned.
+  SENode* GetTripCount();
+
+  // Returns the SENode* produced by building an SENode from the result of
+  // calling GetInductionInitValue on loop_.
+  // If the operation can not be completed a nullptr is returned.
+  SENode* GetFirstTripInductionNode();
+
+  // Returns the SENode* produced by building an SENode from the result of
+  // GetFirstTripInductionNode + (GetTripCount - 1) * induction_coefficient.
+  // If the operation can not be completed a nullptr is returned.
+  SENode* GetFinalTripInductionNode(SENode* induction_coefficient);
+
   // Sets the ostream for debug information for the analysis.
   void SetDebugStream(std::ostream& debug_stream) {
     debug_stream_ = &debug_stream;
@@ -73,6 +99,9 @@ class LoopDependenceAnalysis {
 
   // Clears the stored ostream to stop debug information printing.
   void ClearDebugStream() { debug_stream_ = nullptr; }
+
+  // Returns the ScalarEvolutionAnalysis used by this analysis.
+  ScalarEvolutionAnalysis* GetScalarEvolution() { return &scalar_evolution_; }
 
  private:
   ir::IRContext* context_;
@@ -131,54 +160,10 @@ class LoopDependenceAnalysis {
                            SENode* coefficient,
                            DistanceVector* distance_vector);
 
-  // Finds the lesser bound of the loop as an SENode* and returns the resulting
-  // SENode. The lesser bound is evaluated as the bound with the lesser signed
-  // value.
-  // If the operations can not be completed a nullptr is returned.
-  SENode* GetLesserBoundValue();
-
-  // Finds the greater bound of the loop as an SENode* and returns the resulting
-  // SEnode. The greater bound is evaluated as the bound with the greater signed
-  // value.
-  // If the operations can not be completed a nullptr is returned.
-  SENode* GetGreaterBoundValue();
-
-  // Finds the lower bound of the loop as an SENode* and returns the result.
-  // The lower bound is the starting value of the loops induction variable
-  SENode* GetLowerBound();
-
-  // Finds the upper bound of the loop as an SENode* and returns the result.
-  // The upper bound is the last value before the loop exit condition is met.
-  SENode* GetUpperBound();
-
-  // Finds the lower and upper bounds of the loop as SENode* and returns a pair
-  // of the resulting SENodes.
-  // Either or both of the pointers in the std::pair may be nullptr if the
-  // bounds could not be found.
-  std::pair<SENode*, SENode*> GetLoopLowerUpperBounds();
-
-  // Returns true if |value| is between |bound_one| and |bound_two| (inclusive).
-  bool IsWithinBounds(int64_t value, int64_t bound_one, int64_t bound_two);
-
   // Returns true if |distance| is provably within the loop bounds.
-  // This method is able to handle a small number of symbolic cases not handled
-  // by IsWithinBounds.
+  // This method is able to handle some symbolic cases which IsWithinBounds
+  // can't handle.
   bool IsProvablyOutwithLoopBounds(SENode* distance);
-
-  // Finds the loop bounds as upper_bound - lower_bound and returns the
-  // resulting SENode.
-  // If the operations can not be completed a nullptr is returned.
-  SENode* GetTripCount();
-
-  // Finds the value of the induction variable at the first trip of the loop and
-  // returns the resulting SENode.
-  // If the operation can not be completed a nullptr is returned.
-  SENode* GetFirstTripInductionNode();
-
-  // Finds the value of the induction variable at the final trip of the loop and
-  // returns the resulting SENode.
-  // If the operation can not be completed a nullptr is returned.
-  SENode* GetFinalTripInductionNode(SENode* induction_coefficient);
 
   // Finds the number of induction variables in |node|.
   // Returns -1 on failure.

@@ -265,9 +265,7 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
         "StrongSIVTest found delta value and coefficient value as constants "
         "with values:\n"
         "\tdelta value: " +
-        std::to_string(delta_value) +
-        "\n"
-        "\tcoefficient value: " +
+        std::to_string(delta_value) + "\n\tcoefficient value: " +
         std::to_string(coefficient_value) + "\n");
     // Check if the distance is not integral to try to prove independence.
     if (delta_value % coefficient_value != 0) {
@@ -407,12 +405,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
           "WeakZeroSourceSIVTest calculated distance with the following "
           "values\n"
           "\tdelta value: " +
-          std::to_string(delta_value) +
-          "\n"
-          "\tcoefficient value: " +
-          std::to_string(coefficient_value) +
-          "\n"
-          "\tdistance: " +
+          std::to_string(delta_value) + "\n\tcoefficient value: " +
+          std::to_string(coefficient_value) + "\n\tdistance: " +
           std::to_string(distance) + "\n");
     }
   }
@@ -432,12 +426,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
       PrintDebug(
           "Bound values were as follow\n"
           "\tlower bound value: " +
-          std::to_string(lower_bound_value) +
-          "\n"
-          "\tupper bound value: " +
-          std::to_string(upper_bound_value) +
-          "\n"
-          "\tdistance value: " +
+          std::to_string(lower_bound_value) + "\n\tupper bound value: " +
+          std::to_string(upper_bound_value) + "\n\tdistance value: " +
           std::to_string(distance) + "\n");
       distance_vector->direction = DistanceVector::Directions::NONE;
       distance_vector->distance = distance;
@@ -543,12 +533,8 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
           "WeakZeroDestinationSIVTest calculated distance with the following "
           "values\n"
           "\tdelta value: " +
-          std::to_string(delta_value) +
-          "\n"
-          "\tcoefficient value: " +
-          std::to_string(coefficient_value) +
-          "\n"
-          "\tdistance: " +
+          std::to_string(delta_value) + "\n\tcoefficient value: " +
+          std::to_string(coefficient_value) + "\n\tdistance: " +
           std::to_string(distance) + "\n");
     }
   }
@@ -566,15 +552,11 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
           "WeakZeroDestinationSIVTest proved independence through distance "
           "escaping the loop bounds.");
       PrintDebug(
-          "Bound values were as follow\n"
+          "Bound values were as follows\n"
           "\tlower bound value: " +
-          std::to_string(lower_bound_value) +
-          "\n"
-          "\tupper bound value: " +
-          std::to_string(upper_bound_value) +
-          "\n"
-          "\tdistance value: " +
-          std::to_string(distance) + "\n");
+          std::to_string(lower_bound_value) + "\n\tupper bound value: " +
+          std::to_string(upper_bound_value) + "\n\tdistance value: " +
+          std::to_string(distance));
       distance_vector->direction = DistanceVector::Directions::NONE;
       distance_vector->distance = distance;
       return true;
