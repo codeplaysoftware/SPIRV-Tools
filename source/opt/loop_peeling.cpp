@@ -819,40 +819,26 @@ LoopPeelingPass::LoopPeelingInfo::HandleEqual(SENode* lhs, SENode* rhs) const {
 LoopPeelingPass::LoopPeelingInfo::Direction
 LoopPeelingPass::LoopPeelingInfo::HandleInequality(SENode* lhs,
                                                    SERecurrentNode* rhs) const {
-  // We have an iteration, now workout at which iteration the condition flips.
-  SEConstantNode* rhs_step = rhs->GetCoefficient()->AsSEConstantNode();
-  if (!rhs_step) {
+  // Compute (cst - B) / A
+  std::pair<SENodeDSL, int64_t> flip_iteration =
+      (SENodeDSL{lhs} - rhs->GetOffset()->AsSEConstantNode()) /
+      rhs->GetCoefficient();
+  if (!flip_iteration.first->AsSEConstantNode()) {
     return GetNoneDirection();
   }
-  // Compute (cst - B) / A,
-  SEConstantNode* cst_minus_offset =
-      (SENodeDSL{lhs} - rhs->GetOffset()->AsSEConstantNode())
-          ->AsSEConstantNode();
-  // Early exit: as written now, if |is_first_iteration_true| is not a constant
-  // node, we won't be able to get the peel factor.
-  if (!cst_minus_offset) {
-    return GetNoneDirection();
-  }
-
-  // if the result is not an int, round the result to do 1 more/less step than
-  // required so that the unpeeled loop can safely remove the false branch.
-  int64_t dividend = cst_minus_offset->FoldToSingleValue();
-  int64_t divisor = rhs_step->FoldToSingleValue();
-  assert(divisor && "The recurring expression's coefficient is 0");
-  // !!(dividend % divisor) => 1 if |dividend| is not divisible by |divisor|.
-  int64_t flip_iteration = dividend / divisor + !!(dividend % divisor);
-  // FIXME: flip_iteration can be negative ...
-  if (flip_iteration < 0 ||
-      loop_max_iterations_ <= static_cast<uint64_t>(flip_iteration)) {
+  // note: !!flip_iteration.second normalize to 0/1 (via bool cast).
+  int64_t iteration =
+      std::abs(flip_iteration.first->AsSEConstantNode()->FoldToSingleValue()) +
+      !!flip_iteration.second;
+  if (loop_max_iterations_ <= static_cast<uint64_t>(iteration)) {
     // Always true or false within the loop bounds.
     return GetNoneDirection();
   }
 
   uint32_t factor = 0;
-  /* sanity check: can we fit |flip_iteration| in a uint32_t ? */
-  if (flip_iteration > 0 && static_cast<uint64_t>(flip_iteration) <
-                                std::numeric_limits<uint32_t>::max()) {
-    factor = static_cast<uint32_t>(flip_iteration);
+  /* sanity check: can we fit |iteration| in a uint32_t ? */
+  if (static_cast<uint64_t>(iteration) < std::numeric_limits<uint32_t>::max()) {
+    factor = static_cast<uint32_t>(iteration);
   }
 
   if (factor) {

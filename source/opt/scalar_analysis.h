@@ -131,10 +131,12 @@ class ScalarEvolutionAnalysis {
 struct SENodeDSL {
  public:
   // Implicit on purpose !
-  SENodeDSL(SENode* node) : node_(node), scev_(node->GetParentAnalysis()) {}
+  SENodeDSL(SENode* node)
+      : node_(node->GetParentAnalysis()->SimplifyExpression(node)),
+        scev_(node->GetParentAnalysis()) {}
 
-  operator SENode*() const { return scev_->SimplifyExpression(node_); }
-  SENode* operator->() const { return scev_->SimplifyExpression(node_); }
+  operator SENode*() const { return node_; }
+  SENode* operator->() const { return node_; }
 
   SENodeDSL operator+(SENode* rhs) const {
     return scev_->CreateAddNode(node_, rhs);
