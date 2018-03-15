@@ -245,10 +245,8 @@ class LoopPeelingPass : public Pass {
 
     SENode* GetLastIterationValue(SERecurrentNode* rec) const;
 
-    SENode* GetIterationValueAt(SERecurrentNode* rec, SENode* x) const;
-
     Direction HandleEqual(SENode* lhs, SENode* rhs) const;
-    Direction HandleInequality(SENode* lhs, SERecurrentNode* rhs) const;
+    Direction HandleInequality(SENodeDSL lhs, SERecurrentNode* rhs) const;
 
     static Direction GetNoneDirection() {
       return Direction{LoopPeelingPass::PeelDirection::kNone, 0};

@@ -769,11 +769,6 @@ SENode* LoopPeelingPass::LoopPeelingInfo::GetLastIterationValue(
          rec->GetOffset();
 }
 
-SENode* LoopPeelingPass::LoopPeelingInfo::GetIterationValueAt(
-    SERecurrentNode* rec, SENode* x) const {
-  return (SENodeDSL{rec->GetCoefficient()} * x) + rec->GetOffset();
-}
-
 LoopPeelingPass::LoopPeelingInfo::Direction
 LoopPeelingPass::LoopPeelingInfo::HandleEqual(SENode* lhs, SENode* rhs) const {
   // FIXME: check the current loop for scev nodes
@@ -817,12 +812,11 @@ LoopPeelingPass::LoopPeelingInfo::HandleEqual(SENode* lhs, SENode* rhs) const {
 }
 
 LoopPeelingPass::LoopPeelingInfo::Direction
-LoopPeelingPass::LoopPeelingInfo::HandleInequality(SENode* lhs,
+LoopPeelingPass::LoopPeelingInfo::HandleInequality(SENodeDSL lhs,
                                                    SERecurrentNode* rhs) const {
   // Compute (cst - B) / A
   std::pair<SENodeDSL, int64_t> flip_iteration =
-      (SENodeDSL{lhs} - rhs->GetOffset()->AsSEConstantNode()) /
-      rhs->GetCoefficient();
+      (lhs - rhs->GetOffset()->AsSEConstantNode()) / rhs->GetCoefficient();
   if (!flip_iteration.first->AsSEConstantNode()) {
     return GetNoneDirection();
   }
