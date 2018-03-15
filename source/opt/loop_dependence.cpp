@@ -283,8 +283,8 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
 
   // Next we gather the upper and lower bounds as constants if possible. If
   // distance > upper_bound - lower_bound we prove independence.
-  SEConstantNode* lower_bound = GetLowerBound()->AsSEConstantNode();
-  SEConstantNode* upper_bound = GetUpperBound()->AsSEConstantNode();
+  SEConstantNode* lower_bound = GetLesserBoundValue()->AsSEConstantNode();
+  SEConstantNode* upper_bound = GetGreaterBoundValue()->AsSEConstantNode();
   if (lower_bound && upper_bound) {
     PrintDebug("StrongSIVTest found bounds as SEConstantNodes.");
     SENode* bounds = scalar_evolution_.SimplifyExpression(
@@ -366,9 +366,9 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
     DistanceVector* distance_vector) {
   PrintDebug("Performing WeakZeroSourceSIVTest.");
   // Build an SENode for distance.
-  SENode* destination_offset = destination->GetOffset();
+  SENode* destination_constant_term = GetConstantTerm(destination);
   SENode* delta = scalar_evolution_.SimplifyExpression(
-      scalar_evolution_.CreateSubtraction(source, destination_offset));
+      scalar_evolution_.CreateSubtraction(source, destination_constant_term));
 
   // Scalar evolution doesn't perform division, so we must fold to constants and
   // do it manually.
@@ -389,6 +389,17 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
       return true;
     } else {
       distance = delta_value / coefficient_value;
+      PrintDebug(
+          "WeakZeroSourceSIVTest calculated distance with the following "
+          "values\n"
+          "\tdelta value: " +
+          std::to_string(delta_value) +
+          "\n"
+          "\tcoefficient value: " +
+          std::to_string(coefficient_value) +
+          "\n"
+          "\tdistance: " +
+          std::to_string(distance) + "\n");
     }
   }
 
@@ -399,10 +410,21 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
     PrintDebug("WeakZeroSourceSIVTest found bounds as SEConstantNodes.");
     int64_t lower_bound_value = lower_bound->FoldToSingleValue();
     int64_t upper_bound_value = upper_bound->FoldToSingleValue();
-    if (!IsWithinBounds(distance, lower_bound_value, upper_bound_value)) {
+    if (!IsWithinBounds(llabs(distance), lower_bound_value,
+                        upper_bound_value)) {
       PrintDebug(
           "WeakZeroSourceSIVTest proved independence through distance escaping "
           "the loop bounds.");
+      PrintDebug(
+          "Bound values were as follow\n"
+          "\tlower bound value: " +
+          std::to_string(lower_bound_value) +
+          "\n"
+          "\tupper bound value: " +
+          std::to_string(upper_bound_value) +
+          "\n"
+          "\tdistance value: " +
+          std::to_string(distance) + "\n");
       distance_vector->direction = DistanceVector::Directions::NONE;
       distance_vector->distance = distance;
       return true;
@@ -421,7 +443,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
   SENode* first_trip_SENode =
       scalar_evolution_
           .SimplifyExpression(scalar_evolution_.CreateAddNode(
-              induction_first_trip_mult_coefficient_SENode, destination_offset))
+              induction_first_trip_mult_coefficient_SENode,
+              destination->GetOffset()))
           ->AsSEConstantNode();
 
   // If source == FirstTripValue, peel_first.
@@ -447,7 +470,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
   SENode* final_trip_SENode =
       scalar_evolution_
           .SimplifyExpression(scalar_evolution_.CreateAddNode(
-              induction_final_trip_mult_coefficient_SENode, destination_offset))
+              induction_final_trip_mult_coefficient_SENode,
+              destination->GetOffset()))
           ->AsSEConstantNode();
 
   // If source == LastTripValue, peel_last.
@@ -477,9 +501,9 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
     DistanceVector* distance_vector) {
   PrintDebug("Performing WeakZeroDestinationSIVTest.");
   // Build an SENode for distance.
-  SENode* source_offset = source->GetOffset();
+  SENode* source_constant_term = GetConstantTerm(source);
   SENode* delta = scalar_evolution_.SimplifyExpression(
-      scalar_evolution_.CreateSubtraction(destination, source_offset));
+      scalar_evolution_.CreateSubtraction(destination, source_constant_term));
 
   // Scalar evolution doesn't perform division, so we must fold to constants and
   // do it manually.
@@ -501,6 +525,17 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
       return true;
     } else {
       distance = delta_value / coefficient_value;
+      PrintDebug(
+          "WeakZeroDestinationSIVTest calculated distance with the following "
+          "values\n"
+          "\tdelta value: " +
+          std::to_string(delta_value) +
+          "\n"
+          "\tcoefficient value: " +
+          std::to_string(coefficient_value) +
+          "\n"
+          "\tdistance: " +
+          std::to_string(distance) + "\n");
     }
   }
 
@@ -511,10 +546,21 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
     PrintDebug("WeakZeroDestinationSIVTest found bounds as SEConstantNodes.");
     int64_t lower_bound_value = lower_bound->FoldToSingleValue();
     int64_t upper_bound_value = upper_bound->FoldToSingleValue();
-    if (!IsWithinBounds(distance, lower_bound_value, upper_bound_value)) {
+    if (!IsWithinBounds(llabs(distance), lower_bound_value,
+                        upper_bound_value)) {
       PrintDebug(
           "WeakZeroDestinationSIVTest proved independence through distance "
           "escaping the loop bounds.");
+      PrintDebug(
+          "Bound values were as follow\n"
+          "\tlower bound value: " +
+          std::to_string(lower_bound_value) +
+          "\n"
+          "\tupper bound value: " +
+          std::to_string(upper_bound_value) +
+          "\n"
+          "\tdistance value: " +
+          std::to_string(distance) + "\n");
       distance_vector->direction = DistanceVector::Directions::NONE;
       distance_vector->distance = distance;
       return true;
@@ -532,7 +578,7 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
                                            coefficient);
   SENode* first_trip_SENode =
       scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateAddNode(
-          induction_first_trip_mult_coefficient_SENode, source_offset));
+          induction_first_trip_mult_coefficient_SENode, source->GetOffset()));
 
   // If destination == FirstTripValue, peel_first.
   if (first_trip_SENode) {
@@ -556,7 +602,7 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
                                            coefficient);
   SENode* final_trip_SENode =
       scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateAddNode(
-          induction_final_trip_mult_coefficient_SENode, source_offset));
+          induction_final_trip_mult_coefficient_SENode, source->GetOffset()));
 
   // If destination == LastTripValue, peel_last.
   if (final_trip_SENode) {

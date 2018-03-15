@@ -12,21 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef LIBSPIRV_OPT_SCALAR_ANALYSIS_H_
-#define LIBSPIRV_OPT_SCALAR_ANALYSIS_H_
+#ifndef SOURCE_OPT_SCALAR_ANALYSIS_H_
+#define SOURCE_OPT_SCALAR_ANALYSIS_H_
 
 #include <algorithm>
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 #include "opt/basic_block.h"
 #include "opt/instruction.h"
-#include "opt/ir_context.h"
 #include "opt/scalar_analysis_nodes.h"
 
 namespace spvtools {
+namespace ir {
+class IRContext;
+class Loop;
+}  // namespace ir
+
 namespace opt {
 
 // Manager for the Scalar Evolution analysis. Creates and maintains a DAG of
@@ -52,7 +57,7 @@ class ScalarEvolutionAnalysis {
   SENode* CreateNegation(SENode* operand);
 
   // Creates a subtraction between the two operands by adding |operand_1| to the
-  // negation of |operand_2|
+  // negation of |operand_2|.
   SENode* CreateSubtraction(SENode* operand_1, SENode* operand_2);
 
   // Create an addition node between two operands.
@@ -124,5 +129,4 @@ class ScalarEvolutionAnalysis {
 
 }  // namespace opt
 }  // namespace spvtools
-
-#endif  // LIBSPIRV_OPT_SCALAR_ANALYSIS_H__
+#endif  // SOURCE_OPT_SCALAR_ANALYSIS_H__

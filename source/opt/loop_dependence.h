@@ -20,6 +20,7 @@
 #include <map>
 #include <vector>
 
+#include "opt/ir_context.h"
 #include "opt/loop_descriptor.h"
 #include "opt/scalar_analysis.h"
 namespace spvtools {
@@ -66,10 +67,12 @@ class LoopDependenceAnalysis {
                      DistanceVector* distance_vector);
 
   // Sets the ostream for debug information for the analysis.
-  // Set to nullptr to disable debug information.
   void SetDebugStream(std::ostream& debug_stream) {
     debug_stream_ = &debug_stream;
   }
+
+  // Clears the stored ostream to stop debug information printing.
+  void ClearDebugStream() { debug_stream_ = nullptr; }
 
  private:
   ir::IRContext* context_;
@@ -128,16 +131,24 @@ class LoopDependenceAnalysis {
                            SENode* coefficient,
                            DistanceVector* distance_vector);
 
-  // Finds the lower bound of the loop as an SENode* and returns the resulting
-  // SENode. The lower bound is evaluated as the bound with the lesser signed
+  // Finds the lesser bound of the loop as an SENode* and returns the resulting
+  // SENode. The lesser bound is evaluated as the bound with the lesser signed
   // value.
   // If the operations can not be completed a nullptr is returned.
+  SENode* GetLesserBoundValue();
+
+  // Finds the greater bound of the loop as an SENode* and returns the resulting
+  // SEnode. The greater bound is evaluated as the bound with the greater signed
+  // value.
+  // If the operations can not be completed a nullptr is returned.
+  SENode* GetGreaterBoundValue();
+
+  // Finds the lower bound of the loop as an SENode* and returns the result.
+  // The lower bound is the starting value of the loops induction variable
   SENode* GetLowerBound();
 
-  // Finds the upper bound of the loop as an SENode* and returns the resulting
-  // SEnode. The upper bound is evaluated as the bound with the greater signed
-  // value.
-  // If the operations can not be completed a nullptr is returned.
+  // Finds the upper bound of the loop as an SENode* and returns the result.
+  // The upper bound is the last value before the loop exit condition is met.
   SENode* GetUpperBound();
 
   // Finds the lower and upper bounds of the loop as SENode* and returns a pair
@@ -177,6 +188,11 @@ class LoopDependenceAnalysis {
   // |destination|.
   // Returns -1 on failure.
   int64_t CountInductionVariables(SENode* source, SENode* destination);
+
+  // Takes the offset from the induction variable and subtracts the lower bound
+  // from it to get the constant term added to the induction.
+  // Returns the resuting constant term, or nullptr if it could not be produced.
+  SENode* GetConstantTerm(SERecurrentNode* induction);
 
   // Prints |debug_msg| and "\n" to the ostream pointed to by |debug_stream_|.
   // Won't print anything if |debug_stream_| is nullptr.

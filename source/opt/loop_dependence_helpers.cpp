@@ -16,7 +16,7 @@
 namespace spvtools {
 namespace opt {
 
-SENode* LoopDependenceAnalysis::GetLowerBound() {
+SENode* LoopDependenceAnalysis::GetLesserBoundValue() {
   ir::Instruction* cond_inst = loop_.GetConditionInst();
   if (!cond_inst) {
     return nullptr;
@@ -96,7 +96,7 @@ SENode* LoopDependenceAnalysis::GetLowerBound() {
   return nullptr;
 }
 
-SENode* LoopDependenceAnalysis::GetUpperBound() {
+SENode* LoopDependenceAnalysis::GetGreaterBoundValue() {
   ir::Instruction* cond_inst = loop_.GetConditionInst();
   if (!cond_inst) {
     return nullptr;
@@ -171,6 +171,82 @@ SENode* LoopDependenceAnalysis::GetUpperBound() {
       return nullptr;
   }
   return nullptr;
+}
+
+SENode* LoopDependenceAnalysis::GetLowerBound() {
+  ir::Instruction* cond_inst = loop_.GetConditionInst();
+  if (!cond_inst) {
+    return nullptr;
+  }
+  ir::Instruction* lower_inst =
+      context_->get_def_use_mgr()->GetDef(cond_inst->GetSingleWordInOperand(0));
+  switch (cond_inst->opcode()) {
+    case SpvOpULessThan:
+    case SpvOpSLessThan:
+    case SpvOpULessThanEqual:
+    case SpvOpSLessThanEqual:
+    case SpvOpUGreaterThan:
+    case SpvOpSGreaterThan:
+    case SpvOpUGreaterThanEqual:
+    case SpvOpSGreaterThanEqual: {
+      // If we have a phi we are looking at the induction variable. We look
+      // through the phi to the initial value of the phi upon entering the loop.
+      if (lower_inst->opcode() == SpvOpPhi) {
+        lower_inst = context_->get_def_use_mgr()->GetDef(
+            lower_inst->GetSingleWordInOperand(0));
+        // We don't handle looking through multiple phis.
+        if (lower_inst->opcode() == SpvOpPhi) {
+          return nullptr;
+        }
+      }
+      return scalar_evolution_.SimplifyExpression(
+          scalar_evolution_.AnalyzeInstruction(lower_inst));
+    }
+    default:
+      return nullptr;
+  }
+}
+
+SENode* LoopDependenceAnalysis::GetUpperBound() {
+  ir::Instruction* cond_inst = loop_.GetConditionInst();
+  if (!cond_inst) {
+    return nullptr;
+  }
+  ir::Instruction* upper_inst =
+      context_->get_def_use_mgr()->GetDef(cond_inst->GetSingleWordInOperand(1));
+  switch (cond_inst->opcode()) {
+    case SpvOpULessThan:
+    case SpvOpSLessThan: {
+      // When we have a < condition we must subtract 1 from the analyzed upper
+      // instruction.
+      SENode* upper_bound = scalar_evolution_.SimplifyExpression(
+          scalar_evolution_.CreateSubtraction(
+              scalar_evolution_.AnalyzeInstruction(upper_inst),
+              scalar_evolution_.CreateConstant(1)));
+      return upper_bound;
+    }
+    case SpvOpUGreaterThan:
+    case SpvOpSGreaterThan: {
+      // When we have a > condition we must add 1 to the analyzed upper
+      // instruction.
+      SENode* upper_bound =
+          scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateAddNode(
+              scalar_evolution_.AnalyzeInstruction(upper_inst),
+              scalar_evolution_.CreateConstant(1)));
+      return upper_bound;
+    }
+    case SpvOpULessThanEqual:
+    case SpvOpSLessThanEqual:
+    case SpvOpUGreaterThanEqual:
+    case SpvOpSGreaterThanEqual: {
+      // We don't need to modify the results of analyzing when we have <= or >=.
+      SENode* upper_bound = scalar_evolution_.SimplifyExpression(
+          scalar_evolution_.AnalyzeInstruction(upper_inst));
+      return upper_bound;
+    }
+    default:
+      return nullptr;
+  }
 }
 
 std::pair<SENode*, SENode*> LoopDependenceAnalysis::GetLoopLowerUpperBounds() {
@@ -345,6 +421,17 @@ int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* source,
   }
 
   return static_cast<int64_t>(loops.size());
+}
+
+SENode* LoopDependenceAnalysis::GetConstantTerm(SERecurrentNode* induction) {
+  SENode* offset = induction->GetOffset();
+  SENode* lower_bound = GetLowerBound();
+  if (!offset || !lower_bound) {
+    return nullptr;
+  }
+  SENode* constant_term = scalar_evolution_.SimplifyExpression(
+      scalar_evolution_.CreateSubtraction(offset, lower_bound));
+  return constant_term;
 }
 
 void LoopDependenceAnalysis::PrintDebug(std::string debug_msg) {
