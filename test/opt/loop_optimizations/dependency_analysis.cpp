@@ -541,24 +541,24 @@ TEST(DependencyAnalysis, SIV) {
       EXPECT_EQ(distance_vector.distance, 0);
     }
 
-    // < 1 dependence
+    // > -1 dependence
     // 44 -> 45 tests looking at SIV in same array with addition
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(44), store[1], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::LT);
-      EXPECT_EQ(distance_vector.distance, 1);
+      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::GT);
+      EXPECT_EQ(distance_vector.distance, -1);
     }
 
-    // > -1 dependence
+    // < 1 dependence
     // 54 -> 55 tests looking at SIV in same array with subtraction
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(54), store[2], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::GT);
-      EXPECT_EQ(distance_vector.distance, -1);
+      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::LT);
+      EXPECT_EQ(distance_vector.distance, 1);
     }
 
     // <=> dependence
@@ -601,24 +601,24 @@ TEST(DependencyAnalysis, SIV) {
       EXPECT_EQ(distance_vector.distance, 0);
     }
 
-    // > -1 dependence
+    // < 1 dependence
     // 85 -> 86 tests looking at SIV in same array with addition
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(85), store[1], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::GT);
-      EXPECT_EQ(distance_vector.distance, -1);
+      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::LT);
+      EXPECT_EQ(distance_vector.distance, 1);
     }
 
-    // < 1 dependence
+    // > -1 dependence
     // 92 -> 93 tests looking at SIV in same array with subtraction
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(92), store[2], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::LT);
-      EXPECT_EQ(distance_vector.distance, 1);
+      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::GT);
+      EXPECT_EQ(distance_vector.distance, -1);
     }
 
     // <=> dependence
@@ -1917,12 +1917,10 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     // index.
     // 93 -> 94
     {
-      analysis.SetDebugStream(std::cout);
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(93), store[0], &distance_vector));
       EXPECT_TRUE(distance_vector.peel_first);
-      analysis.ClearDebugStream();
     }
 
     // Tests identifying peel first with weak zero with source as zero index.

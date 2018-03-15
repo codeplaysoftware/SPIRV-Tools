@@ -245,22 +245,30 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
   }
 
   // Build an SENode for distance.
-  SENode* source_offset = source->AsSERecurrentNode()->GetOffset();
-  SENode* destination_offset = destination->AsSERecurrentNode()->GetOffset();
-  SENode* offset_delta = scalar_evolution_.SimplifyExpression(
-      scalar_evolution_.CreateSubtraction(source_offset, destination_offset));
+  SENode* source_constant_term = GetConstantTerm(source->AsSERecurrentNode());
+  SENode* destination_constant_term =
+      GetConstantTerm(destination->AsSERecurrentNode());
+  SENode* constant_term_delta =
+      scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateSubtraction(
+          destination_constant_term, source_constant_term));
 
   // Scalar evolution doesn't perform division, so we must fold to constants and
   // do it manually.
   // We must check the offset delta and coefficient are constants.
   int64_t distance = 0;
-  SEConstantNode* delta_constant = offset_delta->AsSEConstantNode();
+  SEConstantNode* delta_constant = constant_term_delta->AsSEConstantNode();
   SEConstantNode* coefficient_constant = coefficient->AsSEConstantNode();
   if (delta_constant && coefficient_constant) {
-    PrintDebug(
-        "StrongSIVTest folding offset_delta and coefficient to constants.");
     int64_t delta_value = delta_constant->FoldToSingleValue();
     int64_t coefficient_value = coefficient_constant->FoldToSingleValue();
+    PrintDebug(
+        "StrongSIVTest found delta value and coefficient value as constants "
+        "with values:\n"
+        "\tdelta value: " +
+        std::to_string(delta_value) +
+        "\n"
+        "\tcoefficient value: " +
+        std::to_string(coefficient_value) + "\n");
     // Check if the distance is not integral to try to prove independence.
     if (delta_value % coefficient_value != 0) {
       PrintDebug(
@@ -270,6 +278,8 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
       return true;
     } else {
       distance = delta_value / coefficient_value;
+      PrintDebug("StrongSIV test found distance as " +
+                 std::to_string(distance));
     }
   } else {
     // If we can't fold delta and coefficient to single values we can't produce
@@ -283,19 +293,23 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
 
   // Next we gather the upper and lower bounds as constants if possible. If
   // distance > upper_bound - lower_bound we prove independence.
-  SEConstantNode* lower_bound = GetLesserBoundValue()->AsSEConstantNode();
-  SEConstantNode* upper_bound = GetGreaterBoundValue()->AsSEConstantNode();
+  SENode* lower_bound = GetLowerBound();
+  SENode* upper_bound = GetUpperBound();
   if (lower_bound && upper_bound) {
-    PrintDebug("StrongSIVTest found bounds as SEConstantNodes.");
+    PrintDebug("StrongSIVTest found bounds.");
     SENode* bounds = scalar_evolution_.SimplifyExpression(
         scalar_evolution_.CreateSubtraction(upper_bound, lower_bound));
 
     if (bounds->GetType() == SENode::SENodeType::Constant) {
       int64_t bounds_value = bounds->AsSEConstantNode()->FoldToSingleValue();
+      PrintDebug(
+          "StrongSIVTest found upper_bound - lower_bound as a constant with "
+          "value " +
+          std::to_string(bounds_value));
 
       // If the absolute value of the distance is > upper bound - lower bound
       // then we prove independence.
-      if (llabs(distance) > bounds_value) {
+      if (llabs(distance) > llabs(bounds_value)) {
         PrintDebug(
             "StrongSIVTest proved independence through distance escaping the "
             "loop bounds.");
@@ -433,23 +447,23 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
 
   // Now we want to see if we can detect to peel the first or last iterations.
 
-  // We get the FirstTripValue as FirstTripInduction * destination_coeff +
-  // destination_offset.
-  // We build the value of the first trip as an SENode.
-  SENode* induction_first_trip_SENode = GetFirstTripInductionNode();
-  SENode* induction_first_trip_mult_coefficient_SENode =
-      scalar_evolution_.CreateMultiplyNode(induction_first_trip_SENode,
-                                           coefficient);
+  // We get the FirstTripValue as GetFirstTripInductionNode() +
+  // GetConstantTerm(destination)
   SENode* first_trip_SENode =
-      scalar_evolution_
-          .SimplifyExpression(scalar_evolution_.CreateAddNode(
-              induction_first_trip_mult_coefficient_SENode,
-              destination->GetOffset()))
-          ->AsSEConstantNode();
+      scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateAddNode(
+          GetFirstTripInductionNode(), GetConstantTerm(destination)));
 
   // If source == FirstTripValue, peel_first.
   if (first_trip_SENode) {
-    PrintDebug("WeakZeroSourceSIVTest build first_trip_SENode.");
+    PrintDebug("WeakZeroSourceSIVTest built first_trip_SENode.");
+    if (first_trip_SENode->AsSEConstantNode()) {
+      PrintDebug(
+          "WeakZeroSourceSIVTest has found first_trip_SENode as an "
+          "SEConstantNode with value: " +
+          std::to_string(
+              first_trip_SENode->AsSEConstantNode()->FoldToSingleValue()) +
+          "\n");
+    }
     if (source == first_trip_SENode) {
       // We have found that peeling the first iteration will break dependency.
       PrintDebug(
@@ -460,23 +474,23 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
     }
   }
 
-  // We get the LastTripValue as LastTripInduction * destination_coeff +
-  // destination_offset.
-  // We build the value of the final trip as an SENode.
-  SENode* induction_final_trip_SENode = GetFinalTripInductionNode(coefficient);
-  SENode* induction_final_trip_mult_coefficient_SENode =
-      scalar_evolution_.CreateMultiplyNode(induction_final_trip_SENode,
-                                           coefficient);
-  SENode* final_trip_SENode =
-      scalar_evolution_
-          .SimplifyExpression(scalar_evolution_.CreateAddNode(
-              induction_final_trip_mult_coefficient_SENode,
-              destination->GetOffset()))
-          ->AsSEConstantNode();
+  // We get the LastTripValue as GetFinalTripInductionNode(coefficient) +
+  // GetConstantTerm(destination)
+  SENode* final_trip_SENode = scalar_evolution_.SimplifyExpression(
+      scalar_evolution_.CreateAddNode(GetFinalTripInductionNode(coefficient),
+                                      GetConstantTerm(destination)));
 
   // If source == LastTripValue, peel_last.
   if (final_trip_SENode) {
-    PrintDebug("WeakZeroSourceSIVTest build final_trip_SENode.");
+    PrintDebug("WeakZeroSourceSIVTest built final_trip_SENode.");
+    if (first_trip_SENode->AsSEConstantNode()) {
+      PrintDebug(
+          "WeakZeroSourceSIVTest has found final_trip_SENode as an "
+          "SEConstantNode with value: " +
+          std::to_string(
+              final_trip_SENode->AsSEConstantNode()->FoldToSingleValue()) +
+          "\n");
+    }
     if (source == final_trip_SENode) {
       // We have found that peeling the last iteration will break dependency.
       PrintDebug(
@@ -569,20 +583,23 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
 
   // Now we want to see if we can detect to peel the first or last iterations.
 
-  // We get the FirstTripValue as FirstTripInduction * source_coeff +
-  // source_offset.
-  // We build the value of the first trip as an SENode.
-  SENode* induction_first_trip_SENode = GetFirstTripInductionNode();
-  SENode* induction_first_trip_mult_coefficient_SENode =
-      scalar_evolution_.CreateMultiplyNode(induction_first_trip_SENode,
-                                           coefficient);
+  // We get the FirstTripValue as GetFirstTripInductionNode() +
+  // GetConstantTerm(source)
   SENode* first_trip_SENode =
       scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateAddNode(
-          induction_first_trip_mult_coefficient_SENode, source->GetOffset()));
+          GetFirstTripInductionNode(), GetConstantTerm(source)));
 
   // If destination == FirstTripValue, peel_first.
   if (first_trip_SENode) {
-    PrintDebug("WeakZeroDestinationSIVTest build first_trip_SENode.");
+    PrintDebug("WeakZeroDestinationSIVTest built first_trip_SENode.");
+    if (first_trip_SENode->AsSEConstantNode()) {
+      PrintDebug(
+          "WeakZeroDestinationSIVTest has found first_trip_SENode as an "
+          "SEConstantNode with value: " +
+          std::to_string(
+              first_trip_SENode->AsSEConstantNode()->FoldToSingleValue()) +
+          "\n");
+    }
     if (destination == first_trip_SENode) {
       // We have found that peeling the first iteration will break dependency.
       PrintDebug(
@@ -593,20 +610,23 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
     }
   }
 
-  // We get the LastTripValue as LastTripInduction * source_coeff +
-  // source_offset.
-  // We build the value of the final trip as an SENode.
-  SENode* induction_final_trip_SENode = GetFinalTripInductionNode(coefficient);
-  SENode* induction_final_trip_mult_coefficient_SENode =
-      scalar_evolution_.CreateMultiplyNode(induction_final_trip_SENode,
-                                           coefficient);
+  // We get the LastTripValue as GetFinalTripInductionNode(coefficient) +
+  // GetConstantTerm(source)
   SENode* final_trip_SENode =
       scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateAddNode(
-          induction_final_trip_mult_coefficient_SENode, source->GetOffset()));
+          GetFinalTripInductionNode(coefficient), GetConstantTerm(source)));
 
   // If destination == LastTripValue, peel_last.
   if (final_trip_SENode) {
-    PrintDebug("WeakZeroDestinationSIVTest build final_trip_SENode.");
+    PrintDebug("WeakZeroDestinationSIVTest built final_trip_SENode.");
+    if (final_trip_SENode->AsSEConstantNode()) {
+      PrintDebug(
+          "WeakZeroDestinationSIVTest has found final_trip_SENode as an "
+          "SEConstantNode with value: " +
+          std::to_string(
+              final_trip_SENode->AsSEConstantNode()->FoldToSingleValue()) +
+          "\n");
+    }
     if (destination == final_trip_SENode) {
       // We have found that peeling the last iteration will break dependency.
       PrintDebug(
