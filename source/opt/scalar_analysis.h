@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef LIBSPIRV_OPT_SCALAR_ANALYSIS_H_
-#define LIBSPIRV_OPT_SCALAR_ANALYSIS_H_
+#ifndef SOURCE_OPT_SCALAR_ANALYSIS_H_
+#define SOURCE_OPT_SCALAR_ANALYSIS_H_
 
 #include <algorithm>
 #include <cstdint>
@@ -57,7 +57,7 @@ class ScalarEvolutionAnalysis {
   SENode* CreateNegation(SENode* operand);
 
   // Creates a subtraction between the two operands by adding |operand_1| to the
-  // negation of |operand_2|
+  // negation of |operand_2|.
   SENode* CreateSubtraction(SENode* operand_1, SENode* operand_2);
 
   // Create an addition node between two operands.
@@ -197,5 +197,4 @@ inline std::pair<SENodeDSL, int64_t> operator/(SENode* lhs, SENodeDSL rhs) {
 
 }  // namespace opt
 }  // namespace spvtools
-
-#endif  // LIBSPIRV_OPT_SCALAR_ANALYSIS_H__
+#endif  // SOURCE_OPT_SCALAR_ANALYSIS_H__

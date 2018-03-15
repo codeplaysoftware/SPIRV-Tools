@@ -652,12 +652,25 @@ TEST_F(PassClassTest, Simplify) {
   subtract_node = analysis.CreateSubtraction(store_node, load_node);
   simplified_node = analysis.SimplifyExpression(subtract_node);
   EXPECT_TRUE(simplified_node->GetType() == opt::SENode::Negative);
-  EXPECT_TRUE(simplified_node->GetChild(0)->GetType() ==
-              opt::SENode::ValueUnknown);
 }
 
+/*
+Generated from the following GLSL + --eliminate-local-multi-store
+
+#version 430
+layout(location = 1) out float array[10];
+layout(location = 2) flat in int loop_invariant;
+void main(void) {
+  for (int i = 0; i < 10; ++i) {
+    array[i * 2 + i * 5] = array[i * i * 2];
+    array[i * 2] = array[i * 5];
+  }
+}
+
+*/
+
 TEST_F(PassClassTest, SimplifyMultiplyInductions) {
-  const std::string text = R"( 
+  const std::string text = R"(
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
@@ -704,12 +717,20 @@ TEST_F(PassClassTest, SimplifyMultiplyInductions) {
                OpBranchConditional %30 %31 %28
          %31 = OpLabel
          %32 = OpIMul %8 %25 %18
-         %33 = OpIAdd %8 %32 %19
-         %34 = OpIMul %8 %25 %18
-         %35 = OpAccessChain %20 %3 %34
-         %36 = OpLoad %13 %35
-         %37 = OpAccessChain %20 %3 %33
-               OpStore %37 %36
+         %33 = OpIMul %8 %25 %19
+         %34 = OpIAdd %8 %32 %33
+         %35 = OpIMul %8 %25 %25
+         %36 = OpIMul %8 %35 %18
+         %37 = OpAccessChain %20 %3 %36
+         %38 = OpLoad %13 %37
+         %39 = OpAccessChain %20 %3 %34
+               OpStore %39 %38
+         %40 = OpIMul %8 %25 %18
+         %41 = OpIMul %8 %25 %19
+         %42 = OpAccessChain %20 %3 %41
+         %43 = OpLoad %13 %42
+         %44 = OpAccessChain %20 %3 %40
+               OpStore %44 %43
                OpBranch %27
          %27 = OpLabel
          %26 = OpIAdd %8 %25 %21
@@ -718,7 +739,7 @@ TEST_F(PassClassTest, SimplifyMultiplyInductions) {
          %28 = OpLabel
                OpReturn
                OpFunctionEnd
-  )";
+    )";
   std::unique_ptr<ir::IRContext> context =
       BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
                   SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
@@ -728,296 +749,191 @@ TEST_F(PassClassTest, SimplifyMultiplyInductions) {
   const ir::Function* f = spvtest::GetFunction(module, 2);
   opt::ScalarEvolutionAnalysis analysis{context.get()};
 
-  const ir::Instruction* load = nullptr;
-  const ir::Instruction* store = nullptr;
+  const ir::Instruction* loads[2] = {nullptr, nullptr};
+  const ir::Instruction* stores[2] = {nullptr, nullptr};
   int load_count = 0;
   int store_count = 0;
 
   for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 31)) {
     if (inst.opcode() == SpvOp::SpvOpLoad) {
-      load = &inst;
+      loads[load_count] = &inst;
       ++load_count;
     }
     if (inst.opcode() == SpvOp::SpvOpStore) {
-      store = &inst;
+      stores[store_count] = &inst;
       ++store_count;
     }
   }
 
-  EXPECT_EQ(load_count, 1);
-  EXPECT_EQ(store_count, 1);
+  EXPECT_EQ(load_count, 2);
+  EXPECT_EQ(store_count, 2);
 
-  // Testing [i] - [i] == 0
   ir::Instruction* load_access_chain =
-      context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
+      context->get_def_use_mgr()->GetDef(loads[0]->GetSingleWordInOperand(0));
   ir::Instruction* store_access_chain =
-      context->get_def_use_mgr()->GetDef(store->GetSingleWordInOperand(0));
+      context->get_def_use_mgr()->GetDef(stores[0]->GetSingleWordInOperand(0));
 
   ir::Instruction* load_child = context->get_def_use_mgr()->GetDef(
       load_access_chain->GetSingleWordInOperand(1));
   ir::Instruction* store_child = context->get_def_use_mgr()->GetDef(
       store_access_chain->GetSingleWordInOperand(1));
 
-  opt::SENode* load_node = analysis.AnalyzeInstruction(load_child);
-
-  // Check that Rec(0,1)*2 has been simplified into Rec(0,2)
-  opt::SERecurrentNode* load_simplified =
-      analysis.SimplifyExpression(load_node)->AsSERecurrentNode();
-  EXPECT_TRUE(load_simplified);
-  EXPECT_TRUE(load_simplified->GetType() == opt::SENode::RecurrentExpr);
-  EXPECT_TRUE(
-      load_simplified->GetOffset()->AsSEConstantNode()->FoldToSingleValue() ==
-      0);
-  EXPECT_TRUE(load_simplified->GetCoefficient()
-                  ->AsSEConstantNode()
-                  ->FoldToSingleValue() == 2);
-
   opt::SENode* store_node = analysis.AnalyzeInstruction(store_child);
-  opt::SERecurrentNode* store_simplified =
-      analysis.SimplifyExpression(store_node)->AsSERecurrentNode();
 
-  // Check that Rec(0,1)*2 + 5 has been simplified into Rec(5,2).
-  EXPECT_TRUE(store_simplified->GetType() == opt::SENode::RecurrentExpr);
-  EXPECT_TRUE(
-      store_simplified->GetOffset()->AsSEConstantNode()->FoldToSingleValue() ==
-      5);
-  EXPECT_TRUE(store_simplified->GetCoefficient()
-                  ->AsSEConstantNode()
-                  ->FoldToSingleValue() == 2);
-}
+  opt::SENode* store_simplified = analysis.SimplifyExpression(store_node);
 
-opt::SENode* GetAnalysisFromInstruction(
-    const ir::Instruction* instruction, ir::IRContext* context,
-    opt::ScalarEvolutionAnalysis* analysis) {
-  ir::Instruction* access_chain = context->get_def_use_mgr()->GetDef(
-      instruction->GetSingleWordInOperand(0));
+  load_access_chain =
+      context->get_def_use_mgr()->GetDef(loads[1]->GetSingleWordInOperand(0));
+  store_access_chain =
+      context->get_def_use_mgr()->GetDef(stores[1]->GetSingleWordInOperand(0));
+  load_child = context->get_def_use_mgr()->GetDef(
+      load_access_chain->GetSingleWordInOperand(1));
+  store_child = context->get_def_use_mgr()->GetDef(
+      store_access_chain->GetSingleWordInOperand(1));
 
-  ir::Instruction* child = context->get_def_use_mgr()->GetDef(
-      access_chain->GetSingleWordInOperand(1));
+  opt::SENode* second_store =
+      analysis.SimplifyExpression(analysis.AnalyzeInstruction(store_child));
+  opt::SENode* second_load =
+      analysis.SimplifyExpression(analysis.AnalyzeInstruction(load_child));
+  opt::SENode* combined_add = analysis.SimplifyExpression(
+      analysis.CreateAddNode(second_load, second_store));
 
-  opt::SENode* node = analysis->AnalyzeInstruction(child);
-
-  return node;
-}
-
-void CheckNumberOfVariables(const ir::Instruction* instruction,
-                            size_t expected_count, ir::IRContext* context,
-                            opt::ScalarEvolutionAnalysis* analysis) {
-  opt::SENode* node =
-      GetAnalysisFromInstruction(instruction, context, analysis);
-  auto variable_nodes = node->CollectRecurrentNodes();
-
-  EXPECT_EQ(expected_count, variable_nodes.size());
-
-  opt::SENode* simplified = analysis->SimplifyExpression(node);
-  variable_nodes = simplified->CollectRecurrentNodes();
-  EXPECT_EQ(expected_count, variable_nodes.size());
+  // We're checking that the two recurrent expression have been correctly
+  // folded. In store_simplified they will have been folded as the entire
+  // expression was simplified as one. In combined_add the two expressions have
+  // been simplified one after the other which means the recurrent expressions
+  // aren't exactly the same but should still be folded as they are with respect
+  // to the same loop.
+  EXPECT_EQ(combined_add, store_simplified);
 }
 
 /*
 Generated from the following GLSL + --eliminate-local-multi-store
 
-#version 440 core
-void main() {
-  int[100] array;
-  for (int i = 0; i < 10; ++i) {
-    for (int j = 0; j < 10; ++j) {
-      for (int k = 0; k < 10; ++k) {
+#version 430
+void main(void) {
+    for (int i = 0; i < 10; --i) {
         array[i] = array[i];
-        array[j] = array[j];
-        array[k] = array[k];
-        array[i+j] = array[i+j];
-        array[i+j+k] = array[i+j+k];
-        array[i+j+k+10] = array[i+j+k+10];
-        array[2*i+4*j+3*k+10] = array[2*i+4*j+3*k+10];
-        array[10*i+j] = array[10*i+j];
-      }
     }
-  }
 }
+
 */
-TEST_F(PassClassTest, CollectAllInductionVariables) {
+
+TEST_F(PassClassTest, SimplifyNegativeSteps) {
   const std::string text = R"(
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %4 "main"
-               OpExecutionMode %4 OriginUpperLeft
-               OpSource GLSL 440
-               OpName %4 "main"
-               OpName %8 "i"
-               OpName %19 "j"
-               OpName %27 "k"
-               OpName %39 "array"
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeInt 32 1
-          %7 = OpTypePointer Function %6
-          %9 = OpConstant %6 0
-         %16 = OpConstant %6 10
-         %17 = OpTypeBool
-         %35 = OpTypeInt 32 0
-         %36 = OpConstant %35 100
-         %37 = OpTypeArray %6 %36
-         %38 = OpTypePointer Function %37
-         %92 = OpConstant %6 2
-         %95 = OpConstant %6 4
-         %99 = OpConstant %6 3
-        %128 = OpConstant %6 1
-        %135 = OpUndef %6
-          %4 = OpFunction %2 None %3
-          %5 = OpLabel
-          %8 = OpVariable %7 Function
-         %19 = OpVariable %7 Function
-         %27 = OpVariable %7 Function
-         %39 = OpVariable %38 Function
-               OpStore %8 %9
-               OpBranch %10
-         %10 = OpLabel
-        %134 = OpPhi %6 %9 %5 %133 %13
-        %136 = OpPhi %6 %135 %5 %138 %13
-        %137 = OpPhi %6 %135 %5 %139 %13
-               OpLoopMerge %12 %13 None
-               OpBranch %14
-         %14 = OpLabel
-         %18 = OpSLessThan %17 %134 %16
-               OpBranchConditional %18 %11 %12
-         %11 = OpLabel
-               OpStore %19 %9
-               OpBranch %20
-         %20 = OpLabel
-        %138 = OpPhi %6 %9 %11 %131 %23
-        %139 = OpPhi %6 %137 %11 %140 %23
-               OpLoopMerge %22 %23 None
-               OpBranch %24
-         %24 = OpLabel
-         %26 = OpSLessThan %17 %138 %16
-               OpBranchConditional %26 %21 %22
+               OpEntryPoint Fragment %2 "main" %3 %4
+               OpExecutionMode %2 OriginUpperLeft
+               OpSource GLSL 430
+               OpName %2 "main"
+               OpName %5 "i"
+               OpName %3 "array"
+               OpName %4 "loop_invariant"
+               OpDecorate %3 Location 1
+               OpDecorate %4 Flat
+               OpDecorate %4 Location 2
+          %6 = OpTypeVoid
+          %7 = OpTypeFunction %6
+          %8 = OpTypeInt 32 1
+          %9 = OpTypePointer Function %8
+         %10 = OpConstant %8 0
+         %11 = OpConstant %8 10
+         %12 = OpTypeBool
+         %13 = OpTypeFloat 32
+         %14 = OpTypeInt 32 0
+         %15 = OpConstant %14 10
+         %16 = OpTypeArray %13 %15
+         %17 = OpTypePointer Output %16
+          %3 = OpVariable %17 Output
+         %18 = OpTypePointer Output %13
+         %19 = OpConstant %8 1
+         %20 = OpTypePointer Input %8
+          %4 = OpVariable %20 Input
+          %2 = OpFunction %6 None %7
          %21 = OpLabel
-               OpStore %27 %9
-               OpBranch %28
-         %28 = OpLabel
-        %140 = OpPhi %6 %9 %21 %129 %31
-               OpLoopMerge %30 %31 None
-               OpBranch %32
-         %32 = OpLabel
-         %34 = OpSLessThan %17 %140 %16
-               OpBranchConditional %34 %29 %30
-         %29 = OpLabel
-         %42 = OpAccessChain %7 %39 %134
-         %43 = OpLoad %6 %42
-         %44 = OpAccessChain %7 %39 %134
-               OpStore %44 %43
-         %47 = OpAccessChain %7 %39 %138
-         %48 = OpLoad %6 %47
-         %49 = OpAccessChain %7 %39 %138
-               OpStore %49 %48
-         %52 = OpAccessChain %7 %39 %140
-         %53 = OpLoad %6 %52
-         %54 = OpAccessChain %7 %39 %140
-               OpStore %54 %53
-         %57 = OpIAdd %6 %134 %138
-         %60 = OpIAdd %6 %134 %138
-         %61 = OpAccessChain %7 %39 %60
-         %62 = OpLoad %6 %61
-         %63 = OpAccessChain %7 %39 %57
-               OpStore %63 %62
-         %66 = OpIAdd %6 %134 %138
-         %68 = OpIAdd %6 %66 %140
-         %71 = OpIAdd %6 %134 %138
-         %73 = OpIAdd %6 %71 %140
-         %74 = OpAccessChain %7 %39 %73
-         %75 = OpLoad %6 %74
-         %76 = OpAccessChain %7 %39 %68
-               OpStore %76 %75
-         %79 = OpIAdd %6 %134 %138
-         %81 = OpIAdd %6 %79 %140
-         %82 = OpIAdd %6 %81 %16
-         %85 = OpIAdd %6 %134 %138
-         %87 = OpIAdd %6 %85 %140
-         %88 = OpIAdd %6 %87 %16
-         %89 = OpAccessChain %7 %39 %88
-         %90 = OpLoad %6 %89
-         %91 = OpAccessChain %7 %39 %82
-               OpStore %91 %90
-         %94 = OpIMul %6 %92 %134
-         %97 = OpIMul %6 %95 %138
-         %98 = OpIAdd %6 %94 %97
-        %101 = OpIMul %6 %99 %140
-        %102 = OpIAdd %6 %98 %101
-        %103 = OpIAdd %6 %102 %16
-        %105 = OpIMul %6 %92 %134
-        %107 = OpIMul %6 %95 %138
-        %108 = OpIAdd %6 %105 %107
-        %110 = OpIMul %6 %99 %140
-        %111 = OpIAdd %6 %108 %110
-        %112 = OpIAdd %6 %111 %16
-        %113 = OpAccessChain %7 %39 %112
-        %114 = OpLoad %6 %113
-        %115 = OpAccessChain %7 %39 %103
-               OpStore %115 %114
-        %117 = OpIMul %6 %16 %134
-        %119 = OpIAdd %6 %117 %138
-        %121 = OpIMul %6 %16 %134
-        %123 = OpIAdd %6 %121 %138
-        %124 = OpAccessChain %7 %39 %123
-        %125 = OpLoad %6 %124
-        %126 = OpAccessChain %7 %39 %119
-               OpStore %126 %125
-               OpBranch %31
-         %31 = OpLabel
-        %129 = OpIAdd %6 %140 %128
-               OpStore %27 %129
-               OpBranch %28
-         %30 = OpLabel
-               OpBranch %23
-         %23 = OpLabel
-        %131 = OpIAdd %6 %138 %128
-               OpStore %19 %131
-               OpBranch %20
+          %5 = OpVariable %9 Function
+               OpStore %5 %10
+               OpBranch %22
          %22 = OpLabel
-               OpBranch %13
-         %13 = OpLabel
-        %133 = OpIAdd %6 %134 %128
-               OpStore %8 %133
-               OpBranch %10
-         %12 = OpLabel
+         %23 = OpPhi %8 %10 %21 %24 %25
+               OpLoopMerge %26 %25 None
+               OpBranch %27
+         %27 = OpLabel
+         %28 = OpSLessThan %12 %23 %11
+               OpBranchConditional %28 %29 %26
+         %29 = OpLabel
+         %30 = OpAccessChain %18 %3 %23
+         %31 = OpLoad %13 %30
+         %32 = OpAccessChain %18 %3 %23
+               OpStore %32 %31
+               OpBranch %25
+         %25 = OpLabel
+         %24 = OpISub %8 %23 %19
+               OpStore %5 %24
+               OpBranch %22
+         %26 = OpLabel
                OpReturn
                OpFunctionEnd
-  )";
-
+    )";
   std::unique_ptr<ir::IRContext> context =
       BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
                   SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
   ir::Module* module = context->module();
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
-  const ir::Function* f = spvtest::GetFunction(module, 4);
-  EXPECT_NE(nullptr, f);
+  const ir::Function* f = spvtest::GetFunction(module, 2);
   opt::ScalarEvolutionAnalysis analysis{context.get()};
 
-  constexpr int expected_instructions = 8;
-  const ir::Instruction* loads[expected_instructions];
+  const ir::Instruction* loads[1] = {nullptr};
   int load_count = 0;
 
-  int block_id = 29;
-  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, block_id)) {
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 29)) {
     if (inst.opcode() == SpvOp::SpvOpLoad) {
       loads[load_count] = &inst;
       ++load_count;
     }
   }
 
-  EXPECT_EQ(expected_instructions, load_count);
+  EXPECT_EQ(load_count, 1);
 
-  CheckNumberOfVariables(loads[0], 1, context.get(), &analysis);
-  CheckNumberOfVariables(loads[1], 1, context.get(), &analysis);
-  CheckNumberOfVariables(loads[2], 1, context.get(), &analysis);
-  CheckNumberOfVariables(loads[3], 2, context.get(), &analysis);
-  CheckNumberOfVariables(loads[4], 3, context.get(), &analysis);
-  CheckNumberOfVariables(loads[5], 3, context.get(), &analysis);
-  CheckNumberOfVariables(loads[6], 3, context.get(), &analysis);
-  CheckNumberOfVariables(loads[7], 2, context.get(), &analysis);
+  ir::Instruction* load_access_chain =
+      context->get_def_use_mgr()->GetDef(loads[0]->GetSingleWordInOperand(0));
+  ir::Instruction* load_child = context->get_def_use_mgr()->GetDef(
+      load_access_chain->GetSingleWordInOperand(1));
+
+  opt::SENode* load_node = analysis.AnalyzeInstruction(load_child);
+
+  EXPECT_TRUE(load_node);
+  EXPECT_EQ(load_node->GetType(), opt::SENode::RecurrentExpr);
+  EXPECT_TRUE(load_node->AsSERecurrentNode());
+
+  opt::SENode* child_1 = load_node->AsSERecurrentNode()->GetCoefficient();
+  opt::SENode* child_2 = load_node->AsSERecurrentNode()->GetOffset();
+
+  EXPECT_EQ(child_1->GetType(), opt::SENode::Constant);
+  EXPECT_EQ(child_2->GetType(), opt::SENode::Constant);
+
+  EXPECT_EQ(child_1->AsSEConstantNode()->FoldToSingleValue(), -1);
+  EXPECT_EQ(child_2->AsSEConstantNode()->FoldToSingleValue(), 0);
+
+  opt::SERecurrentNode* load_simplified =
+      analysis.SimplifyExpression(load_node)->AsSERecurrentNode();
+
+  EXPECT_TRUE(load_simplified);
+  EXPECT_EQ(load_node, load_simplified);
+
+  EXPECT_EQ(load_simplified->GetType(), opt::SENode::RecurrentExpr);
+  EXPECT_TRUE(load_simplified->AsSERecurrentNode());
+
+  opt::SENode* simplified_child_1 =
+      load_simplified->AsSERecurrentNode()->GetCoefficient();
+  opt::SENode* simplified_child_2 =
+      load_simplified->AsSERecurrentNode()->GetOffset();
+
+  EXPECT_EQ(child_1, simplified_child_1);
+  EXPECT_EQ(child_2, simplified_child_2);
 }
 
 }  // namespace

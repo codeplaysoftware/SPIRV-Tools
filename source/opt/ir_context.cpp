@@ -46,7 +46,7 @@ void IRContext::BuildInvalidAnalyses(IRContext::Analysis set) {
     BuildIdToNameMap();
   }
   if (set & kAnalysisScalarEvolution) {
-    BuildIdToNameMap();
+    BuildScalarEvolutionAnalysis();
   }
 }
 
