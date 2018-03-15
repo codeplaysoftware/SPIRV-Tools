@@ -306,4 +306,4 @@ class SECantCompute : public SENode {
 
 }  // namespace opt
 }  // namespace spvtools
-#endif // SOURCE_OPT_SCALAR_ANALYSIS_NODES_H_
+#endif  // SOURCE_OPT_SCALAR_ANALYSIS_NODES_H_

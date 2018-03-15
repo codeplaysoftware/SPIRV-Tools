@@ -13,12 +13,12 @@
 // limitations under the License.
 
 #include <functional>
-#include <unordered_set>
 #include <map>
-#include <utility>
 #include <memory>
-#include <vector>
 #include <set>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 #include "opt/scalar_analysis.h"
 
 namespace spvtools {
@@ -163,7 +163,6 @@ SENode* SENodeSimplifyImpl::Simplify() {
   // single recurrent expression.
   simplified_polynomial = FoldRecurrentExpressions(simplified_polynomial);
 
-
   // Traverse the new DAG to find the recurrent expression. If there is more
   // than one there is nothing further we can do.
   for (SENode* child : simplified_polynomial->GetChildren()) {
@@ -177,8 +176,7 @@ SENode* SENodeSimplifyImpl::Simplify() {
   std::set<SENode*> recurrent_expressions_in_dag;
 
   for (auto child_iterator = simplified_polynomial->graph_begin();
-      child_iterator != simplified_polynomial->graph_end();
-      ++child_iterator) {
+       child_iterator != simplified_polynomial->graph_end(); ++child_iterator) {
     // If the child is a recurrent expression add it to the set.
     if (child_iterator->GetType() == SENode::RecurrentExpr) {
       recurrent_expressions_in_dag.insert(&*child_iterator);
@@ -307,8 +305,7 @@ SENode* SENodeSimplifyImpl::SimplifyPolynomial() {
 }
 
 SENode* SENodeSimplifyImpl::FoldRecurrentExpressions(SENode* root) {
-  std::unique_ptr<SEAddNode> new_node {
-      new SEAddNode(&analysis_)};
+  std::unique_ptr<SEAddNode> new_node{new SEAddNode(&analysis_)};
 
   // A mapping of loops to the list of recurrent expressions which are with
   // respect to those loops.
@@ -319,7 +316,6 @@ SENode* SENodeSimplifyImpl::FoldRecurrentExpressions(SENode* root) {
   for (SENode* child : *root) {
     if (child->GetType() == SENode::RecurrentExpr) {
       const ir::Loop* loop = child->AsSERecurrentNode()->GetLoop();
-
 
       SERecurrentNode* rec = child->AsSERecurrentNode();
       if (loops_to_recurrent.find(loop) == loops_to_recurrent.end()) {
@@ -333,8 +329,7 @@ SENode* SENodeSimplifyImpl::FoldRecurrentExpressions(SENode* root) {
     }
   }
 
-  if (!has_multiple_same_loop_recurrent_terms)
-    return root;
+  if (!has_multiple_same_loop_recurrent_terms) return root;
 
   for (auto pair : loops_to_recurrent) {
     std::vector<SERecurrentNode*>& recurrent_expressions = pair.second;
