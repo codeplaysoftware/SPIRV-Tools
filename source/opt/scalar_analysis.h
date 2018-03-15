@@ -45,14 +45,6 @@ class ScalarEvolutionAnalysis {
   explicit ScalarEvolutionAnalysis(ir::IRContext* context)
       : context_(context) {}
 
-  void DumpAsDot(std::ostream& out_stream) {
-    out_stream << "digraph  {\n";
-    for (const std::unique_ptr<SENode>& node : node_cache_) {
-      node->DumpDot(out_stream);
-    }
-    out_stream << "}\n";
-  }
-
   // Create a unary negative node on |operand|.
   SENode* CreateNegation(SENode* operand);
 
@@ -70,7 +62,7 @@ class ScalarEvolutionAnalysis {
   SENode* CreateConstant(int64_t integer);
 
   // Create a value unknown node, such as a load.
-  SENode* CreateValueUnknownNode();
+  SENode* CreateValueUnknownNode(const ir::Instruction* inst);
 
   // Create a CantComputeNode. Used to exit out of analysis.
   SENode* CreateCantComputeNode();
@@ -93,6 +85,8 @@ class ScalarEvolutionAnalysis {
   // Add |prospective_node| into the cache and return a raw pointer to it. If
   // |prospective_node| is already in the cache just return the raw pointer.
   SENode* GetCachedOrAdd(std::unique_ptr<SENode> prospective_node);
+
+  bool IsLoopInvariant(const ir::Loop* loop, const SENode* node) const;
 
  private:
   ir::IRContext* context_;

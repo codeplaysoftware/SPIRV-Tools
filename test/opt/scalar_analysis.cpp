@@ -237,8 +237,6 @@ TEST_F(PassClassTest, LoadTest) {
                              << text << std::endl;
   const ir::Function* f = spvtest::GetFunction(module, 2);
   opt::ScalarEvolutionAnalysis analysis{context.get()};
-  // opt::LoopDependenceAnalysis analysis {context.get(), ld.etLoopByIndex(0)};
-  // analysis.DumpIterationSpaceAsDot(std::cout);
 
   const ir::Instruction* load = nullptr;
   for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 28)) {
@@ -338,10 +336,8 @@ TEST_F(PassClassTest, SimplifySimple) {
          %24 = OpIAdd %12 %23 %16
          %25 = OpIAdd %12 %24 %17
          %26 = OpISub %12 %25 %18
-         %27 = OpLoad %12 %4
-         %28 = OpISub %12 %26 %27
-         %29 = OpLoad %12 %4
-         %30 = OpISub %12 %28 %29
+         %28 = OpISub %12 %26 %22
+         %30 = OpISub %12 %28 %22
          %31 = OpIAdd %12 %30 %19
          %32 = OpAccessChain %20 %3 %31
          %33 = OpLoad %7 %32
@@ -385,6 +381,7 @@ TEST_F(PassClassTest, SimplifySimple) {
   // will eliminate themselves.
   opt::SENode* simplified =
       analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
+
   EXPECT_TRUE(simplified->GetType() == opt::SENode::Constant);
   EXPECT_TRUE(simplified->AsSEConstantNode()->FoldToSingleValue() == 33);
 }
@@ -934,6 +931,197 @@ TEST_F(PassClassTest, SimplifyNegativeSteps) {
 
   EXPECT_EQ(child_1, simplified_child_1);
   EXPECT_EQ(child_2, simplified_child_2);
+}
+
+/*
+Generated from the following GLSL + --eliminate-local-multi-store
+
+#version 430
+void main(void) {
+    for (int i = 0; i < 10; --i) {
+        array[i] = array[i];
+    }
+}
+
+*/
+
+TEST_F(PassClassTest, SimplifyInductionsAndLoads) {
+  const std::string text = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %2 "main" %3 %4
+               OpExecutionMode %2 OriginUpperLeft
+               OpSource GLSL 430
+               OpName %2 "main"
+               OpName %5 "i"
+               OpName %3 "array"
+               OpName %4 "N"
+               OpDecorate %3 Location 1
+               OpDecorate %4 Flat
+               OpDecorate %4 Location 2
+          %6 = OpTypeVoid
+          %7 = OpTypeFunction %6
+          %8 = OpTypeInt 32 1
+          %9 = OpTypePointer Function %8
+         %10 = OpConstant %8 0
+         %11 = OpConstant %8 10
+         %12 = OpTypeBool
+         %13 = OpTypeFloat 32
+         %14 = OpTypeInt 32 0
+         %15 = OpConstant %14 10
+         %16 = OpTypeArray %13 %15
+         %17 = OpTypePointer Output %16
+          %3 = OpVariable %17 Output
+         %18 = OpConstant %8 2
+         %19 = OpTypePointer Input %8
+          %4 = OpVariable %19 Input
+         %20 = OpTypePointer Output %13
+         %21 = OpConstant %8 1
+          %2 = OpFunction %6 None %7
+         %22 = OpLabel
+          %5 = OpVariable %9 Function
+               OpStore %5 %10
+               OpBranch %23
+         %23 = OpLabel
+         %24 = OpPhi %8 %10 %22 %25 %26
+               OpLoopMerge %27 %26 None
+               OpBranch %28
+         %28 = OpLabel
+         %29 = OpSLessThan %12 %24 %11
+               OpBranchConditional %29 %30 %27
+         %30 = OpLabel
+         %31 = OpLoad %8 %4
+         %32 = OpIMul %8 %18 %31
+         %33 = OpIAdd %8 %24 %32
+         %35 = OpIAdd %8 %24 %31
+         %36 = OpAccessChain %20 %3 %35
+         %37 = OpLoad %13 %36
+         %38 = OpAccessChain %20 %3 %33
+               OpStore %38 %37
+         %39 = OpIMul %8 %18 %24
+         %41 = OpIMul %8 %18 %31
+         %42 = OpIAdd %8 %39 %41
+         %43 = OpIAdd %8 %42 %21
+         %44 = OpIMul %8 %18 %24
+         %46 = OpIAdd %8 %44 %31
+         %47 = OpIAdd %8 %46 %21
+         %48 = OpAccessChain %20 %3 %47
+         %49 = OpLoad %13 %48
+         %50 = OpAccessChain %20 %3 %43
+               OpStore %50 %49
+               OpBranch %26
+         %26 = OpLabel
+         %25 = OpISub %8 %24 %21
+               OpStore %5 %25
+               OpBranch %23
+         %27 = OpLabel
+               OpReturn
+               OpFunctionEnd
+    )";
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 2);
+  opt::ScalarEvolutionAnalysis analysis{context.get()};
+
+  std::vector<const ir::Instruction*> loads{};
+  std::vector<const ir::Instruction*> stores{};
+
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 30)) {
+    if (inst.opcode() == SpvOp::SpvOpLoad) {
+      loads.push_back(&inst);
+    }
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      stores.push_back(&inst);
+    }
+  }
+
+  EXPECT_EQ(loads.size(), 3);
+  EXPECT_EQ(stores.size(), 2);
+  {
+    ir::Instruction* store_access_chain = context->get_def_use_mgr()->GetDef(
+        stores[0]->GetSingleWordInOperand(0));
+
+    ir::Instruction* store_child = context->get_def_use_mgr()->GetDef(
+        store_access_chain->GetSingleWordInOperand(1));
+
+    opt::SENode* store_node = analysis.AnalyzeInstruction(store_child);
+
+    opt::SENode* store_simplified = analysis.SimplifyExpression(store_node);
+
+    ir::Instruction* load_access_chain =
+        context->get_def_use_mgr()->GetDef(loads[1]->GetSingleWordInOperand(0));
+
+    ir::Instruction* load_child = context->get_def_use_mgr()->GetDef(
+        load_access_chain->GetSingleWordInOperand(1));
+
+    opt::SENode* load_node = analysis.AnalyzeInstruction(load_child);
+
+    opt::SENode* load_simplified = analysis.SimplifyExpression(load_node);
+
+    opt::SENode* difference =
+        analysis.CreateSubtraction(store_simplified, load_simplified);
+
+    opt::SENode* difference_simplified =
+        analysis.SimplifyExpression(difference);
+
+    // Check that i+2*N  -  i*N, turns into just N when both sides have already
+    // been simplified into a single recurrent expression.
+    EXPECT_EQ(difference_simplified->GetType(), opt::SENode::ValueUnknown);
+
+    // Check that the inverse, i*N - i+2*N turns into -N.
+    opt::SENode* difference_inverse = analysis.SimplifyExpression(
+        analysis.CreateSubtraction(load_simplified, store_simplified));
+
+    EXPECT_EQ(difference_inverse->GetType(), opt::SENode::Negative);
+    EXPECT_EQ(difference_inverse->GetChild(0)->GetType(),
+              opt::SENode::ValueUnknown);
+    EXPECT_EQ(difference_inverse->GetChild(0), difference_simplified);
+  }
+
+  {
+    ir::Instruction* store_access_chain = context->get_def_use_mgr()->GetDef(
+        stores[1]->GetSingleWordInOperand(0));
+
+    ir::Instruction* store_child = context->get_def_use_mgr()->GetDef(
+        store_access_chain->GetSingleWordInOperand(1));
+    opt::SENode* store_node = analysis.AnalyzeInstruction(store_child);
+    opt::SENode* store_simplified = analysis.SimplifyExpression(store_node);
+
+    ir::Instruction* load_access_chain =
+        context->get_def_use_mgr()->GetDef(loads[2]->GetSingleWordInOperand(0));
+
+    ir::Instruction* load_child = context->get_def_use_mgr()->GetDef(
+        load_access_chain->GetSingleWordInOperand(1));
+
+    opt::SENode* load_node = analysis.AnalyzeInstruction(load_child);
+
+    opt::SENode* load_simplified = analysis.SimplifyExpression(load_node);
+
+    opt::SENode* difference =
+        analysis.CreateSubtraction(store_simplified, load_simplified);
+    difference->DumpDot(std::cout, true);
+    std::cout << "\n\n\n";
+    opt::SENode* difference_simplified =
+        analysis.SimplifyExpression(difference);
+    difference_simplified->DumpDot(std::cout, true);
+    // Check that 2*i + 2*N + 1  -  2*i + N + 1, turns into just N when both
+    // sides have already been simplified into a single recurrent expression.
+    EXPECT_EQ(difference_simplified->GetType(), opt::SENode::ValueUnknown);
+
+    // Check that the inverse, (2*i + N + 1)  -  (2*i + 2*N + 1) turns into -N.
+    opt::SENode* difference_inverse = analysis.SimplifyExpression(
+        analysis.CreateSubtraction(load_simplified, store_simplified));
+
+    EXPECT_EQ(difference_inverse->GetType(), opt::SENode::Negative);
+    EXPECT_EQ(difference_inverse->GetChild(0)->GetType(),
+              opt::SENode::ValueUnknown);
+    EXPECT_EQ(difference_inverse->GetChild(0), difference_simplified);
+  }
 }
 
 }  // namespace
