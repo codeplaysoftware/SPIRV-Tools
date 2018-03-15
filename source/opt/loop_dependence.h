@@ -92,6 +92,11 @@ class LoopDependenceAnalysis {
   // If the operation can not be completed a nullptr is returned.
   SENode* GetFinalTripInductionNode(SENode* induction_coefficient);
 
+  // Returns true if |distance| is provably within the loop bounds.
+  // This method is able to handle some symbolic cases which IsWithinBounds
+  // can't handle.
+  bool IsProvablyOutwithLoopBounds(SENode* distance);
+
   // Sets the ostream for debug information for the analysis.
   void SetDebugStream(std::ostream& debug_stream) {
     debug_stream_ = &debug_stream;
@@ -159,11 +164,6 @@ class LoopDependenceAnalysis {
   bool WeakCrossingSIVTest(SENode* source, SENode* destination,
                            SENode* coefficient,
                            DistanceVector* distance_vector);
-
-  // Returns true if |distance| is provably within the loop bounds.
-  // This method is able to handle some symbolic cases which IsWithinBounds
-  // can't handle.
-  bool IsProvablyOutwithLoopBounds(SENode* distance);
 
   // Finds the number of induction variables in |node|.
   // Returns -1 on failure.

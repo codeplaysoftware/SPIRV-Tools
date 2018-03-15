@@ -28,6 +28,7 @@
 #include "opt/loop_dependence.h"
 #include "opt/loop_descriptor.h"
 #include "opt/pass.h"
+#include "opt/scalar_analysis.h"
 #include "opt/tree_iterator.h"
 
 namespace {
@@ -1169,7 +1170,7 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
                OpStore %117 %116
                OpBranch %98
          %98 = OpLabel
-        %119 = OpIAdd %14 %156 %57
+        %119 = OpISub %14 %156 %57
                OpStore %93 %119
                OpBranch %95
          %97 = OpLabel
@@ -1206,7 +1207,7 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
                OpStore %147 %146
                OpBranch %128
         %128 = OpLabel
-        %149 = OpIAdd %14 %157 %57
+        %149 = OpISub %14 %157 %57
                OpStore %124 %149
                OpBranch %125
         %127 = OpLabel
@@ -1240,16 +1241,30 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
 
     // 47 -> 48
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(47),
-                                         stores[0], &distance_vector));
+      opt::SENode* load = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(
+              context->get_def_use_mgr()->GetDef(47)));
+      opt::SENode* store = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(stores[0]));
+
+      opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->CreateSubtraction(load, store));
+
+      EXPECT_TRUE(analysis.IsProvablyOutwithLoopBounds(delta));
     }
 
     // 53 -> 54
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(47),
-                                         stores[1], &distance_vector));
+      opt::SENode* load = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(
+              context->get_def_use_mgr()->GetDef(53)));
+      opt::SENode* store = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(stores[1]));
+
+      opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->CreateSubtraction(load, store));
+
+      EXPECT_TRUE(analysis.IsProvablyOutwithLoopBounds(delta));
     }
   }
   {
@@ -1273,16 +1288,30 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
 
     // 78 -> 79
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(78),
-                                         stores[0], &distance_vector));
+      opt::SENode* load = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(
+              context->get_def_use_mgr()->GetDef(78)));
+      opt::SENode* store = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(stores[0]));
+
+      opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->CreateSubtraction(load, store));
+
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(delta));
     }
 
     // 85 -> 86
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(85),
-                                         stores[1], &distance_vector));
+      opt::SENode* load = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(
+              context->get_def_use_mgr()->GetDef(85)));
+      opt::SENode* store = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(stores[1]));
+
+      opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->CreateSubtraction(load, store));
+
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(delta));
     }
   }
   {
@@ -1306,18 +1335,30 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
 
     // 109 -> 110
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(
-          analysis.GetDependence(context->get_def_use_mgr()->GetDef(109),
-                                 stores[0], &distance_vector));
+      opt::SENode* load = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(
+              context->get_def_use_mgr()->GetDef(109)));
+      opt::SENode* store = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(stores[0]));
+
+      opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->CreateSubtraction(load, store));
+
+      EXPECT_TRUE(analysis.IsProvablyOutwithLoopBounds(delta));
     }
 
     // 116 -> 117
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_FALSE(
-          analysis.GetDependence(context->get_def_use_mgr()->GetDef(116),
-                                 stores[1], &distance_vector));
+      opt::SENode* load = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(
+              context->get_def_use_mgr()->GetDef(116)));
+      opt::SENode* store = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(stores[1]));
+
+      opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->CreateSubtraction(load, store));
+
+      EXPECT_TRUE(analysis.IsProvablyOutwithLoopBounds(delta));
     }
   }
   {
@@ -1341,18 +1382,30 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
 
     // 139 -> 140
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(
-          analysis.GetDependence(context->get_def_use_mgr()->GetDef(139),
-                                 stores[0], &distance_vector));
+      opt::SENode* load = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(
+              context->get_def_use_mgr()->GetDef(139)));
+      opt::SENode* store = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(stores[0]));
+
+      opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->CreateSubtraction(load, store));
+
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(delta));
     }
 
     // 146 -> 147
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_FALSE(
-          analysis.GetDependence(context->get_def_use_mgr()->GetDef(146),
-                                 stores[1], &distance_vector));
+      opt::SENode* load = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(
+              context->get_def_use_mgr()->GetDef(146)));
+      opt::SENode* store = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->AnalyzeInstruction(stores[1]));
+
+      opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
+          analysis.GetScalarEvolution()->CreateSubtraction(load, store));
+
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(delta));
     }
   }
 }
