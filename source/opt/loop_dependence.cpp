@@ -16,21 +16,37 @@
 namespace spvtools {
 namespace opt {
 
+ir::Instruction* LoopDependenceAnalysis::GetOperandDefinition(
+    const ir::Instruction* instruction, int id) {
+  return context_->get_def_use_mgr()->GetDef(
+      instruction->GetSingleWordInOperand(id));
+}
+
+std::vector<ir::Instruction*> LoopDependenceAnalysis::GetSubscripts(
+    const ir::Instruction* instruction) {
+  ir::Instruction* access_chain = GetOperandDefinition(instruction, 0);
+
+  std::vector<ir::Instruction*> subscripts;
+
+  for (auto i = 1u; i < access_chain->NumInOperandWords(); ++i) {
+    subscripts.push_back(GetOperandDefinition(access_chain, i));
+  }
+
+  return subscripts;
+}
+
 bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
                                            const ir::Instruction* destination,
                                            DistanceVector* distance_vector) {
-  ir::Instruction* source_access_chain =
-      context_->get_def_use_mgr()->GetDef(source->GetSingleWordInOperand(0));
+  ir::Instruction* source_access_chain = GetOperandDefinition(source, 0);
   ir::Instruction* destination_access_chain =
-      context_->get_def_use_mgr()->GetDef(
-          destination->GetSingleWordInOperand(0));
+      GetOperandDefinition(destination, 0);
 
   // If the access chains aren't collecting from the same structure there is no
   // dependence.
-  ir::Instruction* source_array = context_->get_def_use_mgr()->GetDef(
-      source_access_chain->GetSingleWordInOperand(0));
-  ir::Instruction* destination_array = context_->get_def_use_mgr()->GetDef(
-      destination_access_chain->GetSingleWordInOperand(0));
+  ir::Instruction* source_array = GetOperandDefinition(source_access_chain, 0);
+  ir::Instruction* destination_array =
+      GetOperandDefinition(destination_access_chain, 0);
   if (source_array != destination_array) {
     PrintDebug("Proved independence through different arrays.");
     distance_vector->direction = DistanceVector::Directions::NONE;
@@ -39,17 +55,11 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
 
   // To handle multiple subscripts we must get every operand in the access
   // chains past the first.
-  std::vector<ir::Instruction*> source_subscripts{};
-  std::vector<ir::Instruction*> destination_subscripts{};
-  std::vector<DistanceVector> distance_vector_entries{};
-  for (int i = 1;
-       i < static_cast<int>(source_access_chain->NumInOperandWords()); ++i) {
-    source_subscripts.push_back(context_->get_def_use_mgr()->GetDef(
-        source_access_chain->GetSingleWordInOperand(i)));
-    destination_subscripts.push_back(context_->get_def_use_mgr()->GetDef(
-        destination_access_chain->GetSingleWordInOperand(i)));
-    distance_vector_entries.push_back(DistanceVector{});
-  }
+  std::vector<ir::Instruction*> source_subscripts = GetSubscripts(source);
+  std::vector<ir::Instruction*> destination_subscripts =
+      GetSubscripts(destination);
+  std::vector<DistanceVector> distance_vector_entries(source_subscripts.size(),
+                                                      DistanceVector{});
 
   // Go through each subscript testing for independence.
   // If any subscript results in independence, we prove independence between the
@@ -841,6 +851,74 @@ bool LoopDependenceAnalysis::GCDMIVTest(SENode* source, SENode* destination) {
 
   return delta % running_gcd != 0;
 }
+
+std::vector<std::set<std::pair<ir::Instruction*, ir::Instruction*>>>
+LoopDependenceAnalysis::PartitionSubscripts(
+    const std::vector<ir::Instruction*>& source_subscripts,
+    const std::vector<ir::Instruction*>& destination_subscripts) {
+  std::vector<std::set<std::pair<ir::Instruction*, ir::Instruction*>>>
+      partitions{};
+
+  auto num_subscripts = source_subscripts.size();
+
+  // Create initial partitions
+  for (size_t i = 0; i < num_subscripts; ++i) {
+    partitions.push_back({{source_subscripts[i], destination_subscripts[i]}});
+  }
+
+  for (auto loop : loops_) {
+    int64_t k = -1;
+
+    for (size_t j = 0; j < partitions.size(); ++j) {
+      auto& current_partition = partitions[j];
+
+      auto it = std::find_if(
+          current_partition.begin(), current_partition.end(),
+          [loop,
+           this](const std::pair<ir::Instruction*, ir::Instruction*>& elem)
+              -> bool {
+
+                auto rec_0 =
+                    scalar_evolution_.AnalyzeInstruction(std::get<0>(elem))
+                        ->CollectRecurrentNodes();
+                auto rec_1 =
+                    scalar_evolution_.AnalyzeInstruction(std::get<1>(elem))
+                        ->CollectRecurrentNodes();
+
+                rec_0.insert(rec_0.end(), rec_1.begin(), rec_1.end());
+
+                auto loops_in_pair = CollectLoops(rec_0);
+                auto end_it = loops_in_pair.end();
+
+                return std::find(loops_in_pair.begin(), end_it, loop) != end_it;
+              });
+
+      auto has_loop = it != current_partition.end();
+
+      if (has_loop) {
+        if (k == -1) {
+          k = j;
+        } else {
+          // Add partitions[j] to partitions[k] and discard partitions[j]
+          partitions[k].insert(current_partition.begin(),
+                               current_partition.end());
+          current_partition.clear();
+        }
+      }
+    }
+  }
+
+  // Remove empty (discarded) partitions
+  partitions.erase(
+      std::remove_if(
+          partitions.begin(), partitions.end(),
+          [](const std::set<std::pair<ir::Instruction*, ir::Instruction*>>&
+                 partition) { return partition.empty(); }),
+      partitions.end());
+
+  return partitions;
+}
+
 
 }  // namespace opt
 }  // namespace spvtools

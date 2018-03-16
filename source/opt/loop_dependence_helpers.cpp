@@ -231,6 +231,20 @@ SENode* LoopDependenceAnalysis::GetFinalTripInductionNode(
       scalar_evolution_.CreateMultiplyNode(trip_count, induction_coefficient)));
 }
 
+std::set<const ir::Loop*> LoopDependenceAnalysis::CollectLoops(
+    const std::vector<SERecurrentNode*>& recurrent_nodes) {
+  // We don't handle loops with more than one induction variable. Therefore we
+  // can identify the number of induction variables by collecting all of the
+  // loops the collected recurrent nodes belong to.
+  std::set<const ir::Loop*> loops{};
+  for (auto recurrent_nodes_it = recurrent_nodes.begin();
+       recurrent_nodes_it != recurrent_nodes.end(); ++recurrent_nodes_it) {
+    loops.insert((*recurrent_nodes_it)->GetLoop());
+  }
+
+  return loops;
+}
+
 int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* node) {
   if (!node) {
     return -1;
@@ -238,10 +252,7 @@ int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* node) {
 
   std::vector<SERecurrentNode*> recurrent_nodes = node->CollectRecurrentNodes();
 
-  // We don't handle loops with more than one induction variable. Therefore we
-  // can identify the number of induction variables by collecting all of the
-  // loops the collected recurrent nodes belong to.
-  std::unordered_set<const ir::Loop*> loops{};
+  std::set<const ir::Loop*> loops = CollectLoops(recurrent_nodes);
   for (auto recurrent_nodes_it = recurrent_nodes.begin();
        recurrent_nodes_it != recurrent_nodes.end(); ++recurrent_nodes_it) {
     loops.insert((*recurrent_nodes_it)->GetLoop());
@@ -260,14 +271,7 @@ int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* source,
   std::vector<SERecurrentNode*> destination_nodes =
       destination->CollectRecurrentNodes();
 
-  // We don't handle loops with more than one induction variable. Therefore we
-  // can identify the number of induction variables by collecting all of the
-  // loops the collected recurrent nodes belong to.
-  std::unordered_set<const ir::Loop*> loops{};
-  for (auto source_nodes_it = source_nodes.begin();
-       source_nodes_it != source_nodes.end(); ++source_nodes_it) {
-    loops.insert((*source_nodes_it)->GetLoop());
-  }
+  std::set<const ir::Loop*> loops = CollectLoops(source_nodes);
   for (auto destination_nodes_it = destination_nodes.begin();
        destination_nodes_it != destination_nodes.end();
        ++destination_nodes_it) {

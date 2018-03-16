@@ -16,7 +16,7 @@
 
 #include <memory>
 #include <string>
-#include <unordered_set>
+#include <set>
 #include <vector>
 
 #include "../assembly_builder.h"
@@ -127,7 +127,8 @@ TEST(DependencyAnalysis, ZIV) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+  std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+  opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
   const ir::Instruction* store[4];
   int stores_found = 0;
@@ -282,7 +283,8 @@ TEST(DependencyAnalysis, SymbolicZIV) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+  std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+  opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
   const ir::Instruction* store[4];
   int stores_found = 0;
@@ -516,7 +518,8 @@ TEST(DependencyAnalysis, SIV) {
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -541,24 +544,24 @@ TEST(DependencyAnalysis, SIV) {
       EXPECT_EQ(distance_vector.distance, 0);
     }
 
-    // > -1 dependence
+    // < 1 dependence
     // 44 -> 45 tests looking at SIV in same array with addition
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(44), store[1], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::GT);
-      EXPECT_EQ(distance_vector.distance, -1);
+      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::LT);
+      EXPECT_EQ(distance_vector.distance, 1);
     }
 
-    // < 1 dependence
+    // > -1 dependence
     // 54 -> 55 tests looking at SIV in same array with subtraction
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(54), store[2], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::LT);
-      EXPECT_EQ(distance_vector.distance, 1);
+      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::GT);
+      EXPECT_EQ(distance_vector.distance, -1);
     }
 
     // <=> dependence
@@ -576,7 +579,8 @@ TEST(DependencyAnalysis, SIV) {
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -886,7 +890,8 @@ TEST(DependencyAnalysis, SymbolicSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -936,7 +941,8 @@ TEST(DependencyAnalysis, SymbolicSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -1374,7 +1380,8 @@ TEST(DependencyAnalysis, Crossing) {
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 29)) {
@@ -1393,7 +1400,8 @@ TEST(DependencyAnalysis, Crossing) {
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 54)) {
@@ -1413,7 +1421,8 @@ TEST(DependencyAnalysis, Crossing) {
     const ir::Function* f = spvtest::GetFunction(module, 10);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 75)) {
@@ -1432,7 +1441,8 @@ TEST(DependencyAnalysis, Crossing) {
     const ir::Function* f = spvtest::GetFunction(module, 12);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 99)) {
@@ -1452,7 +1462,8 @@ TEST(DependencyAnalysis, Crossing) {
     const ir::Function* f = spvtest::GetFunction(module, 14);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 121)) {
@@ -1471,7 +1482,8 @@ TEST(DependencyAnalysis, Crossing) {
     const ir::Function* f = spvtest::GetFunction(module, 16);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 142)) {
@@ -1491,7 +1503,8 @@ TEST(DependencyAnalysis, Crossing) {
     const ir::Function* f = spvtest::GetFunction(module, 18);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 162)) {
@@ -1510,7 +1523,8 @@ TEST(DependencyAnalysis, Crossing) {
     const ir::Function* f = spvtest::GetFunction(module, 20);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 183)) {
@@ -1783,7 +1797,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -1841,7 +1856,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -1899,7 +1915,9 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 10);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+
     const ir::Instruction* store[4];
     int stores_found = 0;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 84)) {
@@ -1956,7 +1974,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 12);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -2107,7 +2126,8 @@ TEST(DependencyAnalysis, MultipleSubscriptZIVSIV) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+  std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
+  opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
   const ir::Instruction* store[6];
   int stores_found = 0;
@@ -2212,6 +2232,8 @@ void main(){
       arr[5*i] = arr[10*j]; // 14
       arr[9*i] = arr[3*j]; // 15
       arr[3*i] = arr[9*j]; // 16
+      arr[3*i] = arr[9*j-4]; // 17
+      arr[3*i] = arr[9*j-N]; // 18
     }
   }
 }
@@ -2255,8 +2277,8 @@ TEST(DependencyAnalysis, MIV) {
          %74 = OpConstant %6 4
         %184 = OpConstant %6 5
         %197 = OpConstant %6 9
-        %213 = OpConstant %6 1
-        %218 = OpUndef %6
+        %230 = OpConstant %6 1
+        %235 = OpUndef %6
           %4 = OpFunction %2 None %3
           %5 = OpLabel
           %8 = OpVariable %7 Function
@@ -2274,160 +2296,174 @@ TEST(DependencyAnalysis, MIV) {
                OpStore %23 %24
                OpBranch %25
          %25 = OpLabel
-        %217 = OpPhi %6 %24 %5 %216 %28
-        %219 = OpPhi %6 %218 %5 %220 %28
+        %234 = OpPhi %6 %24 %5 %233 %28
+        %236 = OpPhi %6 %235 %5 %237 %28
                OpLoopMerge %27 %28 None
                OpBranch %29
          %29 = OpLabel
-         %33 = OpSLessThan %32 %217 %31
+         %33 = OpSLessThan %32 %234 %31
                OpBranchConditional %33 %26 %27
          %26 = OpLabel
                OpStore %34 %9
                OpBranch %35
          %35 = OpLabel
-        %220 = OpPhi %6 %9 %26 %214 %38
+        %237 = OpPhi %6 %9 %26 %231 %38
                OpLoopMerge %37 %38 None
                OpBranch %39
          %39 = OpLabel
-         %41 = OpSLessThan %32 %220 %31
+         %41 = OpSLessThan %32 %237 %31
                OpBranchConditional %41 %36 %37
          %36 = OpLabel
-         %48 = OpAccessChain %7 %45 %220
+         %48 = OpAccessChain %7 %45 %237
          %49 = OpLoad %6 %48
-         %50 = OpAccessChain %7 %45 %217
+         %50 = OpAccessChain %7 %45 %234
                OpStore %50 %49
-         %53 = OpAccessChain %7 %45 %217
+         %53 = OpAccessChain %7 %45 %234
          %54 = OpLoad %6 %53
-         %55 = OpAccessChain %7 %45 %220
+         %55 = OpAccessChain %7 %45 %237
                OpStore %55 %54
-         %57 = OpISub %6 %220 %9
-         %59 = OpIAdd %6 %217 %11
+         %57 = OpISub %6 %237 %9
+         %59 = OpIAdd %6 %234 %11
          %60 = OpAccessChain %7 %45 %59
          %61 = OpLoad %6 %60
          %62 = OpAccessChain %7 %45 %57
                OpStore %62 %61
-         %65 = OpISub %6 %220 %9
-         %68 = OpIAdd %6 %217 %11
+         %65 = OpISub %6 %237 %9
+         %68 = OpIAdd %6 %234 %11
          %69 = OpAccessChain %7 %45 %68
          %70 = OpLoad %6 %69
          %71 = OpAccessChain %7 %45 %65
                OpStore %71 %70
-         %73 = OpIMul %6 %9 %217
-         %76 = OpIMul %6 %74 %220
+         %73 = OpIMul %6 %9 %234
+         %76 = OpIMul %6 %74 %237
          %77 = OpIAdd %6 %76 %11
          %78 = OpAccessChain %7 %45 %77
          %79 = OpLoad %6 %78
          %80 = OpAccessChain %7 %45 %73
                OpStore %80 %79
-         %82 = OpIMul %6 %9 %217
-         %84 = OpIMul %6 %74 %220
+         %82 = OpIMul %6 %9 %234
+         %84 = OpIMul %6 %74 %237
          %85 = OpAccessChain %7 %45 %84
          %86 = OpLoad %6 %85
          %87 = OpAccessChain %7 %45 %82
                OpStore %87 %86
-         %90 = OpIAdd %6 %217 %220
-         %93 = OpIAdd %6 %217 %220
+         %90 = OpIAdd %6 %234 %237
+         %93 = OpIAdd %6 %234 %237
          %94 = OpAccessChain %7 %45 %93
          %95 = OpLoad %6 %94
          %96 = OpAccessChain %7 %45 %90
                OpStore %96 %95
-         %98 = OpIMul %6 %31 %217
-        %100 = OpIAdd %6 %98 %220
-        %102 = OpIMul %6 %31 %217
-        %104 = OpIAdd %6 %102 %220
+         %98 = OpIMul %6 %31 %234
+        %100 = OpIAdd %6 %98 %237
+        %102 = OpIMul %6 %31 %234
+        %104 = OpIAdd %6 %102 %237
         %105 = OpAccessChain %7 %45 %104
         %106 = OpLoad %6 %105
         %107 = OpAccessChain %7 %45 %100
                OpStore %107 %106
-        %109 = OpIMul %6 %31 %217
-        %111 = OpIMul %6 %31 %220
+        %109 = OpIMul %6 %31 %234
+        %111 = OpIMul %6 %31 %237
         %112 = OpIAdd %6 %109 %111
-        %114 = OpIMul %6 %31 %217
-        %116 = OpIMul %6 %31 %220
+        %114 = OpIMul %6 %31 %234
+        %116 = OpIMul %6 %31 %237
         %117 = OpIAdd %6 %114 %116
         %118 = OpIAdd %6 %117 %11
         %119 = OpAccessChain %7 %45 %118
         %120 = OpLoad %6 %119
         %121 = OpAccessChain %7 %45 %112
                OpStore %121 %120
-        %123 = OpIMul %6 %31 %217
-        %125 = OpIMul %6 %31 %220
+        %123 = OpIMul %6 %31 %234
+        %125 = OpIMul %6 %31 %237
         %126 = OpIAdd %6 %123 %125
-        %128 = OpIMul %6 %31 %217
-        %131 = OpIMul %6 %22 %220
+        %128 = OpIMul %6 %31 %234
+        %131 = OpIMul %6 %22 %237
         %132 = OpIAdd %6 %128 %131
         %133 = OpIAdd %6 %132 %11
         %134 = OpAccessChain %7 %45 %133
         %135 = OpLoad %6 %134
         %136 = OpAccessChain %7 %45 %126
                OpStore %136 %135
-        %138 = OpIMul %6 %31 %217
-        %140 = OpIMul %6 %31 %220
+        %138 = OpIMul %6 %31 %234
+        %140 = OpIMul %6 %31 %237
         %141 = OpIAdd %6 %138 %140
-        %143 = OpIMul %6 %31 %217
-        %145 = OpIMul %6 %31 %220
+        %143 = OpIMul %6 %31 %234
+        %145 = OpIMul %6 %31 %237
         %146 = OpIAdd %6 %143 %145
         %148 = OpIAdd %6 %146 %22
         %149 = OpAccessChain %7 %45 %148
         %150 = OpLoad %6 %149
         %151 = OpAccessChain %7 %45 %141
                OpStore %151 %150
-        %153 = OpIMul %6 %31 %217
-        %156 = OpIMul %6 %22 %220
+        %153 = OpIMul %6 %31 %234
+        %156 = OpIMul %6 %22 %237
         %157 = OpIAdd %6 %153 %156
-        %159 = OpIMul %6 %31 %217
-        %161 = OpIMul %6 %31 %220
+        %159 = OpIMul %6 %31 %234
+        %161 = OpIMul %6 %31 %237
         %162 = OpIAdd %6 %159 %161
         %163 = OpIAdd %6 %162 %11
         %164 = OpAccessChain %7 %45 %163
         %165 = OpLoad %6 %164
         %166 = OpAccessChain %7 %45 %157
                OpStore %166 %165
-        %168 = OpIMul %6 %31 %217
-        %170 = OpIMul %6 %31 %220
+        %168 = OpIMul %6 %31 %234
+        %170 = OpIMul %6 %31 %237
         %171 = OpIAdd %6 %168 %170
         %173 = OpIAdd %6 %171 %22
-        %175 = OpIMul %6 %31 %217
-        %177 = OpIMul %6 %31 %220
+        %175 = OpIMul %6 %31 %234
+        %177 = OpIMul %6 %31 %237
         %178 = OpIAdd %6 %175 %177
         %179 = OpAccessChain %7 %45 %178
         %180 = OpLoad %6 %179
         %181 = OpAccessChain %7 %45 %173
                OpStore %181 %180
-        %183 = OpIMul %6 %31 %217
-        %186 = OpIMul %6 %184 %220
+        %183 = OpIMul %6 %31 %234
+        %186 = OpIMul %6 %184 %237
         %187 = OpAccessChain %7 %45 %186
         %188 = OpLoad %6 %187
         %189 = OpAccessChain %7 %45 %183
                OpStore %189 %188
-        %191 = OpIMul %6 %184 %217
-        %193 = OpIMul %6 %31 %220
+        %191 = OpIMul %6 %184 %234
+        %193 = OpIMul %6 %31 %237
         %194 = OpAccessChain %7 %45 %193
         %195 = OpLoad %6 %194
         %196 = OpAccessChain %7 %45 %191
                OpStore %196 %195
-        %199 = OpIMul %6 %197 %217
-        %201 = OpIMul %6 %11 %220
+        %199 = OpIMul %6 %197 %234
+        %201 = OpIMul %6 %11 %237
         %202 = OpAccessChain %7 %45 %201
         %203 = OpLoad %6 %202
         %204 = OpAccessChain %7 %45 %199
                OpStore %204 %203
-        %206 = OpIMul %6 %11 %217
-        %208 = OpIMul %6 %197 %220
+        %206 = OpIMul %6 %11 %234
+        %208 = OpIMul %6 %197 %237
         %209 = OpAccessChain %7 %45 %208
         %210 = OpLoad %6 %209
         %211 = OpAccessChain %7 %45 %206
                OpStore %211 %210
+        %213 = OpIMul %6 %11 %234
+        %215 = OpIMul %6 %197 %237
+        %216 = OpISub %6 %215 %74
+        %217 = OpAccessChain %7 %45 %216
+        %218 = OpLoad %6 %217
+        %219 = OpAccessChain %7 %45 %213
+               OpStore %219 %218
+        %221 = OpIMul %6 %11 %234
+        %223 = OpIMul %6 %197 %237
+        %225 = OpISub %6 %223 %22
+        %226 = OpAccessChain %7 %45 %225
+        %227 = OpLoad %6 %226
+        %228 = OpAccessChain %7 %45 %221
+               OpStore %228 %227
                OpBranch %38
          %38 = OpLabel
-        %214 = OpIAdd %6 %220 %213
-               OpStore %34 %214
+        %231 = OpIAdd %6 %237 %230
+               OpStore %34 %231
                OpBranch %35
          %37 = OpLabel
                OpBranch %28
          %28 = OpLabel
-        %216 = OpIAdd %6 %217 %213
-               OpStore %23 %216
+        %233 = OpIAdd %6 %234 %230
+               OpStore %23 %233
                OpBranch %25
          %27 = OpLabel
                OpReturn
@@ -2443,9 +2479,11 @@ TEST(DependencyAnalysis, MIV) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+  std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0),
+                                         &ld.GetLoopByIndex(1)};
+  opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
-  constexpr int instructions_expected = 17;
+  constexpr int instructions_expected = 19;
   const ir::Instruction* store[instructions_expected];
   const ir::Instruction* load[instructions_expected];
   int stores_found = 0;
@@ -2506,6 +2544,284 @@ TEST(DependencyAnalysis, MIV) {
                               &analysis);
   CheckDependenceAndDirection(load[16], store[16], true, directions_none,
                               &analysis);
+  CheckDependenceAndDirection(load[17], store[17], true, directions_none,
+                              &analysis);
+  CheckDependenceAndDirection(load[18], store[18], false, directions_all,
+                              &analysis);
+}
+
+void PartitionSubscripts(const ir::Instruction* instruction_0,
+                         const ir::Instruction* instruction_1,
+                         opt::LoopDependenceAnalysis* analysis,
+                         std::vector<std::vector<int>> expected_ids) {
+  auto subscripts_0 = analysis->GetSubscripts(instruction_0);
+  auto subscripts_1 = analysis->GetSubscripts(instruction_1);
+
+  std::vector<std::set<std::pair<ir::Instruction*, ir::Instruction*>>>
+      expected_partition{};
+
+  for (const auto& partition : expected_ids) {
+    expected_partition.push_back({});
+    for (auto id : partition) {
+      expected_partition.back().insert({subscripts_0[id], subscripts_1[id]});
+    }
+  }
+
+  EXPECT_EQ(expected_partition,
+            analysis->PartitionSubscripts(subscripts_0, subscripts_1));
+}
+
+/*
+  Generated from the following GLSL fragment shader
+  with --eliminate-local-multi-store
+#version 440 core
+void main(){
+  int[10][10][10][10] arr;
+  for (int i = 0; i < 10; i++) {
+    for (int j = 0; j < 10; j++) {
+      for (int k = 0; k < 10; k++) {
+        for (int l = 0; l < 10; l++) {
+          arr[i][j][k][l] = arr[i][j][k][l]; // 0, all independent
+          arr[i][j][k][l] = arr[i][j][l][0]; // 1, last 2 coupled
+          arr[i][j][k][l] = arr[j][i][k][l]; // 2, first 2 coupled
+          arr[i][j][k][l] = arr[l][j][k][i]; // 3, first & last coupled
+          arr[i][j][k][l] = arr[i][k][j][l]; // 4, middle 2 coupled
+          arr[i+j][j][k][l] = arr[i][j][k][l]; // 5, first 2 coupled
+          arr[i+j+k][j][k][l] = arr[i][j][k][l]; // 6, first 3 coupled
+          arr[i+j+k+l][j][k][l] = arr[i][j][k][l]; // 7, all 4 coupled
+          arr[i][j][k][l] = arr[i][l][j][k]; // 8, last 3 coupled
+          arr[i][j-k][k][l] = arr[i][j][l][k]; // 9, last 3 coupled
+          arr[i][j][k][l] = arr[l][i][j][k]; // 10, all 4 coupled
+          arr[i][j][k][l] = arr[j][i][l][k]; // 11, 2 coupled partitions (i,j) & (l&k)
+          arr[i][j][k][l] = arr[k][l][i][j]; // 12, 2 coupled partitions (i,k) & (j&l)
+        }
+      }
+    }
+  }
+}
+*/
+TEST(DependencyAnalysis, SubscriptPartitioning) {
+  const std::string text = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %4 "main"
+               OpExecutionMode %4 OriginUpperLeft
+               OpSource GLSL 440
+               OpName %4 "main"
+               OpName %8 "i"
+               OpName %19 "j"
+               OpName %27 "k"
+               OpName %35 "l"
+               OpName %50 "arr"
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeInt 32 1
+          %7 = OpTypePointer Function %6
+          %9 = OpConstant %6 0
+         %16 = OpConstant %6 10
+         %17 = OpTypeBool
+         %43 = OpTypeInt 32 0
+         %44 = OpConstant %43 10
+         %45 = OpTypeArray %6 %44
+         %46 = OpTypeArray %45 %44
+         %47 = OpTypeArray %46 %44
+         %48 = OpTypeArray %47 %44
+         %49 = OpTypePointer Function %48
+        %208 = OpConstant %6 1
+        %217 = OpUndef %6
+          %4 = OpFunction %2 None %3
+          %5 = OpLabel
+          %8 = OpVariable %7 Function
+         %19 = OpVariable %7 Function
+         %27 = OpVariable %7 Function
+         %35 = OpVariable %7 Function
+         %50 = OpVariable %49 Function
+               OpStore %8 %9
+               OpBranch %10
+         %10 = OpLabel
+        %216 = OpPhi %6 %9 %5 %215 %13
+        %218 = OpPhi %6 %217 %5 %221 %13
+        %219 = OpPhi %6 %217 %5 %222 %13
+        %220 = OpPhi %6 %217 %5 %223 %13
+               OpLoopMerge %12 %13 None
+               OpBranch %14
+         %14 = OpLabel
+         %18 = OpSLessThan %17 %216 %16
+               OpBranchConditional %18 %11 %12
+         %11 = OpLabel
+               OpStore %19 %9
+               OpBranch %20
+         %20 = OpLabel
+        %221 = OpPhi %6 %9 %11 %213 %23
+        %222 = OpPhi %6 %219 %11 %224 %23
+        %223 = OpPhi %6 %220 %11 %225 %23
+               OpLoopMerge %22 %23 None
+               OpBranch %24
+         %24 = OpLabel
+         %26 = OpSLessThan %17 %221 %16
+               OpBranchConditional %26 %21 %22
+         %21 = OpLabel
+               OpStore %27 %9
+               OpBranch %28
+         %28 = OpLabel
+        %224 = OpPhi %6 %9 %21 %211 %31
+        %225 = OpPhi %6 %223 %21 %226 %31
+               OpLoopMerge %30 %31 None
+               OpBranch %32
+         %32 = OpLabel
+         %34 = OpSLessThan %17 %224 %16
+               OpBranchConditional %34 %29 %30
+         %29 = OpLabel
+               OpStore %35 %9
+               OpBranch %36
+         %36 = OpLabel
+        %226 = OpPhi %6 %9 %29 %209 %39
+               OpLoopMerge %38 %39 None
+               OpBranch %40
+         %40 = OpLabel
+         %42 = OpSLessThan %17 %226 %16
+               OpBranchConditional %42 %37 %38
+         %37 = OpLabel
+         %59 = OpAccessChain %7 %50 %216 %221 %224 %226
+         %60 = OpLoad %6 %59
+         %61 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %61 %60
+         %69 = OpAccessChain %7 %50 %216 %221 %226 %9
+         %70 = OpLoad %6 %69
+         %71 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %71 %70
+         %80 = OpAccessChain %7 %50 %221 %216 %224 %226
+         %81 = OpLoad %6 %80
+         %82 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %82 %81
+         %91 = OpAccessChain %7 %50 %226 %221 %224 %216
+         %92 = OpLoad %6 %91
+         %93 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %93 %92
+        %102 = OpAccessChain %7 %50 %216 %224 %221 %226
+        %103 = OpLoad %6 %102
+        %104 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %104 %103
+        %107 = OpIAdd %6 %216 %221
+        %115 = OpAccessChain %7 %50 %216 %221 %224 %226
+        %116 = OpLoad %6 %115
+        %117 = OpAccessChain %7 %50 %107 %221 %224 %226
+               OpStore %117 %116
+        %120 = OpIAdd %6 %216 %221
+        %122 = OpIAdd %6 %120 %224
+        %130 = OpAccessChain %7 %50 %216 %221 %224 %226
+        %131 = OpLoad %6 %130
+        %132 = OpAccessChain %7 %50 %122 %221 %224 %226
+               OpStore %132 %131
+        %135 = OpIAdd %6 %216 %221
+        %137 = OpIAdd %6 %135 %224
+        %139 = OpIAdd %6 %137 %226
+        %147 = OpAccessChain %7 %50 %216 %221 %224 %226
+        %148 = OpLoad %6 %147
+        %149 = OpAccessChain %7 %50 %139 %221 %224 %226
+               OpStore %149 %148
+        %158 = OpAccessChain %7 %50 %216 %226 %221 %224
+        %159 = OpLoad %6 %158
+        %160 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %160 %159
+        %164 = OpISub %6 %221 %224
+        %171 = OpAccessChain %7 %50 %216 %221 %226 %224
+        %172 = OpLoad %6 %171
+        %173 = OpAccessChain %7 %50 %216 %164 %224 %226
+               OpStore %173 %172
+        %182 = OpAccessChain %7 %50 %226 %216 %221 %224
+        %183 = OpLoad %6 %182
+        %184 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %184 %183
+        %193 = OpAccessChain %7 %50 %221 %216 %226 %224
+        %194 = OpLoad %6 %193
+        %195 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %195 %194
+        %204 = OpAccessChain %7 %50 %224 %226 %216 %221
+        %205 = OpLoad %6 %204
+        %206 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %206 %205
+               OpBranch %39
+         %39 = OpLabel
+        %209 = OpIAdd %6 %226 %208
+               OpStore %35 %209
+               OpBranch %36
+         %38 = OpLabel
+               OpBranch %31
+         %31 = OpLabel
+        %211 = OpIAdd %6 %224 %208
+               OpStore %27 %211
+               OpBranch %28
+         %30 = OpLabel
+               OpBranch %23
+         %23 = OpLabel
+        %213 = OpIAdd %6 %221 %208
+               OpStore %19 %213
+               OpBranch %20
+         %22 = OpLabel
+               OpBranch %13
+         %13 = OpLabel
+        %215 = OpIAdd %6 %216 %208
+               OpStore %8 %215
+               OpBranch %10
+         %12 = OpLabel
+               OpReturn
+               OpFunctionEnd
+  )";
+
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 4);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0),
+                                         &ld.GetLoopByIndex(1),
+                                         &ld.GetLoopByIndex(2),
+                                         &ld.GetLoopByIndex(3)};
+  opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+
+  constexpr int instructions_expected = 13;
+  const ir::Instruction* store[instructions_expected];
+  const ir::Instruction* load[instructions_expected];
+  int stores_found = 0;
+  int loads_found = 0;
+
+  int block_id = 37;
+  ASSERT_TRUE(spvtest::GetBasicBlock(f, block_id));
+
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, block_id)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store[stores_found] = &inst;
+      ++stores_found;
+    }
+
+    if (inst.opcode() == SpvOp::SpvOpLoad) {
+      load[loads_found] = &inst;
+      ++loads_found;
+    }
+  }
+
+  EXPECT_EQ(instructions_expected, stores_found);
+  EXPECT_EQ(instructions_expected, loads_found);
+
+  PartitionSubscripts(load[0], store[0], &analysis, {{0}, {1}, {2}, {3}});
+  PartitionSubscripts(load[1], store[1], &analysis, {{0}, {1}, {2, 3}});
+  PartitionSubscripts(load[2], store[2], &analysis, {{0, 1}, {2}, {3}});
+  PartitionSubscripts(load[3], store[3], &analysis, {{0, 3}, {1}, {2}});
+  PartitionSubscripts(load[4], store[4], &analysis, {{0}, {1, 2}, {3}});
+  PartitionSubscripts(load[5], store[5], &analysis, {{0, 1}, {2}, {3}});
+  PartitionSubscripts(load[6], store[6], &analysis, {{0, 1, 2}, {3}});
+  PartitionSubscripts(load[7], store[7], &analysis, {{0, 1, 2, 3}});
+  PartitionSubscripts(load[8], store[8], &analysis, {{0}, {1, 2, 3}});
+  PartitionSubscripts(load[9], store[9], &analysis, {{0}, {1, 2, 3}});
+  PartitionSubscripts(load[10], store[10], &analysis, {{0, 1, 2, 3}});
+  PartitionSubscripts(load[11], store[11], &analysis, {{0, 1}, {2, 3}});
+  PartitionSubscripts(load[12], store[12], &analysis, {{0, 2}, {1, 3}});
 }
 
 }  // namespace

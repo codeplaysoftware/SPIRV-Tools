@@ -50,9 +50,10 @@ struct DistanceVector {
 
 class LoopDependenceAnalysis {
  public:
-  LoopDependenceAnalysis(ir::IRContext* context, const ir::Loop& loop)
+  LoopDependenceAnalysis(ir::IRContext* context, std::vector<const ir::Loop*> loops)
       : context_(context),
-        loop_(loop),
+        loops_(loops),
+        loop_(*loops[0]),
         scalar_evolution_(context),
         debug_stream_(nullptr){};
 
@@ -101,6 +102,9 @@ class LoopDependenceAnalysis {
   // If the operation can not be completed a nullptr is returned.
   SENode* GetFinalTripInductionNode(SENode* induction_coefficient);
 
+  std::set<const ir::Loop*> CollectLoops(
+      const std::vector<SERecurrentNode*>& nodes);
+
   // Returns true if |distance| is provably within the loop bounds.
   // This method is able to handle some symbolic cases which IsWithinBounds
   // can't handle.
@@ -117,10 +121,26 @@ class LoopDependenceAnalysis {
   // Returns the ScalarEvolutionAnalysis used by this analysis.
   ScalarEvolutionAnalysis* GetScalarEvolution() { return &scalar_evolution_; }
 
+  // Partitions the subscripts into independent subscripts and minimally coupled
+  // sets of subscripts.
+  // Returns the partitioning of subscript pairs. Sets of size 1 indicates an
+  // independent subscript-pair and others indicate coupled sets.
+  std::vector<std::set<std::pair<ir::Instruction*, ir::Instruction*>>>
+  PartitionSubscripts(
+      const std::vector<ir::Instruction*>& source_subscripts,
+      const std::vector<ir::Instruction*>& destination_subscripts);
+
+  ir::Instruction* GetOperandDefinition(const ir::Instruction* instruction,
+                                        int id);
+
+  std::vector<ir::Instruction*> GetSubscripts(
+      const ir::Instruction* instruction);
+
  private:
   ir::IRContext* context_;
 
-  // The loop we are analysing the dependence of.
+  // The loop nest we are analysing the dependence of.
+  std::vector<const ir::Loop*> loops_;
   const ir::Loop& loop_;
 
   // The ScalarEvolutionAnalysis used by this analysis to store and perform much
