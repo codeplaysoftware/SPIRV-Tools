@@ -270,10 +270,10 @@ class LoopPeelingPass : public Pass {
     uint32_t GetFirstLoopInvariantOperand(ir::Instruction* condition) const;
     uint32_t GetFirstNonLoopInvariantOperand(ir::Instruction* condition) const;
 
-    SENode* GetLastIterationValue(SERecurrentNode* rec) const;
+    SExpression GetLastIterationValue(SERecurrentNode* rec) const;
 
-    Direction HandleEqual(SENode* lhs, SENode* rhs) const;
-    Direction HandleInequality(SENodeDSL lhs, SERecurrentNode* rhs) const;
+    Direction HandleEqual(SExpression lhs, SExpression rhs) const;
+    Direction HandleInequality(SExpression lhs, SERecurrentNode* rhs) const;
 
     static Direction GetNoneDirection() {
       return Direction{LoopPeelingPass::PeelDirection::kNone, 0};

@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <type_traits>
 #include <unordered_set>
 #include <vector>
 
@@ -132,72 +133,138 @@ class ScalarEvolutionAnalysis {
   SENode* AnalyzePhiInstruction(const ir::Instruction* phi);
 };
 
-// Wrapping class to manipulate SENode pointer using + - * operators.
-struct SENodeDSL {
+// Wrapping class to manipulate SENode pointer using + - * / operators.
+class SExpression {
  public:
   // Implicit on purpose !
-  SENodeDSL(SENode* node)
+  SExpression(SENode* node)
       : node_(node->GetParentAnalysis()->SimplifyExpression(node)),
         scev_(node->GetParentAnalysis()) {}
 
-  operator SENode*() const { return node_; }
-  SENode* operator->() const { return node_; }
+  inline operator SENode*() const { return node_; }
+  inline SENode* operator->() const { return node_; }
+  const SENode& operator*() const { return *node_; }
 
-  SENodeDSL operator+(SENode* rhs) const {
-    return scev_->CreateAddNode(node_, rhs);
+  inline ScalarEvolutionAnalysis* GetScalarEvolutionAnalysis() const {
+    return scev_;
   }
-  SENodeDSL operator+(int64_t integer) const {
-    return *this + scev_->CreateConstant(integer);
-  }
-  SENodeDSL operator+(SENodeDSL rhs) const { return *this + rhs.node_; }
 
-  SENodeDSL operator-() const { return scev_->CreateNegation(node_); }
-  SENodeDSL operator-(SENode* rhs) const {
-    return *this + scev_->CreateNegation(rhs);
-  }
-  SENodeDSL operator-(int64_t integer) const {
-    return *this - scev_->CreateConstant(integer);
-  }
-  SENodeDSL operator-(SENodeDSL rhs) const { return *this - rhs.node_; }
+  inline SExpression operator+(SENode* rhs) const;
+  template <typename T,
+            typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
+  inline SExpression operator+(T integer) const;
+  inline SExpression operator+(SExpression rhs) const;
 
-  SENodeDSL operator*(SENode* rhs) const {
-    return scev_->CreateMultiplyNode(node_, rhs);
-  }
-  SENodeDSL operator*(int64_t integer) const {
-    return *this * scev_->CreateConstant(integer);
-  }
-  SENodeDSL operator*(SENodeDSL rhs) const { return *this * rhs.node_; }
+  inline SExpression operator-() const;
+  inline SExpression operator-(SENode* rhs) const;
+  template <typename T,
+            typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
+  inline SExpression operator-(T integer) const;
+  inline SExpression operator-(SExpression rhs) const;
 
-  std::pair<SENodeDSL, int64_t> operator/(int64_t integer) const {
-    return *this / scev_->CreateConstant(integer);
-  }
+  inline SExpression operator*(SENode* rhs) const;
+  template <typename T,
+            typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
+  inline SExpression operator*(T integer) const;
+  inline SExpression operator*(SExpression rhs) const;
+
+  template <typename T,
+            typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
+  inline std::pair<SExpression, int64_t> operator/(T integer) const;
   // Try to perform a division. Returns the pair <this.node_ / rhs, division
   // remainder>. If it fails to simplify it, the function returns a
   // CanNotCompute node.
-  std::pair<SENodeDSL, int64_t> operator/(SENodeDSL rhs) const;
+  std::pair<SExpression, int64_t> operator/(SExpression rhs) const;
 
+ private:
   SENode* node_;
   ScalarEvolutionAnalysis* scev_;
 };
 
-inline SENodeDSL operator+(int64_t lhs, SENodeDSL rhs) { return rhs + lhs; }
-inline SENodeDSL operator+(SENode* lhs, SENodeDSL rhs) { return rhs + lhs; }
-
-inline SENodeDSL operator-(int64_t lhs, SENodeDSL rhs) {
-  return SENodeDSL{rhs.scev_->CreateConstant(lhs)} - rhs;
-}
-inline SENodeDSL operator-(SENode* lhs, SENodeDSL rhs) {
-  return SENodeDSL{lhs} - rhs;
+inline SExpression SExpression::operator+(SENode* rhs) const {
+  return scev_->CreateAddNode(node_, rhs);
 }
 
-inline SENodeDSL operator*(int64_t lhs, SENodeDSL rhs) { return rhs * lhs; }
-inline SENodeDSL operator*(SENode* lhs, SENodeDSL rhs) { return rhs * lhs; }
-
-inline std::pair<SENodeDSL, int64_t> operator/(int64_t lhs, SENodeDSL rhs) {
-  return SENodeDSL{rhs.scev_->CreateConstant(lhs)} / rhs;
+template <typename T,
+          typename std::enable_if<std::is_integral<T>::value, int>::type>
+inline SExpression SExpression::operator+(T integer) const {
+  return *this + scev_->CreateConstant(integer);
 }
-inline std::pair<SENodeDSL, int64_t> operator/(SENode* lhs, SENodeDSL rhs) {
-  return SENodeDSL{lhs} / rhs;
+
+inline SExpression SExpression::operator+(SExpression rhs) const {
+  return *this + rhs.node_;
+}
+
+inline SExpression SExpression::operator-() const {
+  return scev_->CreateNegation(node_);
+}
+
+inline SExpression SExpression::operator-(SENode* rhs) const {
+  return *this + scev_->CreateNegation(rhs);
+}
+
+template <typename T,
+          typename std::enable_if<std::is_integral<T>::value, int>::type>
+inline SExpression SExpression::operator-(T integer) const {
+  return *this - scev_->CreateConstant(integer);
+}
+
+inline SExpression SExpression::operator-(SExpression rhs) const {
+  return *this - rhs.node_;
+}
+
+inline SExpression SExpression::operator*(SENode* rhs) const {
+  return scev_->CreateMultiplyNode(node_, rhs);
+}
+
+template <typename T,
+          typename std::enable_if<std::is_integral<T>::value, int>::type>
+inline SExpression SExpression::operator*(T integer) const {
+  return *this * scev_->CreateConstant(integer);
+}
+
+inline SExpression SExpression::operator*(SExpression rhs) const {
+  return *this * rhs.node_;
+}
+
+template <typename T,
+          typename std::enable_if<std::is_integral<T>::value, int>::type>
+inline std::pair<SExpression, int64_t> SExpression::operator/(T integer) const {
+  return *this / scev_->CreateConstant(integer);
+}
+
+template <typename T,
+          typename std::enable_if<std::is_integral<T>::value, int>::type>
+inline SExpression operator+(T lhs, SExpression rhs) {
+  return rhs + lhs;
+}
+inline SExpression operator+(SENode* lhs, SExpression rhs) { return rhs + lhs; }
+
+template <typename T,
+          typename std::enable_if<std::is_integral<T>::value, int>::type>
+inline SExpression operator-(T lhs, SExpression rhs) {
+  return SExpression{rhs.GetScalarEvolutionAnalysis()->CreateConstant(lhs)} -
+         rhs;
+}
+inline SExpression operator-(SENode* lhs, SExpression rhs) {
+  return SExpression{lhs} - rhs;
+}
+
+template <typename T,
+          typename std::enable_if<std::is_integral<T>::value, int>::type>
+inline SExpression operator*(T lhs, SExpression rhs) {
+  return rhs * lhs;
+}
+inline SExpression operator*(SENode* lhs, SExpression rhs) { return rhs * lhs; }
+
+template <typename T,
+          typename std::enable_if<std::is_integral<T>::value, int>::type>
+inline std::pair<SExpression, int64_t> operator/(T lhs, SExpression rhs) {
+  return SExpression{rhs.GetScalarEvolutionAnalysis()->CreateConstant(lhs)} /
+         rhs;
+}
+inline std::pair<SExpression, int64_t> operator/(SENode* lhs, SExpression rhs) {
+  return SExpression{lhs} / rhs;
 }
 
 }  // namespace opt

@@ -741,7 +741,7 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
   }
 
   // Left hand-side.
-  SENode* lhs = scev_analysis_->AnalyzeInstruction(
+  SExpression lhs = scev_analysis_->AnalyzeInstruction(
       def_use_mgr->GetDef(condition->GetSingleWordInOperand(0)));
   if (lhs->GetType() == SENode::CanNotCompute) {
     // Can't make any conclusion.
@@ -749,7 +749,7 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
   }
 
   // Right hand-side.
-  SENode* rhs = scev_analysis_->AnalyzeInstruction(
+  SExpression rhs = scev_analysis_->AnalyzeInstruction(
       def_use_mgr->GetDef(condition->GetSingleWordInOperand(1)));
   if (rhs->GetType() == SENode::CanNotCompute) {
     // Can't make any conclusion.
@@ -790,11 +790,11 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
     // We add one to transform >= into > and <= into <.
     case SpvOpUGreaterThanEqual:
     case SpvOpSGreaterThanEqual:
-      lhs = SENodeDSL(lhs) + 1;
+      lhs = SExpression(lhs) + 1;
       break;
     case SpvOpULessThanEqual:
     case SpvOpSLessThanEqual:
-      rhs = SENodeDSL(rhs) + 1;
+      rhs = SExpression(rhs) + 1;
       break;
   }
 
@@ -806,22 +806,25 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
   return HandleInequality(lhs, rhs->AsSERecurrentNode());
 }
 
-SENode* LoopPeelingPass::LoopPeelingInfo::GetLastIterationValue(
+SExpression LoopPeelingPass::LoopPeelingInfo::GetLastIterationValue(
     SERecurrentNode* rec) const {
-  return (SENodeDSL{rec->GetCoefficient()} * (loop_max_iterations_ - 1)) +
-         rec->GetOffset();
+  SExpression coeff = rec->GetCoefficient();
+  SExpression offset = rec->GetOffset();
+
+  return (coeff * (loop_max_iterations_ - 1)) + offset;
 }
 
 LoopPeelingPass::LoopPeelingInfo::Direction
-LoopPeelingPass::LoopPeelingInfo::HandleEqual(SENode* lhs, SENode* rhs) const {
+LoopPeelingPass::LoopPeelingInfo::HandleEqual(SExpression lhs,
+                                              SExpression rhs) const {
   // FIXME: check the current loop for scev nodes
   {
     // Try peel before opportunity.
-    SENode* lhs_cst = lhs;
+    SExpression lhs_cst = lhs;
     if (SERecurrentNode* rec_node = lhs->AsSERecurrentNode()) {
       lhs_cst = rec_node->GetOffset();
     }
-    SENode* rhs_cst = rhs;
+    SExpression rhs_cst = rhs;
     if (SERecurrentNode* rec_node = rhs->AsSERecurrentNode()) {
       rhs_cst = rec_node->GetOffset();
     }
@@ -833,13 +836,13 @@ LoopPeelingPass::LoopPeelingInfo::HandleEqual(SENode* lhs, SENode* rhs) const {
 
   {
     // Try peel after opportunity.
-    SENode* lhs_cst = lhs;
+    SExpression lhs_cst = lhs;
     if (SERecurrentNode* rec_node = lhs->AsSERecurrentNode()) {
       // rec_node(x) = a * x + b
       // assign to lhs: a * (loop_max_iterations_ - 1) + b
       lhs_cst = GetLastIterationValue(rec_node);
     }
-    SENode* rhs_cst = rhs;
+    SExpression rhs_cst = rhs;
     if (SERecurrentNode* rec_node = rhs->AsSERecurrentNode()) {
       // rec_node(x) = a * x + b
       // assign to lhs: a * (loop_max_iterations_ - 1) + b
@@ -855,11 +858,13 @@ LoopPeelingPass::LoopPeelingInfo::HandleEqual(SENode* lhs, SENode* rhs) const {
 }
 
 LoopPeelingPass::LoopPeelingInfo::Direction
-LoopPeelingPass::LoopPeelingInfo::HandleInequality(SENodeDSL lhs,
+LoopPeelingPass::LoopPeelingInfo::HandleInequality(SExpression lhs,
                                                    SERecurrentNode* rhs) const {
+  SExpression offset = rhs->GetOffset();
+  SExpression coefficient = rhs->GetCoefficient();
   // Compute (cst - B) / A.
-  std::pair<SENodeDSL, int64_t> flip_iteration =
-      (lhs - rhs->GetOffset()->AsSEConstantNode()) / rhs->GetCoefficient();
+  std::pair<SExpression, int64_t> flip_iteration =
+      (lhs - offset->AsSEConstantNode()) / coefficient;
   if (!flip_iteration.first->AsSEConstantNode()) {
     return GetNoneDirection();
   }

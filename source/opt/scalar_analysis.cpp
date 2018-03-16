@@ -499,8 +499,8 @@ static SENode* RemoveOneNodeFromMultiplyChain(SEMultiplyNode* mul,
 }
 }  // namespace
 
-std::pair<SENodeDSL, int64_t> SENodeDSL::operator/(
-    SENodeDSL rhs_wrapper) const {
+std::pair<SExpression, int64_t> SExpression::operator/(
+    SExpression rhs_wrapper) const {
   SENode* lhs = node_;
   SENode* rhs = rhs_wrapper.node_;
   // Check for division by 0.
