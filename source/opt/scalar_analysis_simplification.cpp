@@ -73,8 +73,8 @@ class SENodeSimplifyImpl {
   // operation was preceded by a unary negative.
   bool AccumulatorsFromMultiply(SENode* multiply, bool negation);
 
-  SERecurrentNode* UpdateCoefficent(SERecurrentNode* recurrent,
-                                    int64_t coefficent_update) const;
+  SERecurrentNode* UpdateCoefficient(SERecurrentNode* recurrent,
+                                     int64_t coefficient_update) const;
 
   // If the graph contains a recurrent expression, ie, an expression with the
   // loop iterations as a term in the expression, then the whole expression
@@ -229,21 +229,22 @@ void SENodeSimplifyImpl::GatherAccumulatorsFromChildNodes(SENode* new_node,
   }
 }
 
-SERecurrentNode* SENodeSimplifyImpl::UpdateCoefficent(
-    SERecurrentNode* recurrent, int64_t coefficent_update) const {
+SERecurrentNode* SENodeSimplifyImpl::UpdateCoefficient(
+    SERecurrentNode* recurrent, int64_t coefficient_update) const {
   std::unique_ptr<SERecurrentNode> new_recurrent_node{new SERecurrentNode(
       recurrent->GetParentAnalysis(), recurrent->GetLoop())};
 
-  SENode* new_coefficent = analysis_.CreateMultiplyNode(
-      recurrent->GetCoefficient(), analysis_.CreateConstant(coefficent_update));
+  SENode* new_coefficient = analysis_.CreateMultiplyNode(
+      recurrent->GetCoefficient(),
+      analysis_.CreateConstant(coefficient_update));
 
   // See if the node can be simplified.
-  SENode* simplified = analysis_.SimplifyExpression(new_coefficent);
+  SENode* simplified = analysis_.SimplifyExpression(new_coefficient);
   if (simplified->GetType() != SENode::CanNotCompute)
-    new_coefficent = simplified;
+    new_coefficient = simplified;
 
   new_recurrent_node->AddOffset(recurrent->GetOffset());
-  new_recurrent_node->AddCoefficient(new_coefficent);
+  new_recurrent_node->AddCoefficient(new_coefficient);
 
   return analysis_.GetCachedOrAdd(std::move(new_recurrent_node))
       ->AsSERecurrentNode();
@@ -286,7 +287,7 @@ SENode* SENodeSimplifyImpl::SimplifyPolynomial() {
 
         // Create a new recurrent expression by adding the count to the
         // coefficient of the old one.
-        new_add->AddChild(UpdateCoefficent(term->AsSERecurrentNode(), count));
+        new_add->AddChild(UpdateCoefficient(term->AsSERecurrentNode(), count));
       }
     }
   }
@@ -309,19 +310,27 @@ SENode* SENodeSimplifyImpl::FoldRecurrentExpressions(SENode* root) {
 
   // A mapping of loops to the list of recurrent expressions which are with
   // respect to those loops.
-  std::map<const ir::Loop*, std::vector<SERecurrentNode*>> loops_to_recurrent{};
+  std::map<const ir::Loop*, std::vector<std::pair<SERecurrentNode*, bool>>>
+      loops_to_recurrent{};
 
   bool has_multiple_same_loop_recurrent_terms = false;
 
   for (SENode* child : *root) {
+    bool negation = false;
+
+    if (child->GetType() == SENode::Negative) {
+      child = child->GetChild(0);
+      negation = true;
+    }
+
     if (child->GetType() == SENode::RecurrentExpr) {
       const ir::Loop* loop = child->AsSERecurrentNode()->GetLoop();
 
       SERecurrentNode* rec = child->AsSERecurrentNode();
       if (loops_to_recurrent.find(loop) == loops_to_recurrent.end()) {
-        loops_to_recurrent[loop] = {rec};
+        loops_to_recurrent[loop] = {std::make_pair(rec, negation)};
       } else {
-        loops_to_recurrent[loop].push_back(rec);
+        loops_to_recurrent[loop].push_back(std::make_pair(rec, negation));
         has_multiple_same_loop_recurrent_terms = true;
       }
     } else {
@@ -332,23 +341,44 @@ SENode* SENodeSimplifyImpl::FoldRecurrentExpressions(SENode* root) {
   if (!has_multiple_same_loop_recurrent_terms) return root;
 
   for (auto pair : loops_to_recurrent) {
-    std::vector<SERecurrentNode*>& recurrent_expressions = pair.second;
+    std::vector<std::pair<SERecurrentNode*, bool>>& recurrent_expressions =
+        pair.second;
+    const ir::Loop* loop = pair.first;
 
-    std::unique_ptr<SENode> new_coefficent{new SEAddNode(&analysis_)};
+    std::unique_ptr<SENode> new_coefficient{new SEAddNode(&analysis_)};
     std::unique_ptr<SENode> new_offset{new SEAddNode(&analysis_)};
 
-    for (SERecurrentNode* node : recurrent_expressions) {
-      new_coefficent->AddChild(node->GetCoefficient());
-      new_offset->AddChild(node->GetOffset());
+    for (auto node_pair : recurrent_expressions) {
+      SERecurrentNode* node = node_pair.first;
+      bool negative = node_pair.second;
+
+      if (!negative) {
+        new_coefficient->AddChild(node->GetCoefficient());
+        new_offset->AddChild(node->GetOffset());
+      } else {
+        new_coefficient->AddChild(
+            analysis_.CreateNegation(node->GetCoefficient()));
+        new_offset->AddChild(analysis_.CreateNegation(node->GetOffset()));
+      }
     }
 
     std::unique_ptr<SERecurrentNode> new_recurrent{
-        new SERecurrentNode(&analysis_, pair.first)};
+        new SERecurrentNode(&analysis_, loop)};
 
-    new_recurrent->AddCoefficient(
-        analysis_.SimplifyExpression(new_coefficent.get()));
+    SENode* new_coefficient_simplified =
+        analysis_.SimplifyExpression(new_coefficient.get());
 
-    new_recurrent->AddOffset(analysis_.SimplifyExpression(new_offset.get()));
+    SENode* new_offset_simplified =
+        analysis_.SimplifyExpression(new_offset.get());
+
+    if (new_coefficient_simplified->GetType() == SENode::Constant &&
+        new_coefficient_simplified->AsSEConstantNode()->FoldToSingleValue() ==
+            0) {
+      return new_offset_simplified;
+    }
+
+    new_recurrent->AddCoefficient(new_coefficient_simplified);
+    new_recurrent->AddOffset(new_offset_simplified);
 
     new_node->AddChild(analysis_.GetCachedOrAdd(std::move(new_recurrent)));
   }

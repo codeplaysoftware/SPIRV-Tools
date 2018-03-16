@@ -14,7 +14,6 @@
 
 #ifndef LIBSPIRV_OPT_TREE_ITERATOR_H_
 #define LIBSPIRV_OPT_TREE_ITERATOR_H_
-
 #include <iterator>
 #include <stack>
 #include <type_traits>
@@ -55,7 +54,6 @@ class TreeDFIterator : public std::iterator<std::forward_iterator_tag, NodeTy> {
   using value_type = NodeTy;
   using iterator_category = std::forward_iterator_tag;
   using difference_type = ptrdiff_t;
-
   explicit inline TreeDFIterator(NodePtr top_node) : current_(top_node) {
     if (current_ && current_->begin() != current_->end())
       parent_iterators_.emplace(make_pair(current_, current_->begin()));
@@ -152,7 +150,6 @@ class PostOrderTreeDFIterator
   using value_type = NodeTy;
   using iterator_category = std::forward_iterator_tag;
   using difference_type = ptrdiff_t;
-
   static inline PostOrderTreeDFIterator begin(NodePtr top_node) {
     return PostOrderTreeDFIterator(top_node);
   }

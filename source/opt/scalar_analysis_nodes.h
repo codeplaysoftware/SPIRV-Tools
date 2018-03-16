@@ -362,9 +362,12 @@ class SENegative : public SENode {
 // instruction.
 class SEValueUnknown : public SENode {
  public:
-  explicit SEValueUnknown(opt::ScalarEvolutionAnalysis* parent_analysis,
-                          uint32_t value)
-      : SENode(parent_analysis), value_(value) {}
+  // SEValueUnknowns must come from an instruction |unique_id| is the unique id
+  // of that instruction. This is so we can compare value unknowns and have a
+  // unique value unknown for each instruction.
+  SEValueUnknown(opt::ScalarEvolutionAnalysis* parent_analysis,
+                 uint32_t unique_id)
+      : SENode(parent_analysis), unique_id_(unique_id) {}
 
   SENodeType GetType() const final { return ValueUnknown; }
 
@@ -374,13 +377,13 @@ class SEValueUnknown : public SENode {
   using SENode::Dump;
   // Dump the SENode as a mathematical expression.
   void Dump(std::ostream* out, PrintContext*) const override {
-    *out << "%" << value_;
+    *out << "%" << unique_id_;
   }
 
-  uint32_t GetValue() const { return value_; }
+  inline uint32_t UniqueId() const { return unique_id_; }
 
- protected:
-  uint32_t value_;
+ private:
+  uint32_t unique_id_;
 };
 
 // A node which we cannot reason about at all.

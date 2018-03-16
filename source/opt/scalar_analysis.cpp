@@ -20,8 +20,6 @@
 
 #include "opt/ir_context.h"
 
-#include "opt/ir_context.h"
-
 namespace spvtools {
 namespace opt {
 
@@ -110,7 +108,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
       break;
     }
     default: {
-      output = CreateValueUnknownNode(inst->result_id());
+      output = CreateValueUnknownNode(inst);
       instruction_map_[inst] = output;
       break;
     }
@@ -227,9 +225,10 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
   return instruction_map_[phi];
 }
 
-SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode(uint32_t ssa_value) {
+SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode(
+    const ir::Instruction* inst) {
   std::unique_ptr<SEValueUnknown> load_node{
-      new SEValueUnknown(this, ssa_value)};
+      new SEValueUnknown(this, inst->unique_id())};
   return GetCachedOrAdd(std::move(load_node));
 }
 
@@ -251,15 +250,15 @@ SENode* ScalarEvolutionAnalysis::GetCachedOrAdd(
   return raw_ptr_to_node;
 }
 
-bool ScalarEvolutionAnalysis::IsLoopInvariant(ir::Loop* loop,
-                                              SENode* node) const {
+bool ScalarEvolutionAnalysis::IsLoopInvariant(const ir::Loop* loop,
+                                              const SENode* node) const {
   return std::none_of(
       node->graph_cbegin(), node->graph_cend(), [loop](const SENode& expr) {
         if (const SERecurrentNode* rec = expr.AsSERecurrentNode()) {
           return loop->IsInsideLoop(rec->GetLoop()->GetHeaderBlock());
         }
         if (const SEValueUnknown* unknown = expr.AsSEValueUnknown()) {
-          return loop->IsInsideLoop(unknown->GetValue());
+          return loop->IsInsideLoop(unknown->UniqueId());
         }
         return false;
       });
@@ -294,14 +293,19 @@ bool SENode::operator==(const SENode& other) const {
     if (other.GetChildren()[index] != children_[index]) return false;
   }
 
+  // If we're dealing with a value unknown node check both nodes were created by
+  // the same instruction.
+  if (GetType() == SENode::ValueUnknown) {
+    if (AsSEValueUnknown()->UniqueId() !=
+        other.AsSEValueUnknown()->UniqueId()) {
+      return false;
+    }
+  }
+
   if (AsSEConstantNode()) {
     if (AsSEConstantNode()->FoldToSingleValue() !=
         other.AsSEConstantNode()->FoldToSingleValue())
       return false;
-  }
-  if (AsSEValueUnknown()) {
-    return AsSEValueUnknown()->GetValue() ==
-           other.AsSEValueUnknown()->GetValue();
   }
 
   return true;
@@ -331,11 +335,12 @@ size_t SENodeHash::operator()(const SENode* node) const {
         std::hash<const ir::Loop*>{}(node->AsSERecurrentNode()->GetLoop());
   }
 
+  // Hash the unique id of the creator instruction if this is a value unknown
+  // node.
   if (node->GetType() == SENode::ValueUnknown) {
     resulting_hash ^=
-        std::hash<uint32_t>{}(node->AsSEValueUnknown()->GetValue());
+        std::hash<uint32_t>{}(node->AsSEValueUnknown()->UniqueId());
   }
-
   // Hash the pointers of the child nodes, each SENode has a unique pointer
   // associated with it.
   const std::vector<SENode*>& children = node->GetChildren();
