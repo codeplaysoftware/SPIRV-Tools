@@ -12,21 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef LIBSPIRV_OPT_SCALAR_ANALYSIS_H_
-#define LIBSPIRV_OPT_SCALAR_ANALYSIS_H_
+#ifndef SOURCE_OPT_SCALAR_ANALYSIS_H_
+#define SOURCE_OPT_SCALAR_ANALYSIS_H_
 
 #include <algorithm>
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 #include "opt/basic_block.h"
 #include "opt/instruction.h"
-#include "opt/ir_context.h"
 #include "opt/scalar_analysis_nodes.h"
 
 namespace spvtools {
+namespace ir {
+class IRContext;
+class Loop;
+}  // namespace ir
+
 namespace opt {
 
 // Manager for the Scalar Evolution analysis. Creates and maintains a DAG of
@@ -40,19 +45,11 @@ class ScalarEvolutionAnalysis {
   explicit ScalarEvolutionAnalysis(ir::IRContext* context)
       : context_(context) {}
 
-  void DumpAsDot(std::ostream& out_stream) {
-    out_stream << "digraph  {\n";
-    for (const std::unique_ptr<SENode>& node : node_cache_) {
-      node->DumpDot(out_stream);
-    }
-    out_stream << "}\n";
-  }
-
   // Create a unary negative node on |operand|.
   SENode* CreateNegation(SENode* operand);
 
   // Creates a subtraction between the two operands by adding |operand_1| to the
-  // negation of |operand_2|
+  // negation of |operand_2|.
   SENode* CreateSubtraction(SENode* operand_1, SENode* operand_2);
 
   // Create an addition node between two operands.
@@ -65,7 +62,7 @@ class ScalarEvolutionAnalysis {
   SENode* CreateConstant(int64_t integer);
 
   // Create a value unknown node, such as a load.
-  SENode* CreateValueUnknownNode();
+  SENode* CreateValueUnknownNode(const ir::Instruction* inst);
 
   // Create a CantComputeNode. Used to exit out of analysis.
   SENode* CreateCantComputeNode();
@@ -88,6 +85,8 @@ class ScalarEvolutionAnalysis {
   // Add |prospective_node| into the cache and return a raw pointer to it. If
   // |prospective_node| is already in the cache just return the raw pointer.
   SENode* GetCachedOrAdd(std::unique_ptr<SENode> prospective_node);
+
+  bool IsLoopInvariant(const ir::Loop* loop, const SENode* node) const;
 
  private:
   ir::IRContext* context_;
@@ -124,5 +123,4 @@ class ScalarEvolutionAnalysis {
 
 }  // namespace opt
 }  // namespace spvtools
-
-#endif  // LIBSPIRV_OPT_SCALAR_ANALYSIS_H__
+#endif  // SOURCE_OPT_SCALAR_ANALYSIS_H__

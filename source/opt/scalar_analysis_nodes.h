@@ -12,12 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef LIBSPIRV_OPT_SCALAR_ANALYSIS_NODES_H_
-#define LIBSPIRV_OPT_SCALAR_ANALYSIS_NODES_H_
+#ifndef SOURCE_OPT_SCALAR_ANALYSIS_NODES_H_
+#define SOURCE_OPT_SCALAR_ANALYSIS_NODES_H_
 
-#include "tree_iterator.h"
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <vector>
+#include "opt/tree_iterator.h"
 
 namespace spvtools {
+namespace ir {
+class Loop;
+}  // namespace ir
+
 namespace opt {
 
 class ScalarEvolutionAnalysis;
@@ -238,7 +246,7 @@ class SERecurrentNode : public SENode {
 // A node representing an addition operation between child nodes.
 class SEAddNode : public SENode {
  public:
-  SEAddNode(opt::ScalarEvolutionAnalysis* parent_analysis)
+  explicit SEAddNode(opt::ScalarEvolutionAnalysis* parent_analysis)
       : SENode(parent_analysis) {}
 
   SENodeType GetType() const final { return Add; }
@@ -250,7 +258,7 @@ class SEAddNode : public SENode {
 // A node representing a multiply operation between child nodes.
 class SEMultiplyNode : public SENode {
  public:
-  SEMultiplyNode(opt::ScalarEvolutionAnalysis* parent_analysis)
+  explicit SEMultiplyNode(opt::ScalarEvolutionAnalysis* parent_analysis)
       : SENode(parent_analysis) {}
 
   SENodeType GetType() const final { return Multiply; }
@@ -262,7 +270,7 @@ class SEMultiplyNode : public SENode {
 // A node representing a unary negative operation.
 class SENegative : public SENode {
  public:
-  SENegative(opt::ScalarEvolutionAnalysis* parent_analysis)
+  explicit SENegative(opt::ScalarEvolutionAnalysis* parent_analysis)
       : SENode(parent_analysis) {}
 
   SENodeType GetType() const final { return Negative; }
@@ -275,19 +283,28 @@ class SENegative : public SENode {
 // instruction.
 class SEValueUnknown : public SENode {
  public:
-  SEValueUnknown(opt::ScalarEvolutionAnalysis* parent_analysis)
-      : SENode(parent_analysis) {}
+  // SEValueUnknowns must come from an instruction |unique_id| is the unique id
+  // of that instruction. This is so we can compare value unknowns and have a
+  // unique value unknown for each instruction.
+  SEValueUnknown(opt::ScalarEvolutionAnalysis* parent_analysis,
+                 uint32_t unique_id)
+      : SENode(parent_analysis), unique_id_(unique_id) {}
 
   SENodeType GetType() const final { return ValueUnknown; }
 
   SEValueUnknown* AsSEValueUnknown() override { return this; }
   const SEValueUnknown* AsSEValueUnknown() const override { return this; }
+
+  inline uint32_t UniqueId() const { return unique_id_; }
+
+ private:
+  uint32_t unique_id_;
 };
 
 // A node which we cannot reason about at all.
 class SECantCompute : public SENode {
  public:
-  SECantCompute(opt::ScalarEvolutionAnalysis* parent_analysis)
+  explicit SECantCompute(opt::ScalarEvolutionAnalysis* parent_analysis)
       : SENode(parent_analysis) {}
 
   SENodeType GetType() const final { return CanNotCompute; }
@@ -298,4 +315,4 @@ class SECantCompute : public SENode {
 
 }  // namespace opt
 }  // namespace spvtools
-#endif
+#endif  // SOURCE_OPT_SCALAR_ANALYSIS_NODES_H_

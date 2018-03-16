@@ -13,12 +13,20 @@
 // limitations under the License.
 
 #include "opt/scalar_analysis.h"
+#include <algorithm>
 #include <functional>
+#include <string>
+#include <utility>
+
+#include "opt/ir_context.h"
 
 namespace spvtools {
 namespace opt {
 
 SENode* ScalarEvolutionAnalysis::CreateNegation(SENode* operand) {
+  if (operand->GetType() == SENode::Constant) {
+    return CreateConstant(-operand->AsSEConstantNode()->FoldToSingleValue());
+  }
   std::unique_ptr<SENode> negation_node{new SENegative(this)};
   negation_node->AddChild(operand);
   return GetCachedOrAdd(std::move(negation_node));
@@ -100,11 +108,11 @@ SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
       break;
     }
     default: {
-      output = CreateValueUnknownNode();
+      output = CreateValueUnknownNode(inst);
       instruction_map_[inst] = output;
       break;
     }
-  };
+  }
   return output;
 }
 
@@ -190,10 +198,10 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
       SENode* operand_1 = value_node->GetChild(0);
       SENode* operand_2 = value_node->GetChild(1);
 
-      // Find which node is the constant.
-      if (operand_1->AsSEConstantNode())
+      // Find which node is the step term.
+      if (!operand_1->AsSERecurrentNode())
         constant_node = operand_1;
-      else if (operand_2->AsSEConstantNode())
+      else if (!operand_2->AsSERecurrentNode())
         constant_node = operand_2;
 
       // Find which node is the recurrent expression.
@@ -212,11 +220,15 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     }
   }
 
-  return GetCachedOrAdd(std::move(phi_node));
+  instruction_map_[phi] = GetCachedOrAdd(std::move(phi_node));
+
+  return instruction_map_[phi];
 }
 
-SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode() {
-  std::unique_ptr<SEValueUnknown> load_node{new SEValueUnknown(this)};
+SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode(
+    const ir::Instruction* inst) {
+  std::unique_ptr<SEValueUnknown> load_node{
+      new SEValueUnknown(this, inst->unique_id())};
   return GetCachedOrAdd(std::move(load_node));
 }
 
@@ -236,6 +248,20 @@ SENode* ScalarEvolutionAnalysis::GetCachedOrAdd(
   SENode* raw_ptr_to_node = prospective_node.get();
   node_cache_.insert(std::move(prospective_node));
   return raw_ptr_to_node;
+}
+
+bool ScalarEvolutionAnalysis::IsLoopInvariant(const ir::Loop* loop,
+                                              const SENode* node) const {
+  return std::none_of(
+      node->graph_cbegin(), node->graph_cend(), [loop](const SENode& expr) {
+        if (const SERecurrentNode* rec = expr.AsSERecurrentNode()) {
+          return loop->IsInsideLoop(rec->GetLoop()->GetHeaderBlock());
+        }
+        if (const SEValueUnknown* unknown = expr.AsSEValueUnknown()) {
+          return loop->IsInsideLoop(unknown->UniqueId());
+        }
+        return false;
+      });
 }
 
 std::string SENode::AsString() const {
@@ -259,7 +285,30 @@ std::string SENode::AsString() const {
 }
 
 bool SENode::operator==(const SENode& other) const {
-  return SENodeHash{}(this) == SENodeHash{}(&other);
+  if (GetType() != other.GetType()) return false;
+
+  if (other.GetChildren().size() != children_.size()) return false;
+
+  for (size_t index = 0; index < children_.size(); ++index) {
+    if (other.GetChildren()[index] != children_[index]) return false;
+  }
+
+  // If we're dealing with a value unknown node check both nodes were created by
+  // the same instruction.
+  if (GetType() == SENode::ValueUnknown) {
+    if (AsSEValueUnknown()->UniqueId() !=
+        other.AsSEValueUnknown()->UniqueId()) {
+      return false;
+    }
+  }
+
+  if (AsSEConstantNode()) {
+    if (AsSEConstantNode()->FoldToSingleValue() !=
+        other.AsSEConstantNode()->FoldToSingleValue())
+      return false;
+  }
+
+  return true;
 }
 
 bool SENode::operator!=(const SENode& other) const { return !(*this == other); }
@@ -286,6 +335,12 @@ size_t SENodeHash::operator()(const SENode* node) const {
         std::hash<const ir::Loop*>{}(node->AsSERecurrentNode()->GetLoop());
   }
 
+  // Hash the unique id of the creator instruction if this is a value unknown
+  // node.
+  if (node->GetType() == SENode::ValueUnknown) {
+    resulting_hash ^=
+        std::hash<uint32_t>{}(node->AsSEValueUnknown()->UniqueId());
+  }
   // Hash the pointers of the child nodes, each SENode has a unique pointer
   // associated with it.
   const std::vector<SENode*>& children = node->GetChildren();

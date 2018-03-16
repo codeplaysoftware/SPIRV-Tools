@@ -16,66 +16,40 @@
 namespace spvtools {
 namespace opt {
 
+bool LoopDependenceAnalysis::IsZIV(
+    const std::pair<SENode*, SENode*>& subscript_pair) {
+  return CountInductionVariables(subscript_pair.first, subscript_pair.second) ==
+         0;
+}
+
+bool LoopDependenceAnalysis::IsSIV(
+    const std::pair<SENode*, SENode*>& subscript_pair) {
+  return CountInductionVariables(subscript_pair.first, subscript_pair.second) ==
+         1;
+}
+
+bool LoopDependenceAnalysis::IsMIV(
+    const std::pair<SENode*, SENode*>& subscript_pair) {
+  return CountInductionVariables(subscript_pair.first, subscript_pair.second) >
+         1;
+}
+
 SENode* LoopDependenceAnalysis::GetLowerBound() {
   ir::Instruction* cond_inst = loop_.GetConditionInst();
   if (!cond_inst) {
     return nullptr;
   }
-  // We gather the lower bound differently depending on what type of condition
-  // we have.
+  ir::Instruction* lower_inst =
+      context_->get_def_use_mgr()->GetDef(cond_inst->GetSingleWordInOperand(0));
   switch (cond_inst->opcode()) {
     case SpvOpULessThan:
     case SpvOpSLessThan:
     case SpvOpULessThanEqual:
-    case SpvOpSLessThanEqual: {
-      ir::Instruction* lower_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(0));
-
-      // If we have a phi we are looking at the induction variable. We look
-      // through the phi to the initial value of the phi upon entering the loop.
-      if (lower_inst->opcode() == SpvOpPhi) {
-        lower_inst = context_->get_def_use_mgr()->GetDef(
-            lower_inst->GetSingleWordInOperand(0));
-        // We don't handle looking through multiple phis.
-        if (lower_inst->opcode() == SpvOpPhi) {
-          return nullptr;
-        }
-      }
-      SENode* lower_bound = scalar_evolution_.SimplifyExpression(
-          scalar_evolution_.AnalyzeInstruction(lower_inst));
-      return lower_bound;
-      break;
-    }
+    case SpvOpSLessThanEqual:
     case SpvOpUGreaterThan:
-    case SpvOpSGreaterThan: {
-      ir::Instruction* lower_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(1));
-
-      // If we have a phi we are looking at the induction variable. We look
-      // through the phi to the initial value of the phi upon entering the loop.
-      if (lower_inst->opcode() == SpvOpPhi) {
-        lower_inst = context_->get_def_use_mgr()->GetDef(
-            lower_inst->GetSingleWordInOperand(0));
-        // We don't handle looking through multiple phis.
-        if (lower_inst->opcode() == SpvOpPhi) {
-          return nullptr;
-        }
-      }
-      SENode* lower_bound = scalar_evolution_.SimplifyExpression(
-          scalar_evolution_.AnalyzeInstruction(lower_inst));
-      // We must subtract 1 from the lower bound to account for the > condition.
-      if (lower_bound) {
-        return scalar_evolution_.SimplifyExpression(
-            scalar_evolution_.CreateAddNode(
-                lower_bound, scalar_evolution_.CreateConstant(1)));
-      }
-      break;
-    }
+    case SpvOpSGreaterThan:
     case SpvOpUGreaterThanEqual:
     case SpvOpSGreaterThanEqual: {
-      ir::Instruction* lower_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(1));
-
       // If we have a phi we are looking at the induction variable. We look
       // through the phi to the initial value of the phi upon entering the loop.
       if (lower_inst->opcode() == SpvOpPhi) {
@@ -86,14 +60,12 @@ SENode* LoopDependenceAnalysis::GetLowerBound() {
           return nullptr;
         }
       }
-      SENode* lower_bound = scalar_evolution_.SimplifyExpression(
+      return scalar_evolution_.SimplifyExpression(
           scalar_evolution_.AnalyzeInstruction(lower_inst));
-      return lower_bound;
-    } break;
+    }
     default:
       return nullptr;
   }
-  return nullptr;
 }
 
 SENode* LoopDependenceAnalysis::GetUpperBound() {
@@ -101,83 +73,41 @@ SENode* LoopDependenceAnalysis::GetUpperBound() {
   if (!cond_inst) {
     return nullptr;
   }
+  ir::Instruction* upper_inst =
+      context_->get_def_use_mgr()->GetDef(cond_inst->GetSingleWordInOperand(1));
   switch (cond_inst->opcode()) {
     case SpvOpULessThan:
     case SpvOpSLessThan: {
-      ir::Instruction* upper_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(1));
-
-      // If we have a phi we are looking at the induction variable. We look
-      // through the phi to the initial value of the phi upon entering the loop.
-      if (upper_inst->opcode() == SpvOpPhi) {
-        upper_inst = context_->get_def_use_mgr()->GetDef(
-            upper_inst->GetSingleWordInOperand(0));
-        // We don't handle looking through multiple phis.
-        if (upper_inst->opcode() == SpvOpPhi) {
-          return nullptr;
-        }
-      }
+      // When we have a < condition we must subtract 1 from the analyzed upper
+      // instruction.
       SENode* upper_bound = scalar_evolution_.SimplifyExpression(
-          scalar_evolution_.AnalyzeInstruction(upper_inst));
-      // We must subtract 1 from the upper bound to account for the < condition.
-      if (upper_bound) {
-        return scalar_evolution_.SimplifyExpression(
-            scalar_evolution_.CreateSubtraction(
-                upper_bound, scalar_evolution_.CreateConstant(1)));
-      }
+          scalar_evolution_.CreateSubtraction(
+              scalar_evolution_.AnalyzeInstruction(upper_inst),
+              scalar_evolution_.CreateConstant(1)));
+      return upper_bound;
+    }
+    case SpvOpUGreaterThan:
+    case SpvOpSGreaterThan: {
+      // When we have a > condition we must add 1 to the analyzed upper
+      // instruction.
+      SENode* upper_bound =
+          scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateAddNode(
+              scalar_evolution_.AnalyzeInstruction(upper_inst),
+              scalar_evolution_.CreateConstant(1)));
+      return upper_bound;
     }
     case SpvOpULessThanEqual:
-    case SpvOpSLessThanEqual: {
-      ir::Instruction* upper_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(1));
-
-      // If we have a phi we are looking at the induction variable. We look
-      // through the phi to the initial value of the phi upon entering the loop.
-      if (upper_inst->opcode() == SpvOpPhi) {
-        upper_inst = context_->get_def_use_mgr()->GetDef(
-            upper_inst->GetSingleWordInOperand(0));
-        // We don't handle looking through multiple phis.
-        if (upper_inst->opcode() == SpvOpPhi) {
-          return nullptr;
-        }
-      }
-      SENode* upper_bound = scalar_evolution_.SimplifyExpression(
-          scalar_evolution_.AnalyzeInstruction(upper_inst));
-      return upper_bound;
-    } break;
-    case SpvOpUGreaterThan:
-    case SpvOpSGreaterThan:
+    case SpvOpSLessThanEqual:
     case SpvOpUGreaterThanEqual:
     case SpvOpSGreaterThanEqual: {
-      ir::Instruction* upper_inst = context_->get_def_use_mgr()->GetDef(
-          cond_inst->GetSingleWordInOperand(0));
-
-      // If we have a phi we are looking at the induction variable. We look
-      // through the phi to the initial value of the phi upon entering the loop.
-      if (upper_inst->opcode() == SpvOpPhi) {
-        upper_inst = context_->get_def_use_mgr()->GetDef(
-            upper_inst->GetSingleWordInOperand(0));
-        // We don't handle looking through multiple phis.
-        if (upper_inst->opcode() == SpvOpPhi) {
-          return nullptr;
-        }
-      }
+      // We don't need to modify the results of analyzing when we have <= or >=.
       SENode* upper_bound = scalar_evolution_.SimplifyExpression(
           scalar_evolution_.AnalyzeInstruction(upper_inst));
       return upper_bound;
-      break;
     }
     default:
       return nullptr;
   }
-  return nullptr;
-}
-
-std::pair<SENode*, SENode*> LoopDependenceAnalysis::GetLoopLowerUpperBounds() {
-  SENode* lower_bound = GetLowerBound();
-  SENode* upper_bound = GetUpperBound();
-
-  return std::make_pair(lower_bound, upper_bound);
 }
 
 bool LoopDependenceAnalysis::IsWithinBounds(int64_t value, int64_t bound_one,
@@ -345,6 +275,17 @@ int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* source,
   }
 
   return static_cast<int64_t>(loops.size());
+}
+
+SENode* LoopDependenceAnalysis::GetConstantTerm(SERecurrentNode* induction) {
+  SENode* offset = induction->GetOffset();
+  SENode* lower_bound = GetLowerBound();
+  if (!offset || !lower_bound) {
+    return nullptr;
+  }
+  SENode* constant_term = scalar_evolution_.SimplifyExpression(
+      scalar_evolution_.CreateSubtraction(offset, lower_bound));
+  return constant_term;
 }
 
 void LoopDependenceAnalysis::PrintDebug(std::string debug_msg) {

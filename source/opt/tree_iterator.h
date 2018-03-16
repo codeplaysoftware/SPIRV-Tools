@@ -14,7 +14,7 @@
 
 #ifndef LIBSPIRV_OPT_TREE_ITERATOR_H_
 #define LIBSPIRV_OPT_TREE_ITERATOR_H_
-
+#include <iterator>
 #include <stack>
 #include <type_traits>
 #include <utility>
@@ -35,7 +35,7 @@ namespace opt {
 //  - If the current node has children, the children iterator is pushed into the
 //    stack.
 template <typename NodeTy>
-class TreeDFIterator {
+class TreeDFIterator : public std::iterator<std::forward_iterator_tag, NodeTy> {
   static_assert(!std::is_pointer<NodeTy>::value &&
                     !std::is_reference<NodeTy>::value,
                 "NodeTy should be a class");
@@ -52,7 +52,8 @@ class TreeDFIterator {
   // Standard iterator interface.
   using reference = NodeTy&;
   using value_type = NodeTy;
-
+  using iterator_category = std::forward_iterator_tag;
+  using difference_type = ptrdiff_t;
   explicit inline TreeDFIterator(NodePtr top_node) : current_(top_node) {
     if (current_ && current_->begin() != current_->end())
       parent_iterators_.emplace(make_pair(current_, current_->begin()));
@@ -129,7 +130,8 @@ class TreeDFIterator {
 //  - We walk the child sub-tree until we find a leaf, stacking all non-leaves
 //    states (pair of node pointer and child iterator) as we walk it.
 template <typename NodeTy>
-class PostOrderTreeDFIterator {
+class PostOrderTreeDFIterator
+    : public std::iterator<std::forward_iterator_tag, NodeTy> {
   static_assert(!std::is_pointer<NodeTy>::value &&
                     !std::is_reference<NodeTy>::value,
                 "NodeTy should be a class");
@@ -146,7 +148,8 @@ class PostOrderTreeDFIterator {
   // Standard iterator interface.
   using reference = NodeTy&;
   using value_type = NodeTy;
-
+  using iterator_category = std::forward_iterator_tag;
+  using difference_type = ptrdiff_t;
   static inline PostOrderTreeDFIterator begin(NodePtr top_node) {
     return PostOrderTreeDFIterator(top_node);
   }

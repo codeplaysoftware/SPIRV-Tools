@@ -541,24 +541,24 @@ TEST(DependencyAnalysis, SIV) {
       EXPECT_EQ(distance_vector.distance, 0);
     }
 
-    // < 1 dependence
+    // > -1 dependence
     // 44 -> 45 tests looking at SIV in same array with addition
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(44), store[1], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::LT);
-      EXPECT_EQ(distance_vector.distance, 1);
+      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::GT);
+      EXPECT_EQ(distance_vector.distance, -1);
     }
 
-    // > -1 dependence
+    // < 1 dependence
     // 54 -> 55 tests looking at SIV in same array with subtraction
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(54), store[2], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::GT);
-      EXPECT_EQ(distance_vector.distance, -1);
+      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::LT);
+      EXPECT_EQ(distance_vector.distance, 1);
     }
 
     // <=> dependence
@@ -1900,7 +1900,6 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
     opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
-
     const ir::Instruction* store[4];
     int stores_found = 0;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 84)) {
