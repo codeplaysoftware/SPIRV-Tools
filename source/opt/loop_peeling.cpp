@@ -778,6 +778,7 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
   // If the opcode is >=, then we add 1 to the left hand side and do the peel
   // check on >.
 
+  bool is_or_equal = false;
   switch (condition->opcode()) {
     default:
       return GetNoneDirection();
@@ -792,11 +793,11 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
     // We add one to transform >= into > and <= into <.
     case SpvOpUGreaterThanEqual:
     case SpvOpSGreaterThanEqual:
-      lhs = SExpression(lhs) + 1;
+      is_or_equal = true;
       break;
     case SpvOpULessThanEqual:
     case SpvOpSLessThanEqual:
-      rhs = SExpression(rhs) + 1;
+      is_or_equal = true;
       break;
   }
 
@@ -805,7 +806,7 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
     std::swap(lhs, rhs);
     std::swap(is_lhs_rec, is_rhs_rec);
   }
-  return HandleInequality(lhs, rhs->AsSERecurrentNode());
+  return HandleInequality(is_or_equal, lhs, rhs->AsSERecurrentNode());
 }
 
 SExpression LoopPeelingPass::LoopPeelingInfo::GetLastIterationValue(
@@ -860,27 +861,28 @@ LoopPeelingPass::LoopPeelingInfo::HandleEqual(SExpression lhs,
 }
 
 LoopPeelingPass::LoopPeelingInfo::Direction
-LoopPeelingPass::LoopPeelingInfo::HandleInequality(SExpression lhs,
+LoopPeelingPass::LoopPeelingInfo::HandleInequality(bool is_or_equal,
+                                                   SExpression lhs,
                                                    SERecurrentNode* rhs) const {
   SExpression offset = rhs->GetOffset();
   SExpression coefficient = rhs->GetCoefficient();
   // Compute (cst - B) / A.
-  std::pair<SExpression, int64_t> flip_iteration =
-      (lhs - offset->AsSEConstantNode()) / coefficient;
+  std::pair<SExpression, int64_t> flip_iteration = (lhs - offset) / coefficient;
   if (!flip_iteration.first->AsSEConstantNode()) {
     return GetNoneDirection();
   }
   // note: !!flip_iteration.second normalize to 0/1 (via bool cast).
   int64_t iteration =
-      std::abs(flip_iteration.first->AsSEConstantNode()->FoldToSingleValue()) +
+      flip_iteration.first->AsSEConstantNode()->FoldToSingleValue() +
       !!flip_iteration.second;
-  if (loop_max_iterations_ <= static_cast<uint64_t>(iteration)) {
+  if (iteration <= 0 ||
+      loop_max_iterations_ <= static_cast<uint64_t>(iteration)) {
     // Always true or false within the loop bounds.
     return GetNoneDirection();
   }
 
   uint32_t cast_iteration = 0;
-  /* sanity check: can we fit |iteration| in a uint32_t ? */
+  // sanity check: can we fit |iteration| in a uint32_t ?
   if (static_cast<uint64_t>(iteration) < std::numeric_limits<uint32_t>::max()) {
     cast_iteration = static_cast<uint32_t>(iteration);
   }
@@ -888,7 +890,13 @@ LoopPeelingPass::LoopPeelingInfo::HandleInequality(SExpression lhs,
   if (cast_iteration) {
     // Peel before if we are closer to the start, after if closer to the end.
     if (loop_max_iterations_ / 2 > cast_iteration) {
-      return Direction{LoopPeelingPass::PeelDirection::kBefore, cast_iteration};
+      if (is_or_equal && !flip_iteration.second) {
+        cast_iteration++;
+      }
+      if (offset->AsSEConstantNode()) {
+        return Direction{LoopPeelingPass::PeelDirection::kBefore,
+                         cast_iteration};
+      }
     } else {
       return Direction{LoopPeelingPass::PeelDirection::kAfter,
                        loop_max_iterations_ - cast_iteration};

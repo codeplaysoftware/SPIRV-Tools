@@ -273,7 +273,8 @@ class LoopPeelingPass : public Pass {
     SExpression GetLastIterationValue(SERecurrentNode* rec) const;
 
     Direction HandleEqual(SExpression lhs, SExpression rhs) const;
-    Direction HandleInequality(SExpression lhs, SERecurrentNode* rhs) const;
+    Direction HandleInequality(bool is_or_equal, SExpression lhs,
+                               SERecurrentNode* rhs) const;
 
     static Direction GetNoneDirection() {
       return Direction{LoopPeelingPass::PeelDirection::kNone, 0};
