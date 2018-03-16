@@ -15,6 +15,7 @@
 #include "opt/scalar_analysis.h"
 #include <algorithm>
 #include <functional>
+#include <iostream>
 #include <string>
 #include <utility>
 
@@ -22,6 +23,96 @@
 
 namespace spvtools {
 namespace opt {
+
+namespace {
+// Context structure for printing SENode as a mathematical expression.
+class SENodePrettyPrint {
+ public:
+  SENodePrettyPrint(std::ostream* out) : next_symbol_('a'), out_(*out) {}
+
+  // Pretty prints |node|.
+  void Print(const SENode* node) {
+    Dump(node);
+    out_ << "\n";
+  }
+
+ private:
+  // Pretty prints |node|.
+  void Dump(const SENode* node) {
+    switch (node->GetType()) {
+      case SENode::Constant:
+        Dump(node->AsSEConstantNode());
+        break;
+      case SENode::RecurrentExpr:
+        Dump(node->AsSERecurrentNode());
+        break;
+      case SENode::Negative:
+        Dump(node->AsSENegative());
+        break;
+      case SENode::CanNotCompute:
+        Dump(node->AsSECantCompute());
+        break;
+      case SENode::ValueUnknown:
+        Dump(node->AsSEValueUnknown());
+        break;
+      case SENode::Add:
+        DumpExpr(node, "+");
+        break;
+      case SENode::Multiply:
+        DumpExpr(node, "*");
+        break;
+    }
+  }
+
+  // Pretty prints a constant node.
+  void Dump(const SEConstantNode* node) { out_ << node->FoldToSingleValue(); }
+  // Pretty prints a value node.
+  void Dump(const SEValueUnknown* node) { out_ << "%" << node->UniqueId(); }
+
+  // Pretty prints an induction variable as an affine expression. We assign a
+  // variable to each loop to represent the iterator.
+  void Dump(const SERecurrentNode* node) {
+    std::string& var = loop_iterator_[node->GetLoop()];
+    if (var.empty()) {
+      var = next_symbol_++;
+    }
+    out_ << "(";
+    Dump(node->GetCoefficient());
+    out_ << ") " << var << " + (";
+    Dump(node->GetOffset());
+    out_ << ")";
+  }
+
+  // Pretty prints a negation |node|.
+  void Dump(const SENegative* node) {
+    out_ << "- (";
+    Dump(*node->begin());
+    out_ << ")";
+  }
+
+  // Pretty prints cannot compute.
+  void Dump(const SECantCompute*) { out_ << "Cannot compute"; }
+
+  // Pretty prints binary expressions where |op| is the binary operator that
+  // represent |node|.
+  void DumpExpr(const SENode* node, const std::string& op) {
+    out_ << "(";
+    Dump(*node->begin());
+    out_ << ")";
+    std::for_each(++node->begin(), node->end(), [&op, this](const SENode* c) {
+      out_ << " " << op << " (";
+      Dump(c);
+      out_ << ")";
+    });
+  }
+
+  // Maps a loop iterator to a symbol a, b, c, d etc.
+  std::unordered_map<const ir::Loop*, std::string> loop_iterator_;
+  char next_symbol_;
+  std::ostream& out_;
+};
+
+}  // namespace
 
 SENode* ScalarEvolutionAnalysis::CreateNegation(SENode* operand) {
   if (operand->GetType() == SENode::Constant) {
@@ -309,6 +400,15 @@ bool SENode::operator==(const SENode& other) const {
   }
 
   return true;
+}
+
+// Dump the SENode as a mathematical expression.
+void SENode::Dump() const { Dump(&std::cout); }
+
+// Dump the SENode as a mathematical expression.
+void SENode::Dump(std::ostream* out) const {
+  SENodePrettyPrint pretty_print(out);
+  pretty_print.Print(this);
 }
 
 bool SENode::operator!=(const SENode& other) const { return !(*this == other); }

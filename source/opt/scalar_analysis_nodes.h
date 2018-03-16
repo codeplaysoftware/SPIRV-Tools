@@ -45,15 +45,6 @@ class SECantCompute;
 // using the SENodeHash functor. The vector of children is sorted when a node is
 // added. This is important as it allows the hash of X+Y to be the same as Y+X.
 class SENode {
- protected:
-  // Context structure for printing SENode expression.
-  struct PrintContext {
-    PrintContext() : next_symbol_('a') {}
-    // Maps a loop iterator to a symbol a, b, c, d etc.
-    std::unordered_map<const ir::Loop*, std::string> loop_iterator_;
-    char next_symbol_;
-  };
-
  public:
   enum SENodeType {
     Constant,
@@ -89,16 +80,10 @@ class SENode {
   void DumpDot(std::ostream& out, bool recurse = false) const;
 
   // Dump the SENode as a mathematical expression.
-  void Dump() const { Dump(&std::cout); }
+  void Dump() const;
 
   // Dump the SENode as a mathematical expression.
-  void Dump(std::ostream* out) const {
-    PrintContext context;
-    Dump(out, &context);
-    *out << "\n";
-  }
-  // Dump the SENode as a mathematical expression.
-  virtual void Dump(std::ostream* out, PrintContext* context) const = 0;
+  void Dump(std::ostream* out) const;
 
   // Checks if two nodes are the same by hashing them.
   bool operator==(const SENode& other) const;
@@ -223,12 +208,6 @@ class SEConstantNode : public SENode {
   SEConstantNode* AsSEConstantNode() override { return this; }
   const SEConstantNode* AsSEConstantNode() const override { return this; }
 
-  using SENode::Dump;
-  // Dump the SENode as a mathematical expression.
-  void Dump(std::ostream* out, SENode::PrintContext*) const override {
-    *out << literal_value_;
-  }
-
  protected:
   int64_t literal_value_;
 };
@@ -266,20 +245,6 @@ class SERecurrentNode : public SENode {
   SERecurrentNode* AsSERecurrentNode() override { return this; }
   const SERecurrentNode* AsSERecurrentNode() const override { return this; }
 
-  using SENode::Dump;
-  // Dump the SENode as a mathematical expression.
-  void Dump(std::ostream* out, PrintContext* context) const override {
-    std::string& var = context->loop_iterator_[loop_];
-    if (var.empty()) {
-      var = context->next_symbol_++;
-    }
-    *out << "(";
-    coefficient_->Dump(out, context);
-    *out << ") " << var << " + (";
-    step_operation_->Dump(out, context);
-    *out << ")";
-  }
-
  private:
   SENode* coefficient_;
   SENode* step_operation_;
@@ -296,20 +261,6 @@ class SEAddNode : public SENode {
 
   SEAddNode* AsSEAddNode() override { return this; }
   const SEAddNode* AsSEAddNode() const override { return this; }
-
-  using SENode::Dump;
-  // Dump the SENode as a mathematical expression.
-  void Dump(std::ostream* out, PrintContext* context) const override {
-    *out << "(";
-    children_[0]->Dump(out, context);
-    *out << ")";
-    std::for_each(++children_.begin(), children_.end(),
-                  [out, context](SENode* c) {
-                    *out << " + (";
-                    c->Dump(out, context);
-                    *out << ")";
-                  });
-  }
 };
 
 // A node representing a multiply operation between child nodes.
@@ -322,20 +273,6 @@ class SEMultiplyNode : public SENode {
 
   SEMultiplyNode* AsSEMultiplyNode() override { return this; }
   const SEMultiplyNode* AsSEMultiplyNode() const override { return this; }
-
-  using SENode::Dump;
-  // Dump the SENode as a mathematical expression.
-  void Dump(std::ostream* out, PrintContext* context) const override {
-    *out << "(";
-    children_[0]->Dump(out, context);
-    *out << ")";
-    std::for_each(++children_.begin(), children_.end(),
-                  [out, context](SENode* c) {
-                    *out << " * (";
-                    c->Dump(out, context);
-                    *out << ")";
-                  });
-  }
 };
 
 // A node representing a unary negative operation.
@@ -348,14 +285,6 @@ class SENegative : public SENode {
 
   SENegative* AsSENegative() override { return this; }
   const SENegative* AsSENegative() const override { return this; }
-
-  using SENode::Dump;
-  // Dump the SENode as a mathematical expression.
-  void Dump(std::ostream* out, PrintContext* context) const override {
-    *out << "- (";
-    children_[0]->Dump(out, context);
-    *out << ")";
-  }
 };
 
 // A node representing a value which we do not know the value of, such as a load
@@ -374,12 +303,6 @@ class SEValueUnknown : public SENode {
   SEValueUnknown* AsSEValueUnknown() override { return this; }
   const SEValueUnknown* AsSEValueUnknown() const override { return this; }
 
-  using SENode::Dump;
-  // Dump the SENode as a mathematical expression.
-  void Dump(std::ostream* out, PrintContext*) const override {
-    *out << "%" << unique_id_;
-  }
-
   inline uint32_t UniqueId() const { return unique_id_; }
 
  private:
@@ -396,12 +319,6 @@ class SECantCompute : public SENode {
 
   SECantCompute* AsSECantCompute() override { return this; }
   const SECantCompute* AsSECantCompute() const override { return this; }
-
-  using SENode::Dump;
-  // Dump the SENode as a mathematical expression.
-  void Dump(std::ostream* out, PrintContext*) const override {
-    *out << "Cannot compute";
-  }
 };
 
 }  // namespace opt
