@@ -793,8 +793,6 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
     // We add one to transform >= into > and <= into <.
     case SpvOpUGreaterThanEqual:
     case SpvOpSGreaterThanEqual:
-      is_or_equal = true;
-      break;
     case SpvOpULessThanEqual:
     case SpvOpSLessThanEqual:
       is_or_equal = true;
