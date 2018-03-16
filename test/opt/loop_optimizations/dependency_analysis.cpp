@@ -142,21 +142,21 @@ TEST(DependencyAnalysis, ZIV) {
     EXPECT_TRUE(store[i]);
   }
 
-  // 29 -> 30 tests looking through constants
+  // 29 -> 30 tests looking through constants.
   {
     opt::DistanceVector distance_vector{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(29),
                                        store[0], &distance_vector));
   }
 
-  // 36 -> 37 tests looking through additions
+  // 36 -> 37 tests looking through additions.
   {
     opt::DistanceVector distance_vector{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(36),
                                        store[1], &distance_vector));
   }
 
-  // 41 -> 42 tests looking at same index across two different arrays
+  // 41 -> 42 tests looking at same index across two different arrays.
   {
     opt::DistanceVector distance_vector{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(41),
@@ -164,7 +164,7 @@ TEST(DependencyAnalysis, ZIV) {
   }
 
   // 48 -> 49 tests looking through additions for same index in two different
-  // arrays
+  // arrays.
   {
     opt::DistanceVector distance_vector{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(48),
@@ -297,22 +297,22 @@ TEST(DependencyAnalysis, SymbolicZIV) {
     EXPECT_TRUE(store[i]);
   }
 
-  // independent due to loop bounds (won't enter if N <= 0)
-  // 39 -> 40 tests looking through symbols and multiplicaiton
+  // independent due to loop bounds (won't enter if N <= 0).
+  // 39 -> 40 tests looking through symbols and multiplicaiton.
   {
     opt::DistanceVector distance_vector{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(39),
                                        store[0], &distance_vector));
   }
 
-  // 48 -> 49 tests looking through symbols and multiplication + addition
+  // 48 -> 49 tests looking through symbols and multiplication + addition.
   {
     opt::DistanceVector distance_vector{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(48),
                                        store[1], &distance_vector));
   }
 
-  // 56 -> 57 tests looking through symbols and arithmetic on load and store
+  // 56 -> 57 tests looking through symbols and arithmetic on load and store.
   {
     opt::DistanceVector distance_vector{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(56),
@@ -321,7 +321,7 @@ TEST(DependencyAnalysis, SymbolicZIV) {
 
   // independent as different arrays
   // 63 -> 64 tests looking through symbols and load/store from/to different
-  // arrays
+  // arrays.
   {
     opt::DistanceVector distance_vector{};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(63),
@@ -532,7 +532,7 @@ TEST(DependencyAnalysis, SIV) {
     }
 
     // = dependence
-    // 33 -> 34 tests looking at SIV in same array
+    // 33 -> 34 tests looking at SIV in same array.
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
@@ -542,7 +542,7 @@ TEST(DependencyAnalysis, SIV) {
     }
 
     // > -1 dependence
-    // 44 -> 45 tests looking at SIV in same array with addition
+    // 44 -> 45 tests looking at SIV in same array with addition.
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
@@ -552,7 +552,7 @@ TEST(DependencyAnalysis, SIV) {
     }
 
     // < 1 dependence
-    // 54 -> 55 tests looking at SIV in same array with subtraction
+    // 54 -> 55 tests looking at SIV in same array with subtraction.
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
@@ -562,7 +562,7 @@ TEST(DependencyAnalysis, SIV) {
     }
 
     // <=> dependence
-    // 61 -> 62 tests looking at SIV in same array with multiplication
+    // 61 -> 62 tests looking at SIV in same array with multiplication.
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
@@ -592,7 +592,7 @@ TEST(DependencyAnalysis, SIV) {
     }
 
     // = dependence
-    // 78 -> 79 tests looking at SIV in same array
+    // 78 -> 79 tests looking at SIV in same array.
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
@@ -602,7 +602,7 @@ TEST(DependencyAnalysis, SIV) {
     }
 
     // < 1 dependence
-    // 85 -> 86 tests looking at SIV in same array with addition
+    // 85 -> 86 tests looking at SIV in same array with addition.
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
@@ -612,7 +612,7 @@ TEST(DependencyAnalysis, SIV) {
     }
 
     // > -1 dependence
-    // 92 -> 93 tests looking at SIV in same array with subtraction
+    // 92 -> 93 tests looking at SIV in same array with subtraction.
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
@@ -622,7 +622,7 @@ TEST(DependencyAnalysis, SIV) {
     }
 
     // <=> dependence
-    // 99 -> 100 tests looking at SIV in same array with multiplication
+    // 99 -> 100 tests looking at SIV in same array with multiplication.
     {
       opt::DistanceVector distance_vector{};
       EXPECT_FALSE(analysis.GetDependence(
@@ -646,14 +646,13 @@ void a() {
   int N = int(c.x);
   int C = 2;
   int a = 2;
-  for (int i = 0; i < N; i++) {
-    arr[i+2*N] = arr[i+N];
-    arr2[i+N] = arr2[i+2*N] + C;
-    arr3[2*i+2*N+1] = arr3[2*i+N+1];
-    arr4[a*i+N+1] = arr4[a*i+2*N+1];
+  for (int i = 0; i < N; i++) { // Bounds are N - 1
+    arr[i+2*N] = arr[i+N]; // |distance| = N
+    arr2[i+N] = arr2[i+2*N] + C; // |distance| = N
+    arr3[2*i+2*N+1] = arr3[2*i+N+1]; // |distance| = N
+    arr4[a*i+N+1] = arr4[a*i+2*N+1]; // |distance| = N
   }
 }
-
 void b() {
   int[13] arr;
   int[15] arr2;
@@ -662,14 +661,13 @@ void b() {
   int N = int(c.x);
   int C = 2;
   int a = 2;
-  for (int i = N; i > 0; i--) {
-    arr[i+2*N] = arr[i+N];
-    arr2[i+N] = arr2[i+2*N] + C;
-    arr3[2*i+2*N+1] = arr3[2*i+N+1];
-    arr4[a*i+N+1] = arr4[a*i+2*N+1];
+  for (int i = N; i > 0; i--) { // Bounds are N - 1
+    arr[i+2*N] = arr[i+N]; // |distance| = N
+    arr2[i+N] = arr2[i+2*N] + C; // |distance| = N
+    arr3[2*i+2*N+1] = arr3[2*i+N+1]; // |distance| = N
+    arr4[a*i+N+1] = arr4[a*i+2*N+1]; // |distance| = N
   }
 }
-
 void main(){
   a();
   b();
@@ -905,14 +903,16 @@ TEST(DependencyAnalysis, SymbolicSIV) {
     // 49 -> 50 tests looking through SIV and symbols with multiplication
     {
       opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(49),
-                                         store[0], &distance_vector));
+      // Independent but not yet supported.
+      EXPECT_FALSE(analysis.GetDependence(
+          context->get_def_use_mgr()->GetDef(49), store[0], &distance_vector));
     }
 
     // 63 -> 66 tests looking through SIV and symbols with multiplication and +
     // C
     {
       opt::DistanceVector distance_vector{};
+      // Independent.
       EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(63),
                                          store[1], &distance_vector));
     }
@@ -920,13 +920,15 @@ TEST(DependencyAnalysis, SymbolicSIV) {
     // 84 -> 85 tests looking through arithmetic on SIV and symbols
     {
       opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(84),
-                                         store[2], &distance_vector));
+      // Independent but not yet supported.
+      EXPECT_FALSE(analysis.GetDependence(
+          context->get_def_use_mgr()->GetDef(84), store[2], &distance_vector));
     }
 
     // 101 -> 102 tests looking through symbol arithmetic on SIV and symbols
     {
       opt::DistanceVector distance_vector{};
+      // Independent.
       EXPECT_TRUE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(101), store[3], &distance_vector));
     }
@@ -951,33 +953,36 @@ TEST(DependencyAnalysis, SymbolicSIV) {
       EXPECT_TRUE(store[i]);
     }
 
-    // independent due to loop bounds (won't enter when N <= 0)
-    // 129 -> 130 tests looking through SIV and symbols with multiplication
+    // independent due to loop bounds (won't enter when N <= 0).
+    // 129 -> 130 tests looking through SIV and symbols with multiplication.
     {
       opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(
+      // Independent but not yet supported.
+      EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(129), store[0], &distance_vector));
     }
 
     // 140 -> 143 tests looking through SIV and symbols with multiplication and
-    // +
-    // C
+    // + C.
     {
       opt::DistanceVector distance_vector{};
+      // Independent.
       EXPECT_TRUE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(140), store[1], &distance_vector));
     }
 
-    // 157 -> 158 tests looking through arithmetic on SIV and symbols
+    // 157 -> 158 tests looking through arithmetic on SIV and symbols.
     {
       opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(
+      // Independent but not yet supported.
+      EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(157), store[2], &distance_vector));
     }
 
-    // 174 -> 175 tests looking through symbol arithmetic on SIV and symbols
+    // 174 -> 175 tests looking through symbol arithmetic on SIV and symbols.
     {
       opt::DistanceVector distance_vector{};
+      // Independent.
       EXPECT_TRUE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(174), store[3], &distance_vector));
     }
@@ -1367,8 +1372,8 @@ TEST(DependencyAnalysis, Crossing) {
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
 
-  // First two tests can be split into two loops
-  // Tests even crossing subscripts from low to high indexes
+  // First two tests can be split into two loops.
+  // Tests even crossing subscripts from low to high indexes.
   // 47 -> 48
   {
     const ir::Function* f = spvtest::GetFunction(module, 6);
@@ -1387,7 +1392,7 @@ TEST(DependencyAnalysis, Crossing) {
                                         store, &distance_vector));
   }
 
-  // Tests even crossing subscripts from high to low indexes
+  // Tests even crossing subscripts from high to low indexes.
   // 67 -> 68
   {
     const ir::Function* f = spvtest::GetFunction(module, 8);
@@ -1406,8 +1411,8 @@ TEST(DependencyAnalysis, Crossing) {
                                         store, &distance_vector));
   }
 
-  // Next two tests can have an end peeled, then be split
-  // Tests uneven crossing subscripts from low to high indexes
+  // Next two tests can have an end peeled, then be split.
+  // Tests uneven crossing subscripts from low to high indexes.
   // 92 -> 93
   {
     const ir::Function* f = spvtest::GetFunction(module, 10);
@@ -1426,7 +1431,7 @@ TEST(DependencyAnalysis, Crossing) {
                                         store, &distance_vector));
   }
 
-  // Tests uneven crossing subscripts from high to low indexes
+  // Tests uneven crossing subscripts from high to low indexes.
   // 113 -> 114
   {
     const ir::Function* f = spvtest::GetFunction(module, 12);
@@ -1445,8 +1450,8 @@ TEST(DependencyAnalysis, Crossing) {
                                         store, &distance_vector));
   }
 
-  // First two tests can be split into two loops
-  // Tests even crossing subscripts from low to high indexes
+  // First two tests can be split into two loops.
+  // Tests even crossing subscripts from low to high indexes.
   // 134 -> 135
   {
     const ir::Function* f = spvtest::GetFunction(module, 14);
@@ -1465,7 +1470,7 @@ TEST(DependencyAnalysis, Crossing) {
                                         store, &distance_vector));
   }
 
-  // Tests even crossing subscripts from high to low indexes
+  // Tests even crossing subscripts from high to low indexes.
   // 154 -> 155
   {
     const ir::Function* f = spvtest::GetFunction(module, 16);
@@ -1484,8 +1489,8 @@ TEST(DependencyAnalysis, Crossing) {
                                         store, &distance_vector));
   }
 
-  // Next two tests can have an end peeled, then be split
-  // Tests uneven crossing subscripts from low to high indexes
+  // Next two tests can have an end peeled, then be split.
+  // Tests uneven crossing subscripts from low to high indexes.
   // 175 -> 176
   {
     const ir::Function* f = spvtest::GetFunction(module, 18);
@@ -1504,7 +1509,7 @@ TEST(DependencyAnalysis, Crossing) {
                                         store, &distance_vector));
   }
 
-  // Tests uneven crossing subscripts from high to low indexes
+  // Tests uneven crossing subscripts from high to low indexes.
   // 196 -> 197
   {
     const ir::Function* f = spvtest::GetFunction(module, 20);

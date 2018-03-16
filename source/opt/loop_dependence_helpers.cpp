@@ -13,6 +13,15 @@
 // limitations under the License.
 
 #include "opt/loop_dependence.h"
+
+#include <ostream>
+#include <utility>
+#include <vector>
+
+#include "opt/instruction.h"
+#include "opt/scalar_analysis.h"
+#include "opt/scalar_analysis_nodes.h"
+
 namespace spvtools {
 namespace opt {
 
@@ -124,17 +133,45 @@ bool LoopDependenceAnalysis::IsWithinBounds(int64_t value, int64_t bound_one,
   }
 }
 
-bool LoopDependenceAnalysis::IsProvablyOutwithLoopBounds(SENode* distance) {
+bool LoopDependenceAnalysis::IsProvablyOutwithLoopBounds(SENode* distance,
+                                                         SENode* coefficient) {
+  // We test to see if we can reduce the coefficient to an integral constant.
+  SEConstantNode* coefficient_constant = coefficient->AsSEConstantNode();
+  if (!coefficient_constant) {
+    PrintDebug(
+        "IsProvablyOutwithLoopBounds could not reduce coefficient to a "
+        "SEConstantNode so must exit.");
+    return false;
+  }
+
   SENode* lower_bound = GetLowerBound();
   SENode* upper_bound = GetUpperBound();
   if (!lower_bound || !upper_bound) {
+    PrintDebug(
+        "IsProvablyOutwithLoopBounds could not get both the lower and upper "
+        "bounds so must exit.");
     return false;
   }
+  // If the coefficient is positive we calculate bounds as upper - lower
+  // If the coefficient is negative we calculate bounds as lower - upper
+  SENode* bounds = nullptr;
+  if (coefficient_constant->FoldToSingleValue() >= 0) {
+    PrintDebug(
+        "IsProvablyOutwithLoopBounds found coefficient >= 0.\n"
+        "Using bounds as upper - lower.");
+    bounds = scalar_evolution_.SimplifyExpression(
+        scalar_evolution_.CreateSubtraction(upper_bound, lower_bound));
+  } else {
+    PrintDebug(
+        "IsProvablyOutwithLoopBounds found coefficient < 0.\n"
+        "Using bounds as lower - upper.");
+    bounds = scalar_evolution_.SimplifyExpression(
+        scalar_evolution_.CreateSubtraction(lower_bound, upper_bound));
+  }
+
   // We can attempt to deal with symbolic cases by subtracting |distance| and
   // the bound nodes. If we can subtract, simplify and produce a SEConstantNode
   // we can produce some information.
-  SENode* bounds = scalar_evolution_.SimplifyExpression(
-      scalar_evolution_.CreateSubtraction(upper_bound, lower_bound));
 
   SEConstantNode* distance_minus_bounds =
       scalar_evolution_
@@ -142,9 +179,16 @@ bool LoopDependenceAnalysis::IsProvablyOutwithLoopBounds(SENode* distance) {
               scalar_evolution_.CreateSubtraction(distance, bounds))
           ->AsSEConstantNode();
   if (distance_minus_bounds) {
+    PrintDebug(
+        "IsProvablyOutwithLoopBounds found distance - bounds as a "
+        "SEConstantNode with value " +
+        std::to_string(distance_minus_bounds->FoldToSingleValue()));
     // If distance - bounds > 0 we prove the distance is outwith the loop
     // bounds.
     if (distance_minus_bounds->FoldToSingleValue() > 0) {
+      PrintDebug(
+          "IsProvablyOutwithLoopBounds found distance escaped the loop "
+          "bounds.");
       return true;
     }
   }

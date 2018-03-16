@@ -13,6 +13,14 @@
 // limitations under the License.
 
 #include "opt/loop_dependence.h"
+
+#include <utility>
+#include <vector>
+
+#include "opt/instruction.h"
+#include "opt/scalar_analysis.h"
+#include "opt/scalar_analysis_nodes.h"
+
 namespace spvtools {
 namespace opt {
 
@@ -231,7 +239,8 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
       destination_value_unknown_nodes.size() > 0) {
     PrintDebug(
         "StrongSIVTest found symbolics. Will attempt SymbolicStrongSIVTest.");
-    return SymbolicStrongSIVTest(source, destination, distance_vector);
+    return SymbolicStrongSIVTest(source, destination, coefficient,
+                                 distance_vector);
   }
 
   if (!source->AsSERecurrentNode() || !destination->AsSERecurrentNode()) {
@@ -348,7 +357,8 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
 }
 
 bool LoopDependenceAnalysis::SymbolicStrongSIVTest(
-    SENode* source, SENode* destination, DistanceVector* distance_vector) {
+    SENode* source, SENode* destination, SENode* coefficient,
+    DistanceVector* distance_vector) {
   PrintDebug("Performing SymbolicStrongSIVTest.");
   SENode* source_destination_delta = scalar_evolution_.SimplifyExpression(
       scalar_evolution_.CreateSubtraction(source, destination));
@@ -356,7 +366,7 @@ bool LoopDependenceAnalysis::SymbolicStrongSIVTest(
   // destination we can produce an expression of symbolics and constants. This
   // expression can be compared to the loop bounds to find if the offset is
   // outwith the bounds.
-  if (IsProvablyOutwithLoopBounds(source_destination_delta)) {
+  if (IsProvablyOutwithLoopBounds(source_destination_delta, coefficient)) {
     PrintDebug(
         "SymbolicStrongSIVTest proved independence through loop bounds.");
     distance_vector->direction = DistanceVector::Directions::NONE;

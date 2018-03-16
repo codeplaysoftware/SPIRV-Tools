@@ -18,11 +18,14 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <ostream>
 #include <vector>
 
+#include "opt/instruction.h"
 #include "opt/ir_context.h"
 #include "opt/loop_descriptor.h"
 #include "opt/scalar_analysis.h"
+
 namespace spvtools {
 namespace opt {
 
@@ -104,7 +107,7 @@ class LoopDependenceAnalysis {
   // Returns true if |distance| is provably within the loop bounds.
   // This method is able to handle some symbolic cases which IsWithinBounds
   // can't handle.
-  bool IsProvablyOutwithLoopBounds(SENode* distance);
+  bool IsProvablyOutwithLoopBounds(SENode* distance, SENode* coefficient);
 
   // Sets the ostream for debug information for the analysis.
   void SetDebugStream(std::ostream& debug_stream) {
@@ -148,6 +151,7 @@ class LoopDependenceAnalysis {
   // where c1 and c2 are loop invariant and a is constant.
   // c1 and/or c2 contain one or more SEValueUnknown nodes.
   bool SymbolicStrongSIVTest(SENode* source, SENode* destination,
+                             SENode* coefficient,
                              DistanceVector* distance_vector);
 
   // Takes the form a1*i + c1, a2*i + c2
