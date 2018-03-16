@@ -27,10 +27,60 @@ namespace {
 
 using namespace spvtools;
 
-using PeelingTest = PassTest<::testing::Test>;
+class PeelingTest : public PassTest<::testing::Test> {
+ public:
+  std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> RunPeelingTest(
+      const std::string& text_head, const std::string& text_tail, SpvOp opcode,
+      const std::string& res_id, const std::string& op1,
+      const std::string& op2) {
+    std::string opcode_str;
+    switch (opcode) {
+      case SpvOpSLessThan:
+        opcode_str = "OpSLessThan";
+        break;
+      case SpvOpSGreaterThan:
+        opcode_str = "OpSGreaterThan";
+        break;
+      case SpvOpSLessThanEqual:
+        opcode_str = "OpSLessThanEqual";
+        break;
+      case SpvOpSGreaterThanEqual:
+        opcode_str = "OpSGreaterThanEqual";
+        break;
+      case SpvOpIEqual:
+        opcode_str = "OpIEqual";
+        break;
+      case SpvOpINotEqual:
+        opcode_str = "OpINotEqual";
+        break;
+      default:
+        assert(false && "Unhandled");
+        break;
+    }
+    std::string test_cond =
+        res_id + " = " + opcode_str + "  %bool " + op1 + " " + op2 + "\n";
+
+    opt::LoopPeelingPass::LoopPeelingStats stats;
+    SinglePassRunAndDisassemble<opt::LoopPeelingPass>(
+        text_head + test_cond + text_tail, true, true, &stats);
+
+    ir::Function& f = *context()->module()->begin();
+    ir::LoopDescriptor& ld = *context()->GetLoopDescriptor(&f);
+    EXPECT_EQ(ld.NumLoops(), 2u);
+
+    EXPECT_EQ(stats.peeled_loops_.size(), 1u);
+    if (!stats.peeled_loops_.size())
+      return std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t>{
+          opt::LoopPeelingPass::PeelDirection::kNone, 0};
+
+    return std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t>{
+        stats.peeled_loops_.begin()->second.first,
+        stats.peeled_loops_.begin()->second.second};
+  }
+};
 
 /*
-Test are drivation of the following generated test from the following GLSL +
+Test are derivation of the following generated test from the following GLSL +
 --eliminate-local-multi-store
 
 #version 330 core
@@ -46,7 +96,7 @@ void main() {
 The condition is interchanged to test < > <= >= == and peel before/after
 opportunities.
 */
-TEST_F(PeelingTest, PeelingPassStat) {
+TEST_F(PeelingTest, PeelingPassBasic) {
   const std::string text_head = R"(
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
@@ -112,50 +162,7 @@ TEST_F(PeelingTest, PeelingPassStat) {
   auto run_test = [&text_head, &text_tail, this](SpvOp opcode,
                                                  const std::string& op1,
                                                  const std::string& op2) {
-
-    std::string opcode_str;
-    switch (opcode) {
-      case SpvOpSLessThan:
-        opcode_str = "OpSLessThan";
-        break;
-      case SpvOpSGreaterThan:
-        opcode_str = "OpSGreaterThan";
-        break;
-      case SpvOpSLessThanEqual:
-        opcode_str = "OpSLessThanEqual";
-        break;
-      case SpvOpSGreaterThanEqual:
-        opcode_str = "OpSGreaterThanEqual";
-        break;
-      case SpvOpIEqual:
-        opcode_str = "OpIEqual";
-        break;
-      case SpvOpINotEqual:
-        opcode_str = "OpINotEqual";
-        break;
-      default:
-        assert(false && "Unhandled");
-        break;
-    }
-    std::string test_cond =
-        "          %22 = " + opcode_str + "  %bool " + op1 + " " + op2 + "\n";
-
-    opt::LoopPeelingPass::LoopPeelingStats stats;
-    SinglePassRunAndDisassemble<opt::LoopPeelingPass>(
-        text_head + test_cond + text_tail, true, true, &stats);
-
-    ir::Function& f = *context()->module()->begin();
-    ir::LoopDescriptor& ld = *context()->GetLoopDescriptor(&f);
-    EXPECT_EQ(ld.NumLoops(), 2u);
-
-    EXPECT_EQ(stats.peeled_loops_.size(), 1u);
-    if (!stats.peeled_loops_.size())
-      return std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t>{
-          opt::LoopPeelingPass::PeelDirection::kNone, 0};
-
-    return std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t>{
-        stats.peeled_loops_.begin()->second.first,
-        stats.peeled_loops_.begin()->second.second};
+    return RunPeelingTest(text_head, text_tail, opcode, "%22", op1, op2);
   };
 
   // Test LT

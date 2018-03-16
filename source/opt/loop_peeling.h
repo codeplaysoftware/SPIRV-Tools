@@ -283,7 +283,7 @@ class LoopPeelingPass : public Pass {
   // Peel profitable loops in |f|.
   bool ProcessFunction(ir::Function* f);
   // Peel |loop| if profitable.
-  bool ProcessLoop(ir::Loop* loop);
+  std::pair<bool, ir::Loop*> ProcessLoop(ir::Loop* loop);
 };
 
 }  // namespace opt

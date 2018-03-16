@@ -538,86 +538,138 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
   for (ir::Loop* loop : to_process_loop) {
     CodeMetrics loop_size;
     loop_size.Analyze(*loop);
+    size_t code_size = loop_size.roi_size_;
 
-    // This does not take into account branch elimination opportunities and the
-    // unrolling.
-    if (loop_size.roi_size_ * 2 > code_grow_threshold_) {
-      continue;
-    }
-
-    ir::BasicBlock* exit_block = loop->FindConditionBlock();
-    if (!exit_block) {
-      continue;
-    }
-
-    ir::Instruction* exiting_iv = loop->FindConditionVariable(exit_block);
-    if (!exiting_iv) {
-      continue;
-    }
-    size_t iterations = 0;
-    if (!loop->FindNumberOfIterations(exiting_iv, &*exit_block->tail(),
-                                      &iterations)) {
-      continue;
-    }
-    if (!iterations) continue;
-
-    LoopPeeling peeler(
-        loop,
-        InstructionBuilder(context(), loop->GetHeaderBlock(),
-                           ir::IRContext::kAnalysisDefUse |
-                               ir::IRContext::kAnalysisInstrToBlockMapping)
-            .Add32BitConstantInteger<uint32_t>(
-                static_cast<uint32_t>(iterations), false));
-
-    if (!peeler.CanPeelLoop()) {
-      continue;
-    }
-
-    // For each basic block in the loop, check if it is can be peeled. If it
-    // can, get the direction (before/after) and by which factor.
-    LoopPeelingInfo peel_info(loop, iterations, &scev_analysis);
-
-    uint32_t peel_before_factor = 0;
-    uint32_t peel_after_factor = 0;
-
-    for (uint32_t block : loop->GetBlocks()) {
-      if (block == exit_block->id()) continue;
-      ir::BasicBlock* bb = cfg()->block(block);
-      PeelDirection direction;
-      uint32_t factor;
-      std::tie(direction, factor) = peel_info.GetPeelingInfo(bb);
-
-      if (direction == PeelDirection::kNone) {
-        continue;
+    auto try_peel = [&code_size, &loop_size, &modified,
+                     this](ir::Loop* loop_to_peel) -> ir::Loop* {
+      // This does not take into account branch elimination opportunities and
+      // the unrolling.
+      if (code_size + loop_size.roi_size_ > code_grow_threshold_) {
+        return nullptr;
       }
-      if (direction == PeelDirection::kBefore) {
-        peel_before_factor = std::max(peel_before_factor, factor);
-      } else {
-        assert(direction == PeelDirection::kAfter);
-        peel_after_factor = std::max(peel_after_factor, factor);
-      }
-    }
 
-    if (peel_before_factor) {
-      peeler.PeelBefore(peel_before_factor);
-      modified = true;
-      if (stats_) {
-        stats_->peeled_loops_[loop] = {PeelDirection::kBefore,
-                                       peel_before_factor};
-      }
-    } else {
-      if (peel_after_factor) {
-        peeler.PeelAfter(peel_after_factor);
+      bool peeled_loop;
+      ir::Loop* still_peelable_loop;
+      std::tie(peeled_loop, still_peelable_loop) = ProcessLoop(loop_to_peel);
+      if (peeled_loop) {
+        code_size += loop_size.roi_size_;
         modified = true;
-        if (stats_) {
-          stats_->peeled_loops_[loop] = {PeelDirection::kAfter,
-                                         peel_after_factor};
-        }
       }
+
+      return still_peelable_loop;
+    };
+
+    ir::Loop* still_peelable_loop = try_peel(loop);
+    if (still_peelable_loop) {
+      try_peel(loop);
     }
   }
 
   return modified;
+}
+
+std::pair<bool, ir::Loop*> LoopPeelingPass::ProcessLoop(ir::Loop* loop) {
+  opt::ScalarEvolutionAnalysis* scev_analysis =
+      context()->GetScalarEvolutionAnalysis();
+  // Default values for bailing out.
+  std::pair<bool, ir::Loop*> bail_out{false, nullptr};
+
+  ir::BasicBlock* exit_block = loop->FindConditionBlock();
+  if (!exit_block) {
+    return bail_out;
+  }
+
+  ir::Instruction* exiting_iv = loop->FindConditionVariable(exit_block);
+  if (!exiting_iv) {
+    return bail_out;
+  }
+  size_t iterations = 0;
+  if (!loop->FindNumberOfIterations(exiting_iv, &*exit_block->tail(),
+                                    &iterations)) {
+    return bail_out;
+  }
+  if (!iterations) {
+    return bail_out;
+  }
+
+  LoopPeeling peeler(
+      loop, InstructionBuilder(context(), loop->GetHeaderBlock(),
+                               ir::IRContext::kAnalysisDefUse |
+                                   ir::IRContext::kAnalysisInstrToBlockMapping)
+                .Add32BitConstantInteger<uint32_t>(
+                    static_cast<uint32_t>(iterations), false));
+
+  if (!peeler.CanPeelLoop()) {
+    return bail_out;
+  }
+
+  // For each basic block in the loop, check if it is can be peeled. If it
+  // can, get the direction (before/after) and by which factor.
+  LoopPeelingInfo peel_info(loop, iterations, scev_analysis);
+
+  uint32_t peel_before_factor = 0;
+  uint32_t peel_after_factor = 0;
+
+  for (uint32_t block : loop->GetBlocks()) {
+    if (block == exit_block->id()) return bail_out;
+    ir::BasicBlock* bb = cfg()->block(block);
+    PeelDirection direction;
+    uint32_t factor;
+    std::tie(direction, factor) = peel_info.GetPeelingInfo(bb);
+
+    if (direction == PeelDirection::kNone) {
+      continue;
+    }
+    if (direction == PeelDirection::kBefore) {
+      peel_before_factor = std::max(peel_before_factor, factor);
+    } else {
+      assert(direction == PeelDirection::kAfter);
+      peel_after_factor = std::max(peel_after_factor, factor);
+    }
+  }
+  PeelDirection direction = PeelDirection::kNone;
+  uint32_t factor = 0;
+
+  // Find which direction we should peel.
+  if (peel_before_factor) {
+    factor = peel_before_factor;
+    direction = PeelDirection::kBefore;
+  }
+  if (peel_after_factor) {
+    if (peel_before_factor < peel_after_factor) {
+      // Favor a peel after here and give the peel before another shot later.
+      factor = peel_after_factor;
+      direction = PeelDirection::kAfter;
+    }
+  }
+
+  // Do the peel if we can.
+  if (direction == PeelDirection::kNone) return bail_out;
+
+  // Find if a loop should be peeled again.
+  ir::Loop* extra_opportunity = nullptr;
+
+  if (direction == PeelDirection::kBefore) {
+    peeler.PeelBefore(factor);
+    if (stats_) {
+      stats_->peeled_loops_[loop] = {PeelDirection::kBefore, factor};
+    }
+    if (peel_after_factor) {
+      // We could have peeled after, give it another try.
+      extra_opportunity = peeler.GetOriginalLoop();
+    }
+  } else {
+    peeler.PeelAfter(factor);
+    if (stats_) {
+      stats_->peeled_loops_[loop] = {PeelDirection::kAfter, factor};
+    }
+    if (peel_before_factor) {
+      // We could have peeled before, give it another try.
+      extra_opportunity = peeler.GetClonedLoop();
+    }
+  }
+
+  return {true, extra_opportunity};
 }
 
 uint32_t LoopPeelingPass::LoopPeelingInfo::GetFirstLoopInvariantOperand(
