@@ -14,6 +14,7 @@
 
 #include "opt/loop_dependence.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
