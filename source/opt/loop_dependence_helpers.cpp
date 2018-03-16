@@ -16,6 +16,24 @@
 namespace spvtools {
 namespace opt {
 
+bool LoopDependenceAnalysis::IsZIV(
+    const std::pair<SENode*, SENode*>& subscript_pair) {
+  return CountInductionVariables(subscript_pair.first, subscript_pair.second) ==
+         0;
+}
+
+bool LoopDependenceAnalysis::IsSIV(
+    const std::pair<SENode*, SENode*>& subscript_pair) {
+  return CountInductionVariables(subscript_pair.first, subscript_pair.second) ==
+         1;
+}
+
+bool LoopDependenceAnalysis::IsMIV(
+    const std::pair<SENode*, SENode*>& subscript_pair) {
+  return CountInductionVariables(subscript_pair.first, subscript_pair.second) >
+         1;
+}
+
 SENode* LoopDependenceAnalysis::GetLowerBound() {
   ir::Instruction* cond_inst = loop_.GetConditionInst();
   if (!cond_inst) {

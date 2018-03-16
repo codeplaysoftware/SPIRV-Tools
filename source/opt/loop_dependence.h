@@ -66,6 +66,15 @@ class LoopDependenceAnalysis {
                      const ir::Instruction* destination,
                      DistanceVector* distance_vector);
 
+  // Returns true if |subscript_pair| represents a ZIV pair
+  bool IsZIV(const std::pair<SENode*, SENode*>& subscript_pair);
+
+  // Returns true if |subscript_pair| represents a SIV pair
+  bool IsSIV(const std::pair<SENode*, SENode*>& subscript_pair);
+
+  // Returns true if |subscript_pair| represents a MIV pair
+  bool IsMIV(const std::pair<SENode*, SENode*>& subscript_pair);
+
   // Finds the lower bound of the loop as an SENode* and returns the result.
   // The lower bound is the starting value of the loops induction variable
   SENode* GetLowerBound();

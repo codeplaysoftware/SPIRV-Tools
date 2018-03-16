@@ -63,8 +63,6 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     SENode* destination_node = scalar_evolution_.SimplifyExpression(
         scalar_evolution_.AnalyzeInstruction(
             destination_subscripts[subscript]));
-    int64_t induction_variable_count =
-        CountInductionVariables(source_node, destination_node);
 
     // If either node is simplified to a CanNotCompute we can't perform any
     // analysis so must assume <=> dependence and return.
@@ -75,8 +73,8 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     }
 
     // We have no induction variables so can apply a ZIV test.
-    if (induction_variable_count == 0) {
-      PrintDebug("Found 0 induction variables.");
+    if (IsZIV(std::make_pair(source_node, destination_node))) {
+      PrintDebug("Found a ZIV subscript pair");
       if (ZIVTest(source_node, destination_node,
                   &distance_vector_entries[subscript])) {
         PrintDebug("Proved independence with ZIVTest.");
@@ -86,8 +84,8 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     }
 
     // We have only one induction variable so should attempt an SIV test.
-    if (induction_variable_count == 1) {
-      PrintDebug("Found 1 induction variable.");
+    if (IsSIV(std::make_pair(source_node, destination_node))) {
+      PrintDebug("Found a SIV subscript pair.");
       int64_t source_induction_count = CountInductionVariables(source_node);
       int64_t destination_induction_count =
           CountInductionVariables(destination_node);
@@ -167,11 +165,11 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     }
 
     // We have multiple induction variables so should attempt an MIV test.
-    if (induction_variable_count > 1) {
+    if (IsMIV(std::make_pair(source_node, destination_node))) {
       // Currently not handled
       PrintDebug(
-          "Found multiple induction variables. MIV is currently unhandled. "
-          "Exiting.");
+          "Found a MIV subscript pair. MIV is currently unhandled.\n"
+          "Assuming dependence in all directions for this subscript pair.");
       distance_vector->direction = DistanceVector::Directions::ALL;
       return false;
     }
