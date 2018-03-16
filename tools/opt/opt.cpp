@@ -393,8 +393,8 @@ OptStatus ParseLoopUnrollPartialArg(int argc, const char** argv, int argi,
 
 OptStatus ParseLoopPeelingThresholdArg(int argc, const char** argv, int argi) {
   if (argi < argc) {
-    size_t factor = std::stoul(argv[argi]);
-    if (factor != 0) {
+    int factor = atoi(argv[argi]);
+    if (factor > 0) {
       opt::LoopPeelingPass::SetLoopPeelingThreshold(factor);
       return {OPT_CONTINUE, 0};
     }
