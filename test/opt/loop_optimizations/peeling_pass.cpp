@@ -29,10 +29,11 @@ using namespace spvtools;
 
 class PeelingTest : public PassTest<::testing::Test> {
  public:
-  std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> RunPeelingTest(
+  // Generic routine to run the loop peeling pass and check
+  opt::LoopPeelingPass::LoopPeelingStats RunPeelingTest(
       const std::string& text_head, const std::string& text_tail, SpvOp opcode,
-      const std::string& res_id, const std::string& op1,
-      const std::string& op2) {
+      const std::string& res_id, const std::string& op1, const std::string& op2,
+      size_t nb_of_loops) {
     std::string opcode_str;
     switch (opcode) {
       case SpvOpSLessThan:
@@ -66,16 +67,9 @@ class PeelingTest : public PassTest<::testing::Test> {
 
     ir::Function& f = *context()->module()->begin();
     ir::LoopDescriptor& ld = *context()->GetLoopDescriptor(&f);
-    EXPECT_EQ(ld.NumLoops(), 2u);
+    EXPECT_EQ(ld.NumLoops(), nb_of_loops);
 
-    EXPECT_EQ(stats.peeled_loops_.size(), 1u);
-    if (!stats.peeled_loops_.size())
-      return std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t>{
-          opt::LoopPeelingPass::PeelDirection::kNone, 0};
-
-    return std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t>{
-        stats.peeled_loops_.begin()->second.first,
-        stats.peeled_loops_.begin()->second.second};
+    return stats;
   }
 };
 
@@ -111,9 +105,8 @@ TEST_F(PeelingTest, PeelingPassBasic) {
           %3 = OpTypeFunction %void
         %int = OpTypeInt 32 1
 %_ptr_Function_int = OpTypePointer Function %int
-      %int_0 = OpConstant %int 0
-     %int_10 = OpConstant %int 10
        %bool = OpTypeBool
+     %int_10 = OpConstant %int 10
       %int_9 = OpConstant %int 9
       %int_8 = OpConstant %int 8
       %int_7 = OpConstant %int 7
@@ -123,6 +116,7 @@ TEST_F(PeelingTest, PeelingPassBasic) {
       %int_3 = OpConstant %int 3
       %int_2 = OpConstant %int 2
       %int_1 = OpConstant %int 1
+      %int_0 = OpConstant %int 0
        %main = OpFunction %void None %3
           %5 = OpLabel
           %a = OpVariable %_ptr_Function_int Function
@@ -162,7 +156,17 @@ TEST_F(PeelingTest, PeelingPassBasic) {
   auto run_test = [&text_head, &text_tail, this](SpvOp opcode,
                                                  const std::string& op1,
                                                  const std::string& op2) {
-    return RunPeelingTest(text_head, text_tail, opcode, "%22", op1, op2);
+    auto stats =
+        RunPeelingTest(text_head, text_tail, opcode, "%22", op1, op2, 2);
+
+    EXPECT_EQ(stats.peeled_loops_.size(), 1u);
+    if (stats.peeled_loops_.size() != 1u)
+      return std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t>{
+          opt::LoopPeelingPass::PeelDirection::kNone, 0};
+
+    return std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t>{
+        std::get<1>(*stats.peeled_loops_.begin()),
+        std::get<2>(*stats.peeled_loops_.begin())};
   };
 
   // Test LT

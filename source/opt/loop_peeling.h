@@ -225,7 +225,7 @@ class LoopPeelingPass : public Pass {
 
   // Holds some statistics about peeled function.
   struct LoopPeelingStats {
-    std::unordered_map<const ir::Loop*, std::pair<PeelDirection, size_t> >
+    std::vector<std::tuple<const ir::Loop*, PeelDirection, uint32_t>>
         peeled_loops_;
   };
 

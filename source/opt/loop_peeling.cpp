@@ -611,7 +611,9 @@ std::pair<bool, ir::Loop*> LoopPeelingPass::ProcessLoop(ir::Loop* loop) {
   uint32_t peel_after_factor = 0;
 
   for (uint32_t block : loop->GetBlocks()) {
-    if (block == exit_block->id()) return bail_out;
+    if (block == exit_block->id()) {
+      continue;
+    }
     ir::BasicBlock* bb = cfg()->block(block);
     PeelDirection direction;
     uint32_t factor;
@@ -652,7 +654,7 @@ std::pair<bool, ir::Loop*> LoopPeelingPass::ProcessLoop(ir::Loop* loop) {
   if (direction == PeelDirection::kBefore) {
     peeler.PeelBefore(factor);
     if (stats_) {
-      stats_->peeled_loops_[loop] = {PeelDirection::kBefore, factor};
+      stats_->peeled_loops_.emplace_back(loop, PeelDirection::kBefore, factor);
     }
     if (peel_after_factor) {
       // We could have peeled after, give it another try.
@@ -661,7 +663,7 @@ std::pair<bool, ir::Loop*> LoopPeelingPass::ProcessLoop(ir::Loop* loop) {
   } else {
     peeler.PeelAfter(factor);
     if (stats_) {
-      stats_->peeled_loops_[loop] = {PeelDirection::kAfter, factor};
+      stats_->peeled_loops_.emplace_back(loop, PeelDirection::kAfter, factor);
     }
     if (peel_before_factor) {
       // We could have peeled before, give it another try.
