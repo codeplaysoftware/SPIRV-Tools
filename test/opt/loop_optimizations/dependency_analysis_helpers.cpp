@@ -1093,7 +1093,7 @@ void main(){
 }
 */
 TEST(DependencyAnalysisHelpers, symbolic_checks) {
-  const std::string text = R"(               OpCapability Shader
+  const std::string text_start = R"(               OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
                OpEntryPoint Fragment %4 "main" %36
@@ -1412,8 +1412,8 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
         %204 = OpLabel
                OpReturn
                OpFunctionEnd
-         %18 = OpFunction %2 None %3
-         %19 = OpLabel
+         %18 = OpFunction %2 None %3)";
+  const std::string text_end = R"(       %19 = OpLabel
         %226 = OpVariable %31 Function
         %230 = OpVariable %31 Function
         %239 = OpVariable %56 Function
@@ -1687,6 +1687,9 @@ TEST(DependencyAnalysisHelpers, symbolic_checks) {
                OpReturn
                OpFunctionEnd
 )";
+
+  // We have to split the above string into two at compile time for VS.
+  const std::string text = text_start + text_end;
   std::unique_ptr<ir::IRContext> context =
       BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
                   SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
