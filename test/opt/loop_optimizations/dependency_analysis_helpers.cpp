@@ -558,336 +558,416 @@ TEST(DependencyAnalysisHelpers, loop_information) {
     // Function a
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              -10);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              -1);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        -10);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        -1);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              10);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        10);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(-10));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(1)),
               analysis.GetScalarEvolution()->CreateConstant(-1));
   }
   {
     // Function b
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              -5);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              4);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        -5);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        4);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              10);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        10);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(-5));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(1)),
               analysis.GetScalarEvolution()->CreateConstant(4));
   }
   {
     // Function c
     const ir::Function* f = spvtest::GetFunction(module, 10);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              0);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              9);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        0);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        9);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              10);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        10);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(0));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(1)),
               analysis.GetScalarEvolution()->CreateConstant(9));
   }
   {
     // Function d
     const ir::Function* f = spvtest::GetFunction(module, 12);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              5);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              14);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        5);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        14);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              10);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        10);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(5));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(1)),
               analysis.GetScalarEvolution()->CreateConstant(14));
   }
   {
     // Function e
     const ir::Function* f = spvtest::GetFunction(module, 14);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              -10);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              0);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        -10);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        0);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              11);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        11);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(-10));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(1)),
               analysis.GetScalarEvolution()->CreateConstant(0));
   }
   {
     // Function f
     const ir::Function* f = spvtest::GetFunction(module, 16);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              -5);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              5);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        -5);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        5);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              11);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        11);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(-5));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(1)),
               analysis.GetScalarEvolution()->CreateConstant(5));
   }
   {
     // Function g
     const ir::Function* f = spvtest::GetFunction(module, 18);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              0);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              10);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        0);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        10);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              11);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        11);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(0));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(1)),
               analysis.GetScalarEvolution()->CreateConstant(10));
   }
   {
     // Function h
     const ir::Function* f = spvtest::GetFunction(module, 20);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              5);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              15);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        5);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        15);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              11);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        11);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(5));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(1)),
               analysis.GetScalarEvolution()->CreateConstant(15));
   }
   {
     // Function i
     const ir::Function* f = spvtest::GetFunction(module, 22);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              0);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              -9);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        0);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        -9);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              10);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        10);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(0));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(-1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(-1)),
               analysis.GetScalarEvolution()->CreateConstant(-9));
   }
   {
     // Function j
     const ir::Function* f = spvtest::GetFunction(module, 24);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              5);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              -4);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        5);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        -4);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              10);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        10);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(5));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(-1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(-1)),
               analysis.GetScalarEvolution()->CreateConstant(-4));
   }
   {
     // Function k
     const ir::Function* f = spvtest::GetFunction(module, 26);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              10);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              1);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        10);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        1);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              10);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        10);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(10));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(-1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(-1)),
               analysis.GetScalarEvolution()->CreateConstant(1));
   }
   {
     // Function l
     const ir::Function* f = spvtest::GetFunction(module, 28);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              15);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              6);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        15);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        6);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              10);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        10);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(15));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(-1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(-1)),
               analysis.GetScalarEvolution()->CreateConstant(6));
   }
   {
     // Function m
     const ir::Function* f = spvtest::GetFunction(module, 30);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              0);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              -10);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        0);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        -10);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              11);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        11);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(0));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(-1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(-1)),
               analysis.GetScalarEvolution()->CreateConstant(-10));
   }
   {
     // Function n
     const ir::Function* f = spvtest::GetFunction(module, 32);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              5);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              -5);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        5);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        -5);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              11);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        11);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(5));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(-1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(-1)),
               analysis.GetScalarEvolution()->CreateConstant(-5));
   }
   {
     // Function o
     const ir::Function* f = spvtest::GetFunction(module, 34);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              10);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              0);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        10);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        0);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              11);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        11);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(10));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(-1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(-1)),
               analysis.GetScalarEvolution()->CreateConstant(0));
   }
   {
     // Function p
     const ir::Function* f = spvtest::GetFunction(module, 36);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-    EXPECT_EQ(analysis.GetLowerBound()->AsSEConstantNode()->FoldToSingleValue(),
-              15);
-    EXPECT_EQ(analysis.GetUpperBound()->AsSEConstantNode()->FoldToSingleValue(),
-              5);
+    EXPECT_EQ(
+        analysis.GetLowerBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        15);
+    EXPECT_EQ(
+        analysis.GetUpperBound(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        5);
 
-    EXPECT_EQ(analysis.GetTripCount()->AsSEConstantNode()->FoldToSingleValue(),
-              11);
+    EXPECT_EQ(
+        analysis.GetTripCount(loop)->AsSEConstantNode()->FoldToSingleValue(),
+        11);
 
-    EXPECT_EQ(analysis.GetFirstTripInductionNode(),
+    EXPECT_EQ(analysis.GetFirstTripInductionNode(loop),
               analysis.GetScalarEvolution()->CreateConstant(15));
 
     EXPECT_EQ(analysis.GetFinalTripInductionNode(
-                  analysis.GetScalarEvolution()->CreateConstant(-1)),
+                  loop, analysis.GetScalarEvolution()->CreateConstant(-1)),
               analysis.GetScalarEvolution()->CreateConstant(5));
   }
 }
@@ -951,7 +1031,9 @@ TEST(DependencyAnalysisHelpers, bounds_checks) {
   // LoopDependenceAnalaysis
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-  opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+  ir::Loop* loop = &ld.GetLoopByIndex(0);
+  std::vector<const ir::Loop*> loops{loop};
+  opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
   EXPECT_TRUE(analysis.IsWithinBounds(0, 0, 0));
   EXPECT_TRUE(analysis.IsWithinBounds(0, -1, 0));
@@ -1226,7 +1308,9 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
     // Function a
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -1267,7 +1351,7 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Independent and supported.
-      EXPECT_TRUE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_TRUE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -1297,7 +1381,7 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Independent but not supported.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
@@ -1305,7 +1389,9 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
     // Function b
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -1345,7 +1431,7 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Dependent.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -1374,7 +1460,7 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Dependent.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
@@ -1382,7 +1468,9 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
     // Function c
     const ir::Function* f = spvtest::GetFunction(module, 10);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -1422,7 +1510,7 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Independent but not supported.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -1451,7 +1539,7 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Independent but not supported.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
@@ -1459,7 +1547,9 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
     // Function d
     const ir::Function* f = spvtest::GetFunction(module, 12);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -1499,7 +1589,7 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Dependent.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -1528,7 +1618,7 @@ TEST(DependencyAnalysisHelpers, const_to_symbolic) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Dependent.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
@@ -1790,7 +1880,9 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
     // Function a
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -1831,7 +1923,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Independent but not supported.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -1861,7 +1953,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Independent but not supported.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
@@ -1869,7 +1961,9 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
     // Function b
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -1910,7 +2004,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Dependent.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -1940,7 +2034,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Dependent.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
@@ -1948,7 +2042,9 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
     // Function c
     const ir::Function* f = spvtest::GetFunction(module, 10);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -1989,7 +2085,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Independent and supported.
-      EXPECT_TRUE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_TRUE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -2019,7 +2115,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Independent but not supported.
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
@@ -2027,7 +2123,9 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
     // Function d
     const ir::Function* f = spvtest::GetFunction(module, 12);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -2068,7 +2166,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Dependent
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -2098,7 +2196,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_const) {
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
       // Dependent
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
@@ -2420,7 +2518,9 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
     // Function a
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -2460,7 +2560,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
       opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -2489,7 +2589,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
       opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
@@ -2497,7 +2597,9 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
     // Function b
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -2537,7 +2639,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
       opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -2566,7 +2668,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
       opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
@@ -2574,7 +2676,9 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
     // Function c
     const ir::Function* f = spvtest::GetFunction(module, 10);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -2614,7 +2718,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
       opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -2643,7 +2747,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
       opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
@@ -2651,7 +2755,9 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
     // Function d
     const ir::Function* f = spvtest::GetFunction(module, 12);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
-    opt::LoopDependenceAnalysis analysis{context.get(), ld.GetLoopByIndex(0)};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* stores[2];
     int stores_found = 0;
@@ -2691,7 +2797,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
       opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
 
@@ -2720,7 +2826,7 @@ TEST(DependencyAnalysisHelpers, symbolic_to_symbolic) {
       opt::SENode* delta = analysis.GetScalarEvolution()->SimplifyExpression(
           analysis.GetScalarEvolution()->CreateSubtraction(load, store));
 
-      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(
+      EXPECT_FALSE(analysis.IsProvablyOutwithLoopBounds(loop,
           delta, store->AsSERecurrentNode()->GetCoefficient()));
     }
   }
