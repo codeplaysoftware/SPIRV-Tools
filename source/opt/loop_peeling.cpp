@@ -135,8 +135,12 @@ void LoopPeeling::DuplicateAndConnectLoop(
 }
 
 void LoopPeeling::InsertCanonicalInductionVariable() {
-  InstructionBuilder builder(context_,
-                             &*GetClonedLoop()->GetLatchBlock()->tail(),
+  ir::BasicBlock::iterator insert_point =
+      GetClonedLoop()->GetLatchBlock()->tail();
+  if (GetClonedLoop()->GetLatchBlock()->GetMergeInst()) {
+    --insert_point;
+  }
+  InstructionBuilder builder(context_, &*insert_point,
                              ir::IRContext::kAnalysisDefUse |
                                  ir::IRContext::kAnalysisInstrToBlockMapping);
   ir::Instruction* uint_1_cst =
@@ -185,6 +189,55 @@ void LoopPeeling::GetIteratorUpdateOperations(
     }
     GetIteratorUpdateOperations(loop, insn, operations);
   });
+}
+
+// Gather the set of blocks for all the path from |entry| to |root|.
+static void GetBlocksInPath(uint32_t block, uint32_t entry,
+                            std::unordered_set<uint32_t>* blocks_in_path,
+                            const ir::CFG& cfg) {
+  for (uint32_t pid : cfg.preds(block)) {
+    if (blocks_in_path->insert(pid).second) {
+      if (pid != entry) {
+        GetBlocksInPath(pid, entry, blocks_in_path, cfg);
+      }
+    }
+  }
+}
+
+bool LoopPeeling::IsConditionCheckSideEffectFree() const {
+  ir::CFG& cfg = *context_->cfg();
+
+  // The "do-while" form does not cause issues, the algorithm takes into account
+  // the first iteration.
+  if (!do_while_form_) {
+    uint32_t condition_block_id = cfg.preds(loop_->GetMergeBlock()->id())[0];
+
+    std::unordered_set<uint32_t> blocks_in_path;
+
+    blocks_in_path.insert(condition_block_id);
+    GetBlocksInPath(condition_block_id, loop_->GetHeaderBlock()->id(),
+                    &blocks_in_path, cfg);
+
+    for (uint32_t bb_id : blocks_in_path) {
+      ir::BasicBlock* bb = cfg.block(bb_id);
+      if (!bb->WhileEachInst([this](ir::Instruction* insn) {
+            if (insn->IsBranch()) return true;
+            switch (insn->opcode()) {
+              case SpvOpLabel:
+              case SpvOpSelectionMerge:
+              case SpvOpLoopMerge:
+                return true;
+              default:
+                break;
+            }
+            return context_->IsCombinatorInstruction(insn);
+          })) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 void LoopPeeling::GetIteratingExitValues() {
@@ -248,7 +301,7 @@ void LoopPeeling::GetIteratingExitValues() {
 }
 
 void LoopPeeling::FixExitCondition(
-    const std::function<uint32_t(ir::BasicBlock*)>& condition_builder) {
+    const std::function<uint32_t(ir::Instruction*)>& condition_builder) {
   ir::CFG& cfg = *context_->cfg();
 
   uint32_t condition_block_id = 0;
@@ -263,11 +316,12 @@ void LoopPeeling::FixExitCondition(
   ir::BasicBlock* condition_block = cfg.block(condition_block_id);
   ir::Instruction* exit_condition = condition_block->terminator();
   assert(exit_condition->opcode() == SpvOpBranchConditional);
-  InstructionBuilder builder(context_, &*condition_block->tail(),
-                             ir::IRContext::kAnalysisDefUse |
-                                 ir::IRContext::kAnalysisInstrToBlockMapping);
+  ir::BasicBlock::iterator insert_point = condition_block->tail();
+  if (condition_block->GetMergeInst()) {
+    --insert_point;
+  }
 
-  exit_condition->SetInOperand(0, {condition_builder(condition_block)});
+  exit_condition->SetInOperand(0, {condition_builder(&*insert_point)});
 
   uint32_t to_continue_block_idx =
       GetClonedLoop()->IsInsideLoop(exit_condition->GetSingleWordInOperand(1))
@@ -375,8 +429,8 @@ void LoopPeeling::PeelBefore(uint32_t peel_factor) {
   // Change the exit condition of the cloned loop to be (exit when become
   // false):
   //  "canonical_induction_variable_" < min("factor", "loop_iteration_count_")
-  FixExitCondition([max_iteration, this](ir::BasicBlock* condition_block) {
-    return InstructionBuilder(context_, &*condition_block->tail(),
+  FixExitCondition([max_iteration, this](ir::Instruction* insert_before_point) {
+    return InstructionBuilder(context_, insert_before_point,
                               ir::IRContext::kAnalysisDefUse |
                                   ir::IRContext::kAnalysisInstrToBlockMapping)
         .AddLessThan(canonical_induction_variable_->result_id(),
@@ -436,9 +490,9 @@ void LoopPeeling::PeelAfter(uint32_t peel_factor) {
   // Change the exit condition of the cloned loop to be (exit when become
   // false):
   //  "canonical_induction_variable_" + "factor" < "loop_iteration_count_"
-  FixExitCondition([factor, this](ir::BasicBlock* condition_block) {
+  FixExitCondition([factor, this](ir::Instruction* insert_before_point) {
     InstructionBuilder cond_builder(
-        context_, &*condition_block->tail(),
+        context_, insert_before_point,
         ir::IRContext::kAnalysisDefUse |
             ir::IRContext::kAnalysisInstrToBlockMapping);
     // Build the following check: canonical_induction_variable_ + factor <

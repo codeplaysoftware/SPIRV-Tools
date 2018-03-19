@@ -128,6 +128,9 @@ class LoopPeeling {
     if (cfg.preds(loop_->GetMergeBlock()->id()).size() != 1) {
       return false;
     }
+    if (!IsConditionCheckSideEffectFree()) {
+      return false;
+    }
 
     return !std::any_of(exit_value_.cbegin(), exit_value_.cend(),
                         [](std::pair<uint32_t, ir::Instruction*> it) {
@@ -182,9 +185,10 @@ class LoopPeeling {
   // Fixes the exit condition of the before loop. The function calls
   // |condition_builder| to get the condition to use in the conditional branch
   // of the loop exit. The loop will be exited if the condition evaluate to
-  // true.
+  // true. |condition_builder| takes an ir::Instruction* that represent the
+  // insertion point.
   void FixExitCondition(
-      const std::function<uint32_t(ir::BasicBlock*)>& condition_builder);
+      const std::function<uint32_t(ir::Instruction*)>& condition_builder);
 
   // Gathers all operations involved in the update of |iterator| into
   // |operations|.
@@ -197,6 +201,10 @@ class LoopPeeling {
   // SSA value when it exit the loop. If no exit value can be accurately found,
   // it is map to nullptr (see comment on CanPeelLoop).
   void GetIteratingExitValues();
+
+  // Returns true if a for-loop has no instruction with effects before the
+  // condition check.
+  bool IsConditionCheckSideEffectFree() const;
 
   // Creates a new basic block and insert it between |bb| and the predecessor of
   // |bb|.
