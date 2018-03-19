@@ -993,7 +993,7 @@ TEST_F(PeelingTest, PeelingLoopWithStore) {
     ir::Instruction* loop_count = context->get_def_use_mgr()->GetDef(15);
     EXPECT_EQ(loop_count->opcode(), SpvOpLoad);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin(), loop_count);
+    opt::LoopPeeling peel(&*ld.begin(), loop_count);
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelBefore(1);
 
@@ -1045,7 +1045,7 @@ CHECK-NEXT: OpLoopMerge
     ir::Instruction* loop_count = context->get_def_use_mgr()->GetDef(15);
     EXPECT_EQ(loop_count->opcode(), SpvOpLoad);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin(), loop_count);
+    opt::LoopPeeling peel(&*ld.begin(), loop_count);
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelAfter(1);
 
