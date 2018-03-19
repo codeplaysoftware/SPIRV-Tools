@@ -925,10 +925,10 @@ ir::Instruction* Loop::FindConditionVariable(
         uint32_t operand_label_2 = 3;
 
         // Make sure one of them is the preheader.
-        if (variable_inst->GetSingleWordInOperand(operand_label_1) !=
-                loop_preheader_->id() &&
-            variable_inst->GetSingleWordInOperand(operand_label_2) !=
-                loop_preheader_->id()) {
+        if (!IsInsideLoop(
+                variable_inst->GetSingleWordInOperand(operand_label_1)) &&
+            !IsInsideLoop(
+                variable_inst->GetSingleWordInOperand(operand_label_2))) {
           return nullptr;
         }
 
