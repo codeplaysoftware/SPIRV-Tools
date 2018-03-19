@@ -832,47 +832,107 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
   // If the opcode is >=, then we add 1 to the left hand side and do the peel
   // check on >.
 
-  bool is_or_equal = false;
+  CmpOperator cmp_operator;
   switch (condition->opcode()) {
     default:
       return GetNoneDirection();
     case SpvOpIEqual:
     case SpvOpINotEqual:
-      return HandleEqual(lhs, rhs);
+      return HandleEquality(lhs, rhs);
     case SpvOpUGreaterThan:
-    case SpvOpSGreaterThan:
-    case SpvOpULessThan:
-    case SpvOpSLessThan:
+    case SpvOpSGreaterThan: {
+      cmp_operator = CmpOperator::kGT;
       break;
+    }
+    case SpvOpULessThan:
+    case SpvOpSLessThan: {
+      cmp_operator = CmpOperator::kLT;
+      break;
+    }
     // We add one to transform >= into > and <= into <.
     case SpvOpUGreaterThanEqual:
-    case SpvOpSGreaterThanEqual:
-    case SpvOpULessThanEqual:
-    case SpvOpSLessThanEqual:
-      is_or_equal = true;
+    case SpvOpSGreaterThanEqual: {
+      cmp_operator = CmpOperator::kGE;
       break;
+    }
+    case SpvOpULessThanEqual:
+    case SpvOpSLessThanEqual: {
+      cmp_operator = CmpOperator::kLE;
+      break;
+    }
   }
 
   // Force the left hand side to be the non recurring expression.
   if (is_lhs_rec) {
     std::swap(lhs, rhs);
-    std::swap(is_lhs_rec, is_rhs_rec);
+    switch (cmp_operator) {
+      case CmpOperator::kLT: {
+        cmp_operator = CmpOperator::kGT;
+        break;
+      }
+      case CmpOperator::kGT: {
+        cmp_operator = CmpOperator::kLT;
+        break;
+      }
+      case CmpOperator::kLE: {
+        cmp_operator = CmpOperator::kGE;
+        break;
+      }
+      case CmpOperator::kGE: {
+        cmp_operator = CmpOperator::kLE;
+        break;
+      }
+    }
   }
-  return HandleInequality(is_or_equal, lhs, rhs->AsSERecurrentNode());
+  return HandleInequality(cmp_operator, lhs, rhs->AsSERecurrentNode());
 }
 
-SExpression LoopPeelingPass::LoopPeelingInfo::GetLastIterationValue(
+SExpression LoopPeelingPass::LoopPeelingInfo::GetValueAtFirstIteration(
     SERecurrentNode* rec) const {
+  return rec->GetOffset();
+}
+
+SExpression LoopPeelingPass::LoopPeelingInfo::GetValueAtIteration(
+    SERecurrentNode* rec, int64_t iteration) const {
   SExpression coeff = rec->GetCoefficient();
   SExpression offset = rec->GetOffset();
 
-  return (coeff * (loop_max_iterations_ - 1)) + offset;
+  return (coeff * iteration) + offset;
+}
+
+SExpression LoopPeelingPass::LoopPeelingInfo::GetValueAtLastIteration(
+    SERecurrentNode* rec) const {
+  return GetValueAtIteration(rec, loop_max_iterations_ - 1);
+}
+
+bool LoopPeelingPass::LoopPeelingInfo::EvalOperator(CmpOperator cmp_op,
+                                                    SExpression lhs,
+                                                    SExpression rhs,
+                                                    bool* result) const {
+  assert(scev_analysis_->IsLoopInvariant(loop_, lhs));
+  assert(scev_analysis_->IsLoopInvariant(loop_, rhs));
+  // We perform the test: 0 cmp_op rhs - lhs
+  // What is left is then to determine the sign of the expression.
+  switch (cmp_op) {
+    case CmpOperator::kLT: {
+      return scev_analysis_->IsAlwaysGreaterThanZero(rhs - lhs, result);
+    }
+    case CmpOperator::kGT: {
+      return scev_analysis_->IsAlwaysGreaterThanZero(lhs - rhs, result);
+    }
+    case CmpOperator::kLE: {
+      return scev_analysis_->IsAlwaysGreaterOrEqualToZero(rhs - lhs, result);
+    }
+    case CmpOperator::kGE: {
+      return scev_analysis_->IsAlwaysGreaterOrEqualToZero(lhs - rhs, result);
+    }
+  }
+  return false;
 }
 
 LoopPeelingPass::LoopPeelingInfo::Direction
-LoopPeelingPass::LoopPeelingInfo::HandleEqual(SExpression lhs,
-                                              SExpression rhs) const {
-  // FIXME: check the current loop for scev nodes
+LoopPeelingPass::LoopPeelingInfo::HandleEquality(SExpression lhs,
+                                                 SExpression rhs) const {
   {
     // Try peel before opportunity.
     SExpression lhs_cst = lhs;
@@ -895,13 +955,13 @@ LoopPeelingPass::LoopPeelingInfo::HandleEqual(SExpression lhs,
     if (SERecurrentNode* rec_node = lhs->AsSERecurrentNode()) {
       // rec_node(x) = a * x + b
       // assign to lhs: a * (loop_max_iterations_ - 1) + b
-      lhs_cst = GetLastIterationValue(rec_node);
+      lhs_cst = GetValueAtLastIteration(rec_node);
     }
     SExpression rhs_cst = rhs;
     if (SERecurrentNode* rec_node = rhs->AsSERecurrentNode()) {
       // rec_node(x) = a * x + b
       // assign to lhs: a * (loop_max_iterations_ - 1) + b
-      rhs_cst = GetLastIterationValue(rec_node);
+      rhs_cst = GetValueAtLastIteration(rec_node);
     }
 
     if (lhs_cst == rhs_cst) {
@@ -913,7 +973,7 @@ LoopPeelingPass::LoopPeelingInfo::HandleEqual(SExpression lhs,
 }
 
 LoopPeelingPass::LoopPeelingInfo::Direction
-LoopPeelingPass::LoopPeelingInfo::HandleInequality(bool is_or_equal,
+LoopPeelingPass::LoopPeelingInfo::HandleInequality(CmpOperator cmp_op,
                                                    SExpression lhs,
                                                    SERecurrentNode* rhs) const {
   SExpression offset = rhs->GetOffset();
@@ -932,6 +992,24 @@ LoopPeelingPass::LoopPeelingInfo::HandleInequality(bool is_or_equal,
     // Always true or false within the loop bounds.
     return GetNoneDirection();
   }
+  // If this is a <= or >= operator and the iteration, make sure |iteration| is
+  // the one flipping the condition.
+  // If (cst - B) and A are not divisible, this equivalent to a < or > check, so
+  // we skip this test.
+  if (!flip_iteration.second &&
+      (cmp_op == CmpOperator::kLE || cmp_op == CmpOperator::kGE)) {
+    bool first_iteration;
+    bool current_iteration;
+    if (!EvalOperator(cmp_op, lhs, offset, &first_iteration) ||
+        !EvalOperator(cmp_op, lhs, GetValueAtIteration(rhs, iteration),
+                      &current_iteration)) {
+      return GetNoneDirection();
+    }
+    // If the condition did not flip the next will.
+    if (first_iteration == current_iteration) {
+      iteration++;
+    }
+  }
 
   uint32_t cast_iteration = 0;
   // sanity check: can we fit |iteration| in a uint32_t ?
@@ -942,13 +1020,7 @@ LoopPeelingPass::LoopPeelingInfo::HandleInequality(bool is_or_equal,
   if (cast_iteration) {
     // Peel before if we are closer to the start, after if closer to the end.
     if (loop_max_iterations_ / 2 > cast_iteration) {
-      if (is_or_equal && !flip_iteration.second) {
-        cast_iteration++;
-      }
-      if (offset->AsSEConstantNode()) {
-        return Direction{LoopPeelingPass::PeelDirection::kBefore,
-                         cast_iteration};
-      }
+      return Direction{LoopPeelingPass::PeelDirection::kBefore, cast_iteration};
     } else {
       return Direction{LoopPeelingPass::PeelDirection::kAfter,
                        loop_max_iterations_ - cast_iteration};

@@ -100,6 +100,16 @@ class ScalarEvolutionAnalysis {
   // Returns the value of |node| .
   SENode* EvalutateAtLoopIeration(ir::Loop* loop, SENode* node) const;
 
+  // Returns true if we can conclude if |node| represent a value always greater
+  // than 0 or not. If the function returns true, |is_gt_zero| will be set with
+  // the answer.
+  bool IsAlwaysGreaterThanZero(SENode* node, bool* is_gt_zero) const;
+
+  // Returns true if we can conclude if |node| represent a value always greater
+  // or equals to 0 or not. If the function returns true, |is_ge_zero| will be
+  // set with the answer.
+  bool IsAlwaysGreaterOrEqualToZero(SENode* node, bool* is_ge_zero) const;
+
  private:
   ir::IRContext* context_;
 

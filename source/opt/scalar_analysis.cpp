@@ -471,6 +471,266 @@ void SENode::DumpDot(std::ostream& out, bool recurse) const {
 }
 
 namespace {
+class IsGreaterThanZero {
+ public:
+  explicit IsGreaterThanZero(ir::IRContext* context) : context_(context) {}
+
+  bool Eval(const SENode* node, bool or_equal_zero, bool* result) {
+    switch (Visit(node)) {
+      case Signedness::kPositiveOrNegative: {
+        return false;
+      }
+      case Signedness::kStrictlyNegative: {
+        *result = false;
+        break;
+      }
+      case Signedness::kNegative: {
+        if (!or_equal_zero) {
+          return false;
+        }
+        *result = false;
+        break;
+      }
+      case Signedness::kStrictlyPositive: {
+        *result = true;
+        break;
+      }
+      case Signedness::kPositive: {
+        if (!or_equal_zero) {
+          return false;
+        }
+        *result = true;
+        break;
+      }
+    }
+    return true;
+  }
+
+ private:
+  enum class Signedness {
+    kPositiveOrNegative,  // Yield a value positive or negative.
+    kStrictlyNegative,    // Yield a value strictly less than 0.
+    kNegative,            // Yield a value less or equal to 0.
+    kStrictlyPositive,    // Yield a value strictly greater than 0.
+    kPositive             // Yield a value greater or equal to 0.
+  };
+
+  // Combine the signedness according to arithmetic rules of a given operator.
+  using Combiner = std::function<Signedness(Signedness, Signedness)>;
+
+  Combiner GetAddCombiner() const {
+    return [](Signedness lhs, Signedness rhs) {
+      switch (lhs) {
+        case Signedness::kPositiveOrNegative:
+          break;
+        case Signedness::kStrictlyNegative:
+          if (rhs == Signedness::kStrictlyNegative ||
+              rhs == Signedness::kNegative)
+            return lhs;
+          break;
+        case Signedness::kNegative: {
+          if (rhs == Signedness::kStrictlyNegative)
+            return Signedness::kStrictlyNegative;
+          if (rhs == Signedness::kNegative) return Signedness::kNegative;
+          break;
+        }
+        case Signedness::kStrictlyPositive: {
+          if (rhs == Signedness::kStrictlyPositive ||
+              rhs == Signedness::kPositive) {
+            return Signedness::kStrictlyPositive;
+          }
+          break;
+        }
+        case Signedness::kPositive: {
+          if (rhs == Signedness::kStrictlyPositive)
+            return Signedness::kStrictlyPositive;
+          if (rhs == Signedness::kPositive) return Signedness::kPositive;
+          break;
+        }
+      }
+      return Signedness::kPositiveOrNegative;
+    };
+  }
+
+  Combiner GetMulCombiner() const {
+    return [](Signedness lhs, Signedness rhs) {
+      switch (lhs) {
+        case Signedness::kPositiveOrNegative:
+          break;
+        case Signedness::kStrictlyNegative: {
+          switch (rhs) {
+            case Signedness::kPositiveOrNegative: {
+              break;
+            }
+            case Signedness::kStrictlyNegative: {
+              return Signedness::kStrictlyPositive;
+            }
+            case Signedness::kNegative: {
+              return Signedness::kPositive;
+            }
+            case Signedness::kStrictlyPositive: {
+              return Signedness::kStrictlyNegative;
+            }
+            case Signedness::kPositive: {
+              return Signedness::kNegative;
+            }
+          }
+          break;
+        }
+        case Signedness::kNegative: {
+          switch (rhs) {
+            case Signedness::kPositiveOrNegative: {
+              break;
+            }
+            case Signedness::kStrictlyNegative:
+            case Signedness::kNegative: {
+              return Signedness::kPositive;
+            }
+            case Signedness::kStrictlyPositive:
+            case Signedness::kPositive: {
+              return Signedness::kNegative;
+            }
+          }
+          break;
+        }
+        case Signedness::kStrictlyPositive: {
+          return rhs;
+        }
+        case Signedness::kPositive: {
+          switch (rhs) {
+            case Signedness::kPositiveOrNegative: {
+              break;
+            }
+            case Signedness::kStrictlyNegative:
+            case Signedness::kNegative: {
+              return Signedness::kNegative;
+            }
+            case Signedness::kStrictlyPositive:
+            case Signedness::kPositive: {
+              return Signedness::kPositive;
+            }
+          }
+          break;
+        }
+      }
+      return Signedness::kPositiveOrNegative;
+    };
+  }
+
+  Signedness Visit(const SENode* node) {
+    switch (node->GetType()) {
+      case SENode::Constant:
+        return Visit(node->AsSEConstantNode());
+        break;
+      case SENode::RecurrentExpr:
+        return Visit(node->AsSERecurrentNode());
+        break;
+      case SENode::Negative:
+        return Visit(node->AsSENegative());
+        break;
+      case SENode::CanNotCompute:
+        return Visit(node->AsSECantCompute());
+        break;
+      case SENode::ValueUnknown:
+        return Visit(node->AsSEValueUnknown());
+        break;
+      case SENode::Add:
+        return VisitExpr(node, GetAddCombiner());
+        break;
+      case SENode::Multiply:
+        return VisitExpr(node, GetMulCombiner());
+        break;
+    }
+    return Signedness::kPositiveOrNegative;
+  }
+
+  Signedness Visit(const SEConstantNode* node) {
+    if (0 == node->FoldToSingleValue()) return Signedness::kPositive;
+    if (0 < node->FoldToSingleValue()) return Signedness::kStrictlyPositive;
+    if (0 > node->FoldToSingleValue()) return Signedness::kStrictlyNegative;
+    return Signedness::kPositiveOrNegative;
+  }
+
+  Signedness Visit(const SEValueUnknown* node) {
+    ir::Instruction* insn =
+        context_->get_def_use_mgr()->GetDef(node->UniqueId());
+    analysis::Type* type = context_->get_type_mgr()->GetType(insn->type_id());
+    assert(type && "Can't retrieve a type for the instruction");
+    analysis::Integer* int_type = type->AsInteger();
+    assert(type && "Can't retrieve an integer type for the instruction");
+    return int_type->IsSigned() ? Signedness::kPositiveOrNegative
+                                : Signedness::kPositive;
+  }
+
+  Signedness Visit(const SERecurrentNode* node) {
+    Signedness coeff_sign = Visit(node->GetCoefficient());
+    // SERecurrentNode represent an affine expression in the range [0,
+    // loop_bound], so the result cannot be strictly positive or negative.
+    switch (coeff_sign) {
+      default:
+        break;
+      case Signedness::kStrictlyNegative:
+        coeff_sign = Signedness::kNegative;
+        break;
+      case Signedness::kStrictlyPositive:
+        coeff_sign = Signedness::kPositive;
+        break;
+    }
+    return GetAddCombiner()(coeff_sign, Visit(node->GetOffset()));
+  }
+
+  Signedness Visit(const SENegative* node) {
+    switch (Visit(*node->begin())) {
+      case Signedness::kPositiveOrNegative: {
+        return Signedness::kPositiveOrNegative;
+      }
+      case Signedness::kStrictlyNegative: {
+        return Signedness::kStrictlyPositive;
+      }
+      case Signedness::kNegative: {
+        return Signedness::kPositive;
+      }
+      case Signedness::kStrictlyPositive: {
+        return Signedness::kStrictlyNegative;
+      }
+      case Signedness::kPositive: {
+        return Signedness::kNegative;
+      }
+    }
+  }
+
+  Signedness Visit(const SECantCompute*) {
+    return Signedness::kPositiveOrNegative;
+  }
+
+  Signedness VisitExpr(
+      const SENode* node,
+      std::function<Signedness(Signedness, Signedness)> reduce) {
+    Signedness result = Visit(*node->begin());
+    for (const SENode* operand : ir::make_range(++node->begin(), node->end())) {
+      if (result == Signedness::kPositiveOrNegative) {
+        return Signedness::kPositiveOrNegative;
+      }
+      result = reduce(result, Visit(operand));
+    }
+    return result;
+  }
+
+  ir::IRContext* context_;
+};
+}  // namespace
+
+bool ScalarEvolutionAnalysis::IsAlwaysGreaterThanZero(SENode* node,
+                                                      bool* is_gt_zero) const {
+  return IsGreaterThanZero(context_).Eval(node, false, is_gt_zero);
+}
+
+bool ScalarEvolutionAnalysis::IsAlwaysGreaterOrEqualToZero(
+    SENode* node, bool* is_ge_zero) const {
+  return IsGreaterThanZero(context_).Eval(node, true, is_ge_zero);
+}
+
+namespace {
 
 // Remove N from chains like A * ... * N * ... * Z, if N is not in the chain,
 // returns the original chain.

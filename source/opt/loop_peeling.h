@@ -256,6 +256,14 @@ class LoopPeelingPass : public Pass {
   static size_t code_grow_threshold_;
   LoopPeelingStats* stats_;
 
+  // Describes the peeling direction.
+  enum class CmpOperator {
+    kLT,  // less than
+    kGT,  // greater than
+    kLE,  // less than or equal
+    kGE,  // greater than or equal
+  };
+
   class LoopPeelingInfo {
    public:
     using Direction = std::pair<PeelDirection, uint32_t>;
@@ -278,10 +286,16 @@ class LoopPeelingPass : public Pass {
     uint32_t GetFirstLoopInvariantOperand(ir::Instruction* condition) const;
     uint32_t GetFirstNonLoopInvariantOperand(ir::Instruction* condition) const;
 
-    SExpression GetLastIterationValue(SERecurrentNode* rec) const;
+    SExpression GetValueAtFirstIteration(SERecurrentNode* rec) const;
+    SExpression GetValueAtIteration(SERecurrentNode* rec,
+                                    int64_t iteration) const;
+    SExpression GetValueAtLastIteration(SERecurrentNode* rec) const;
 
-    Direction HandleEqual(SExpression lhs, SExpression rhs) const;
-    Direction HandleInequality(bool is_or_equal, SExpression lhs,
+    bool EvalOperator(CmpOperator cmp_op, SExpression lhs, SExpression rhs,
+                      bool* result) const;
+
+    Direction HandleEquality(SExpression lhs, SExpression rhs) const;
+    Direction HandleInequality(CmpOperator cmp_op, SExpression lhs,
                                SERecurrentNode* rhs) const;
 
     static Direction GetNoneDirection() {

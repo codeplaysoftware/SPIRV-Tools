@@ -14,10 +14,6 @@
 
 #include <gmock/gmock.h>
 
-#ifdef SPIRV_EFFCEE
-#include "effcee/effcee.h"
-#endif
-
 #include "../pass_fixture.h"
 #include "opt/ir_builder.h"
 #include "opt/loop_descriptor.h"
@@ -249,72 +245,72 @@ TEST_F(PeelingTest, PeelingPassBasic) {
   }
 
   // Test GT
-  // Peel before by a factor of 1.
+  // Peel before by a factor of 2.
   {
-    SCOPED_TRACE("Peel before iv > 2");
+    SCOPED_TRACE("Peel before iv > 5");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSGreaterThan, "%32", "%int_2");
+        run_test(SpvOpSGreaterThan, "%32", "%int_5");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kBefore);
-    EXPECT_EQ(peel_info.second, 1u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel before 2 < iv");
+    SCOPED_TRACE("Peel before 5 < iv");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSLessThan, "%int_2", "%32");
+        run_test(SpvOpSLessThan, "%int_5", "%32");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kBefore);
-    EXPECT_EQ(peel_info.second, 1u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel before iv > 3");
+    SCOPED_TRACE("Peel before iv > 4");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSGreaterThan, "%32", "%int_3");
+        run_test(SpvOpSGreaterThan, "%32", "%int_4");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kBefore);
-    EXPECT_EQ(peel_info.second, 1u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel before 3 < iv");
+    SCOPED_TRACE("Peel before 4 < iv");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSLessThan, "%int_3", "%32");
+        run_test(SpvOpSLessThan, "%int_4", "%32");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kBefore);
-    EXPECT_EQ(peel_info.second, 1u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
 
-  // Peel after by a factor of 3.
+  // Peel after by a factor of 2.
   {
-    SCOPED_TRACE("Peel after iv > 14");
+    SCOPED_TRACE("Peel after iv > 16");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSGreaterThan, "%32", "%int_14");
+        run_test(SpvOpSGreaterThan, "%32", "%int_16");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kAfter);
-    EXPECT_EQ(peel_info.second, 3u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel after 14 < iv");
+    SCOPED_TRACE("Peel after 16 < iv");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSLessThan, "%int_14", "%32");
+        run_test(SpvOpSLessThan, "%int_16", "%32");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kAfter);
-    EXPECT_EQ(peel_info.second, 3u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel after iv > 15");
+    SCOPED_TRACE("Peel after iv > 17");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSGreaterThan, "%32", "%int_15");
+        run_test(SpvOpSGreaterThan, "%32", "%int_17");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kAfter);
-    EXPECT_EQ(peel_info.second, 3u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel after 15 < iv");
+    SCOPED_TRACE("Peel after 17 < iv");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSLessThan, "%int_15", "%32");
+        run_test(SpvOpSLessThan, "%int_17", "%32");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kAfter);
-    EXPECT_EQ(peel_info.second, 3u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
 
   // Test LE
@@ -370,89 +366,89 @@ TEST_F(PeelingTest, PeelingPassBasic) {
     EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel after iv <= 17");
+    SCOPED_TRACE("Peel after iv <= 15");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSLessThanEqual, "%32", "%int_17");
+        run_test(SpvOpSLessThanEqual, "%32", "%int_15");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kAfter);
     EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel after 17 => iv");
+    SCOPED_TRACE("Peel after 15 => iv");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSGreaterThanEqual, "%int_17", "%32");
+        run_test(SpvOpSGreaterThanEqual, "%int_15", "%32");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kAfter);
     EXPECT_EQ(peel_info.second, 2u);
   }
 
   // Test GE
-  // Peel before by a factor of 3.
+  // Peel before by a factor of 2.
   {
     SCOPED_TRACE("Peel before iv >= 5");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
         run_test(SpvOpSGreaterThanEqual, "%32", "%int_5");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kBefore);
-    EXPECT_EQ(peel_info.second, 3u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel before 5 >= iv");
+    SCOPED_TRACE("Peel before 35 >= iv");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
         run_test(SpvOpSLessThanEqual, "%int_5", "%32");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kBefore);
-    EXPECT_EQ(peel_info.second, 3u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel before iv >= 6");
+    SCOPED_TRACE("Peel before iv >= 4");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSGreaterThanEqual, "%32", "%int_6");
+        run_test(SpvOpSGreaterThanEqual, "%32", "%int_4");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kBefore);
-    EXPECT_EQ(peel_info.second, 3u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel before 6 <= iv");
+    SCOPED_TRACE("Peel before 4 <= iv");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSLessThanEqual, "%int_6", "%32");
+        run_test(SpvOpSLessThanEqual, "%int_4", "%32");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kBefore);
-    EXPECT_EQ(peel_info.second, 3u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
 
-  // Peel after by a factor of 4.
+  // Peel after by a factor of 2.
   {
-    SCOPED_TRACE("Peel after iv >= 13");
+    SCOPED_TRACE("Peel after iv >= 17");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSGreaterThanEqual, "%32", "%int_13");
+        run_test(SpvOpSGreaterThanEqual, "%32", "%int_17");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kAfter);
-    EXPECT_EQ(peel_info.second, 4u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel after 13 <= iv");
+    SCOPED_TRACE("Peel after 17 <= iv");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSLessThanEqual, "%int_13", "%32");
+        run_test(SpvOpSLessThanEqual, "%int_17", "%32");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kAfter);
-    EXPECT_EQ(peel_info.second, 4u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel after iv >= 12");
+    SCOPED_TRACE("Peel after iv >= 16");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSGreaterThanEqual, "%32", "%int_12");
+        run_test(SpvOpSGreaterThanEqual, "%32", "%int_16");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kAfter);
-    EXPECT_EQ(peel_info.second, 4u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
   {
-    SCOPED_TRACE("Peel after 12 <= iv");
+    SCOPED_TRACE("Peel after 16 <= iv");
 
     std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t> peel_info =
-        run_test(SpvOpSLessThanEqual, "%int_12", "%32");
+        run_test(SpvOpSLessThanEqual, "%int_16", "%32");
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kAfter);
-    EXPECT_EQ(peel_info.second, 4u);
+    EXPECT_EQ(peel_info.second, 2u);
   }
 
   // Test EQ
@@ -722,33 +718,33 @@ TEST_F(PeelingTest, MultiplePeelingPass) {
              {{opt::LoopPeelingPass::PeelDirection::kBefore, 2u}});
   }
 
-  // Peel after by a factor of 3.
+  // Peel after by a factor of 2.
   {
     SCOPED_TRACE("Peel after iv <= 7");
 
     run_test(SpvOpSLessThanEqual, "%38", "%int_7",
-             {{opt::LoopPeelingPass::PeelDirection::kAfter, 3u}});
+             {{opt::LoopPeelingPass::PeelDirection::kAfter, 2u}});
   }
   {
     SCOPED_TRACE("Peel after 7 => iv");
 
     run_test(SpvOpSGreaterThanEqual, "%int_7", "%38",
-             {{opt::LoopPeelingPass::PeelDirection::kAfter, 3u}});
+             {{opt::LoopPeelingPass::PeelDirection::kAfter, 2u}});
   }
 
   // Test GE
-  // Peel before by a factor of 3.
+  // Peel before by a factor of 2.
   {
     SCOPED_TRACE("Peel before iv >= 2");
 
     run_test(SpvOpSGreaterThanEqual, "%38", "%int_2",
-             {{opt::LoopPeelingPass::PeelDirection::kBefore, 3u}});
+             {{opt::LoopPeelingPass::PeelDirection::kBefore, 2u}});
   }
   {
     SCOPED_TRACE("Peel before 2 <= iv");
 
     run_test(SpvOpSLessThanEqual, "%int_2", "%38",
-             {{opt::LoopPeelingPass::PeelDirection::kBefore, 3u}});
+             {{opt::LoopPeelingPass::PeelDirection::kBefore, 2u}});
   }
 
   // Peel after by a factor of 2.
