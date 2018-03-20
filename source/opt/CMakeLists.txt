@@ -84,6 +84,7 @@ add_library(SPIRV-Tools-opt
   simplification_pass.h
   strength_reduction_pass.h
   strip_debug_info_pass.h
+  strip_reflect_info_pass.h
   tree_iterator.h
   type_manager.h
   types.h
@@ -159,6 +160,7 @@ add_library(SPIRV-Tools-opt
   simplification_pass.cpp
   strength_reduction_pass.cpp
   strip_debug_info_pass.cpp
+  strip_reflect_info_pass.cpp
   type_manager.cpp
   types.cpp
   unify_const_pass.cpp

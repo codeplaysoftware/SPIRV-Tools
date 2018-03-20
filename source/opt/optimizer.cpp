@@ -90,8 +90,12 @@ Optimizer& Optimizer::RegisterPass(PassToken&& p) {
 // or enable more copy propagation.
 Optimizer& Optimizer::RegisterLegalizationPasses() {
   return
-      // Make sure uses and definitions are in the same function.
-      RegisterPass(CreateInlineExhaustivePass())
+      // Remove unreachable block so that merge return works.
+      RegisterPass(CreateDeadBranchElimPass())
+          // Merge the returns so we can inline.
+          .RegisterPass(CreateMergeReturnPass())
+          // Make sure uses and definitions are in the same function.
+          .RegisterPass(CreateInlineExhaustivePass())
           // Make private variable function scope
           .RegisterPass(CreateEliminateDeadFunctionsPass())
           .RegisterPass(CreatePrivateToLocalPass())
@@ -218,6 +222,11 @@ Optimizer::PassToken CreateNullPass() {
 Optimizer::PassToken CreateStripDebugInfoPass() {
   return MakeUnique<Optimizer::PassToken::Impl>(
       MakeUnique<opt::StripDebugInfoPass>());
+}
+
+Optimizer::PassToken CreateStripReflectInfoPass() {
+  return MakeUnique<Optimizer::PassToken::Impl>(
+      MakeUnique<opt::StripReflectInfoPass>());
 }
 
 Optimizer::PassToken CreateEliminateDeadFunctionsPass() {
