@@ -134,7 +134,7 @@ TEST_F(PeelingTest, CannotPeel) {
       loop_count = builder.Add32BitSignedIntegerConstant(10);
     }
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin(), loop_count);
+    opt::LoopPeeling peel(&*ld.begin(), loop_count);
     EXPECT_FALSE(peel.CanPeelLoop());
   };
   {
@@ -495,7 +495,7 @@ TEST_F(PeelingTest, SimplePeeling) {
     // Exit condition.
     ir::Instruction* ten_cst = builder.Add32BitSignedIntegerConstant(10);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin(), ten_cst);
+    opt::LoopPeeling peel(&*ld.begin(), ten_cst);
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelBefore(2);
 
@@ -549,7 +549,7 @@ CHECK-NEXT: OpLoopMerge
     // Exit condition.
     ir::Instruction* ten_cst = builder.Add32BitSignedIntegerConstant(10);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin(), ten_cst);
+    opt::LoopPeeling peel(&*ld.begin(), ten_cst);
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelAfter(2);
 
@@ -658,7 +658,7 @@ TEST_F(PeelingTest, PeelingUncountable) {
     ir::Instruction* loop_count = context->get_def_use_mgr()->GetDef(16);
     EXPECT_EQ(loop_count->opcode(), SpvOpLoad);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin(), loop_count);
+    opt::LoopPeeling peel(&*ld.begin(), loop_count);
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelBefore(1);
 
@@ -710,7 +710,7 @@ CHECK-NEXT: OpLoopMerge
     ir::Instruction* loop_count = context->get_def_use_mgr()->GetDef(16);
     EXPECT_EQ(loop_count->opcode(), SpvOpLoad);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin(), loop_count);
+    opt::LoopPeeling peel(&*ld.begin(), loop_count);
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelAfter(1);
 
@@ -811,7 +811,7 @@ TEST_F(PeelingTest, DoWhilePeeling) {
     // Exit condition.
     ir::Instruction* ten_cst = builder.Add32BitUnsignedIntegerConstant(10);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin(), ten_cst);
+    opt::LoopPeeling peel(&*ld.begin(), ten_cst);
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelBefore(2);
 
@@ -861,7 +861,7 @@ CHECK-NEXT: OpLoopMerge
     // Exit condition.
     ir::Instruction* ten_cst = builder.Add32BitUnsignedIntegerConstant(10);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin(), ten_cst);
+    opt::LoopPeeling peel(&*ld.begin(), ten_cst);
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelAfter(2);
 
@@ -983,7 +983,7 @@ TEST_F(PeelingTest, PeelingLoopWithStore) {
     ir::Instruction* loop_count = context->get_def_use_mgr()->GetDef(15);
     EXPECT_EQ(loop_count->opcode(), SpvOpLoad);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin(), loop_count);
+    opt::LoopPeeling peel(&*ld.begin(), loop_count);
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelBefore(1);
 
@@ -1035,7 +1035,7 @@ CHECK-NEXT: OpLoopMerge
     ir::Instruction* loop_count = context->get_def_use_mgr()->GetDef(15);
     EXPECT_EQ(loop_count->opcode(), SpvOpLoad);
 
-    opt::LoopPeeling peel(context.get(), &*ld.begin(), loop_count);
+    opt::LoopPeeling peel(&*ld.begin(), loop_count);
     EXPECT_TRUE(peel.CanPeelLoop());
     peel.PeelAfter(1);
 
