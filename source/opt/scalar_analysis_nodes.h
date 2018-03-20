@@ -170,7 +170,9 @@ class SEConstantNode : public SENode {
 
 // A node represeting a recurrent expression in the code. A recurrent expression
 // is an expression with a loop variant as one of its terms, such as an
-// induction variable.
+// induction variable. The actual value of a recurrent expression is coefficent_
+// * iteration + offset_, hence an induction variable i=0, i++ becomes a
+// recurrent expression with an offset of zero and a coefficient of one.
 class SERecurrentNode : public SENode {
  public:
   SERecurrentNode(opt::ScalarEvolutionAnalysis* parent_analysis,
@@ -185,15 +187,15 @@ class SERecurrentNode : public SENode {
   }
 
   inline void AddOffset(SENode* child) {
-    step_operation_ = child;
+    offset_ = child;
     SENode::AddChild(child);
   }
 
   inline const SENode* GetCoefficient() const { return coefficient_; }
   inline SENode* GetCoefficient() { return coefficient_; }
 
-  inline const SENode* GetOffset() const { return step_operation_; }
-  inline SENode* GetOffset() { return step_operation_; }
+  inline const SENode* GetOffset() const { return offset_; }
+  inline SENode* GetOffset() { return offset_; }
 
   // Return the loop which this recurrent expression is recurring within.
   const ir::Loop* GetLoop() const { return loop_; }
@@ -203,7 +205,7 @@ class SERecurrentNode : public SENode {
 
  private:
   SENode* coefficient_;
-  SENode* step_operation_;
+  SENode* offset_;
   const ir::Loop* loop_;
 };
 
