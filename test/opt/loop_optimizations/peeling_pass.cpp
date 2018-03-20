@@ -565,6 +565,16 @@ TEST_F(PeelingTest, PeelingPassBasic) {
     EXPECT_EQ(peel_info.first, opt::LoopPeelingPass::PeelDirection::kAfter);
     EXPECT_EQ(peel_info.second, 1u);
   }
+
+  // No peel.
+  {
+    SCOPED_TRACE("No Peel: 20 => iv");
+
+    auto stats = RunPeelingTest(text_head, text_tail, SpvOpSLessThanEqual,
+                                "%22", "%int_20", "%32", 1);
+
+    EXPECT_EQ(stats.peeled_loops_.size(), 0u);
+  }
 }
 
 /*
@@ -985,6 +995,88 @@ TEST_F(PeelingTest, PeelingNestedPass) {
 
     // Expect no peeling and 2 loops at the end.
     run_test(SpvOpSLessThan, "%46", "%42", {}, 2);
+  }
+}
+/*
+Test are derivation of the following generated test from the following GLSL +
+--eliminate-local-multi-store
+
+#version 330 core
+void main() {
+  int a = 0;
+  for (int i = 0, j = 0; i < 10; j++, i++) {
+    if (i < j) {
+      a += 2;
+    }
+  }
+}
+*/
+TEST_F(PeelingTest, PeelingNoChanges) {
+  const std::string text = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %main "main"
+               OpExecutionMode %main OriginLowerLeft
+               OpSource GLSL 330
+               OpName %main "main"
+               OpName %a "a"
+               OpName %i "i"
+               OpName %j "j"
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+        %int = OpTypeInt 32 1
+%_ptr_Function_int = OpTypePointer Function %int
+      %int_0 = OpConstant %int 0
+     %int_10 = OpConstant %int 10
+       %bool = OpTypeBool
+      %int_2 = OpConstant %int 2
+      %int_1 = OpConstant %int 1
+       %main = OpFunction %void None %3
+          %5 = OpLabel
+          %a = OpVariable %_ptr_Function_int Function
+          %i = OpVariable %_ptr_Function_int Function
+          %j = OpVariable %_ptr_Function_int Function
+               OpStore %a %int_0
+               OpStore %i %int_0
+               OpStore %j %int_0
+               OpBranch %12
+         %12 = OpLabel
+         %34 = OpPhi %int %int_0 %5 %37 %15
+         %35 = OpPhi %int %int_0 %5 %33 %15
+         %36 = OpPhi %int %int_0 %5 %31 %15
+               OpLoopMerge %14 %15 None
+               OpBranch %16
+         %16 = OpLabel
+         %20 = OpSLessThan %bool %35 %int_10
+               OpBranchConditional %20 %13 %14
+         %13 = OpLabel
+         %23 = OpSLessThan %bool %35 %36
+               OpSelectionMerge %25 None
+               OpBranchConditional %23 %24 %25
+         %24 = OpLabel
+         %28 = OpIAdd %int %34 %int_2
+               OpStore %a %28
+               OpBranch %25
+         %25 = OpLabel
+         %37 = OpPhi %int %34 %13 %28 %24
+               OpBranch %15
+         %15 = OpLabel
+         %31 = OpIAdd %int %36 %int_1
+               OpStore %j %31
+         %33 = OpIAdd %int %35 %int_1
+               OpStore %i %33
+               OpBranch %12
+         %14 = OpLabel
+               OpReturn
+               OpFunctionEnd
+  )";
+
+  {
+    auto result =
+        SinglePassRunAndDisassemble<opt::LoopPeelingPass>(text, true, false);
+
+    EXPECT_EQ(opt::Pass::Status::SuccessWithoutChange, std::get<1>(result));
   }
 }
 
