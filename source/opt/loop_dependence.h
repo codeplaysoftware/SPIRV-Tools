@@ -29,7 +29,8 @@
 namespace spvtools {
 namespace opt {
 
-struct DistanceEntry {
+class DistanceEntry {
+ public:
   enum Directions {
     NONE = 0,
     LT = 1,
@@ -55,13 +56,31 @@ struct DistanceEntry {
         peel_first(false),
         peel_last(false),
         distance(0) {}
+  bool operator==(const DistanceEntry& rhs) const {
+    return direction == rhs.direction && peel_first == rhs.peel_first &&
+           peel_last == rhs.peel_last && distance == rhs.distance;
+  }
+  bool operator!=(const DistanceEntry& rhs) const { return !(*this == rhs); }
 };
 
-struct DistanceVector {
+class DistanceVector {
  public:
   DistanceVector(size_t size) : entries(size, DistanceEntry{}) {}
   DistanceVector(std::vector<DistanceEntry> entries_) : entries(entries_) {}
   std::vector<DistanceEntry> entries;
+
+  bool operator==(const DistanceVector& rhs) const {
+    if (entries.size() != rhs.entries.size()) {
+      return false;
+    }
+    for (size_t i = 0; i < entries.size(); ++i) {
+      if (entries[i] != rhs.entries[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+  bool operator!=(const DistanceVector& rhs) const { return !(*this == rhs); }
 };
 
 class LoopDependenceAnalysis {
@@ -161,11 +180,9 @@ class LoopDependenceAnalysis {
       std::pair<SENode*, SENode*>* subscript_pair,
       DistanceVector* distance_vector);
 
-
   // Returns the DistanceEntry matching |loop|.
-  DistanceEntry* GetDistanceEntryForLoop(
-      const ir::Loop* loop,
-      DistanceVector* distance_vector);
+  DistanceEntry* GetDistanceEntryForLoop(const ir::Loop* loop,
+                                         DistanceVector* distance_vector);
 
   // Returns a vector of Instruction* which form the subscripts of the array
   // access defined by the access chain |instruction|.
@@ -255,6 +272,11 @@ class LoopDependenceAnalysis {
   // from it to get the constant term added to the induction.
   // Returns the resuting constant term, or nullptr if it could not be produced.
   SENode* GetConstantTerm(const ir::Loop* loop, SERecurrentNode* induction);
+
+  // Converts |value| to a std::string and returns the result.
+  // This is required because Android does not compile std::to_string.
+  template <typename valueT>
+  std::string ToString(valueT value);
 
   // Prints |debug_msg| and "\n" to the ostream pointed to by |debug_stream_|.
   // Won't print anything if |debug_stream_| is nullptr.
