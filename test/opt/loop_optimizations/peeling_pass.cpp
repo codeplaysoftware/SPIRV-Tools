@@ -75,13 +75,6 @@ class PeelingTest : public PassTest<::testing::Test> {
     ir::Function& f = *context()->module()->begin();
     ir::LoopDescriptor& ld = *context()->GetLoopDescriptor(&f);
     EXPECT_EQ(ld.NumLoops(), nb_of_loops);
-    if (ld.NumLoops() != nb_of_loops) {
-      std::vector<uint32_t> binary;
-      context()->module()->ToBinary(&binary, true);
-      std::string optimized_asm;
-      tools_.Disassemble(binary, &optimized_asm, disassemble_options_);
-      std::cerr << optimized_asm << "\n";
-    }
 
     return stats;
   }
