@@ -415,13 +415,6 @@ SENode* LoopDependenceAnalysis::GetConstantTerm(const ir::Loop* loop,
   return constant_term;
 }
 
-template <typename valueT>
-std::string LoopDependenceAnalysis::ToString(valueT value) {
-  std::ostringstream string_stream;
-  string_stream << value;
-  return string_stream.str();
-}
-
 void LoopDependenceAnalysis::PrintDebug(std::string debug_msg) {
   if (debug_stream_) {
     (*debug_stream_) << debug_msg << "\n";

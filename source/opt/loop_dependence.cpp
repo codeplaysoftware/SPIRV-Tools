@@ -773,7 +773,7 @@ LoopDependenceAnalysis::PartitionSubscripts(
           k = j;
         } else {
           // Add partitions[j] to partitions[k] and discard partitions[j]
-          partitions[k].insert(current_partition.begin(),
+          partitions[static_cast<size_t>(k)].insert(current_partition.begin(),
                                current_partition.end());
           current_partition.clear();
         }

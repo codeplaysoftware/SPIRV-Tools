@@ -261,7 +261,11 @@ class LoopDependenceAnalysis {
   // Converts |value| to a std::string and returns the result.
   // This is required because Android does not compile std::to_string.
   template <typename valueT>
-  std::string ToString(valueT value);
+  std::string ToString(valueT value) {
+    std::ostringstream string_stream;
+    string_stream << value;
+    return string_stream.str();
+  }
 
   // Prints |debug_msg| and "\n" to the ostream pointed to by |debug_stream_|.
   // Won't print anything if |debug_stream_| is nullptr.
