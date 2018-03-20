@@ -74,17 +74,35 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     // auto subscript = GetSubscriptForInstruction(source_subscript);
     auto subscript_pair = std::make_pair(source_node, destination_node);
 
+    const ir::Loop* loop = GetLoopForSubscriptPair(&subscript_pair);
+    if (loop) {
+      if (!IsSupportedLoop(loop)) {
+        PrintDebug(
+            "GetDependence found an unsupported loop form. Assuming <=> for "
+            "loop.");
+        DistanceEntry* distance_entry =
+            GetDistanceEntryForSubscriptPair(&subscript_pair, distance_vector);
+        if (distance_entry) {
+          distance_entry->direction = DistanceEntry::Directions::ALL;
+        }
+        continue;
+      }
+    }
+
     // If either node is simplified to a CanNotCompute we can't perform any
     // analysis so must assume <=> dependence and return.
     if (source_node->GetType() == SENode::CanNotCompute ||
         destination_node->GetType() == SENode::CanNotCompute) {
       // Record the <=> dependence if we can get a DistanceEntry
+      PrintDebug(
+          "GetDependence found source_node || destination_node as "
+          "CanNotCompute. Abandoning evaluation for this subscript.");
       DistanceEntry* distance_entry =
           GetDistanceEntryForSubscriptPair(&subscript_pair, distance_vector);
       if (distance_entry) {
         distance_entry->direction = DistanceEntry::Directions::ALL;
       }
-      break;
+      continue;
     }
 
     // auto subscript = GetSubscriptForInstruction(source_subscript);
@@ -774,7 +792,7 @@ LoopDependenceAnalysis::PartitionSubscripts(
         } else {
           // Add partitions[j] to partitions[k] and discard partitions[j]
           partitions[static_cast<size_t>(k)].insert(current_partition.begin(),
-                               current_partition.end());
+                                                    current_partition.end());
           current_partition.clear();
         }
       }

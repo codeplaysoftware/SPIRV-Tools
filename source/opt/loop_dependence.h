@@ -172,6 +172,17 @@ class LoopDependenceAnalysis {
       std::pair<SENode*, SENode*>* subscript_pair,
       DistanceVector* distance_vector);
 
+  // Returns true if each loop in |loops| is in a form supported by this
+  // analysis.
+  // A loop is supported if it has a single induction variable and that
+  // induction variable has a step of +1 or -1 per loop iteration.
+  bool CheckSupportedLoops(std::vector<const ir::Loop*> loops);
+
+  // Returns true if |loop| is in a form support by this analysis.
+  // A loop is supported if it has a single induction variable and that
+  // induction variable has a step of +1 or -1 per loop iteration.
+  bool IsSupportedLoop(const ir::Loop* loop);
+
  private:
   ir::IRContext* context_;
 
