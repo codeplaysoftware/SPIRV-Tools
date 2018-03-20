@@ -113,7 +113,12 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
       if (GCDMIVTest(source_node, destination_node)) {
         // TODO: The group was independent, set the appearing loops to
         // TODO: Directions::NONE
-        // distance_entry->direction = DistanceEntry::Directions::NONE;
+        auto current_loops = CollectLoops(source_node, destination_node);
+
+        for (auto loop : current_loops) {
+          auto distance_entry = GetDistanceEntryForLoop(loop, distance_vector);
+          distance_entry->direction = DistanceEntry::Directions::NONE;
+        }
         return true;
       }
     }

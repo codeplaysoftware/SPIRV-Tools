@@ -49,11 +49,18 @@ struct DistanceEntry {
         peel_first(false),
         peel_last(false),
         distance(0) {}
+
+  DistanceEntry(Directions direction_)
+      : direction(direction_),
+        peel_first(false),
+        peel_last(false),
+        distance(0) {}
 };
 
 struct DistanceVector {
  public:
   DistanceVector(size_t size) : entries(size, DistanceEntry{}) {}
+  DistanceVector(std::vector<DistanceEntry> entries_) : entries(entries_) {}
   std::vector<DistanceEntry> entries;
 };
 
@@ -115,6 +122,8 @@ class LoopDependenceAnalysis {
   std::set<const ir::Loop*> CollectLoops(
       const std::vector<SERecurrentNode*>& nodes);
 
+  std::set<const ir::Loop*> CollectLoops(SENode* source, SENode* destination);
+
   // Returns true if |distance| is provably within the loop bounds.
   // This method is able to handle some symbolic cases which IsWithinBounds
   // can't handle.
@@ -150,6 +159,12 @@ class LoopDependenceAnalysis {
   // |subscript_pair| must be an SIV pair.
   DistanceEntry* GetDistanceEntryForSubscriptPair(
       std::pair<SENode*, SENode*>* subscript_pair,
+      DistanceVector* distance_vector);
+
+
+  // Returns the DistanceEntry matching |loop|.
+  DistanceEntry* GetDistanceEntryForLoop(
+      const ir::Loop* loop,
       DistanceVector* distance_vector);
 
  private:
