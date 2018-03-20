@@ -124,8 +124,8 @@ SENode* ScalarEvolutionAnalysis::CreateAddNode(SENode* operand_1,
 
 SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
     const ir::Instruction* inst) {
-  if (instruction_map_.find(inst) != instruction_map_.end())
-    return instruction_map_[inst];
+  if (recurrent_node_map_.find(inst) != recurrent_node_map_.end())
+    return recurrent_node_map_[inst];
 
   SENode* output = nullptr;
   switch (inst->opcode()) {
@@ -149,10 +149,10 @@ SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
     }
     default: {
       output = CreateValueUnknownNode(inst);
-      instruction_map_[inst] = output;
       break;
     }
   }
+
   return output;
 }
 
@@ -239,7 +239,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     return CreateCantComputeNode();
 
   std::unique_ptr<SERecurrentNode> phi_node{new SERecurrentNode(this, loop)};
-  instruction_map_[phi] = phi_node.get();
+  recurrent_node_map_[phi] = phi_node.get();
 
   for (uint32_t i = 0; i < phi->NumInOperands(); i += 2) {
     uint32_t value_id = phi->GetSingleWordInOperand(i);
@@ -285,9 +285,9 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     }
   }
 
-  instruction_map_[phi] = GetCachedOrAdd(std::move(phi_node));
+  recurrent_node_map_[phi] = GetCachedOrAdd(std::move(phi_node));
 
-  return instruction_map_[phi];
+  return recurrent_node_map_[phi];
 }
 
 SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode(
@@ -361,8 +361,28 @@ bool SENode::operator==(const SENode& other) const {
 
   if (other.GetChildren().size() != children_.size()) return false;
 
-  for (size_t index = 0; index < children_.size(); ++index) {
-    if (other.GetChildren()[index] != children_[index]) return false;
+  const SERecurrentNode* this_as_recurrent = AsSERecurrentNode();
+
+  // Check the children are the same, for SERecurrentNodes we need to check the
+  // offset and coefficient manually as the child vector is sorted by ids so the
+  // offset/coefficient information is lost.
+  if (!this_as_recurrent) {
+    for (size_t index = 0; index < children_.size(); ++index) {
+      if (other.GetChildren()[index] != children_[index]) return false;
+    }
+  } else {
+    const SERecurrentNode* other_as_recurrent = other.AsSERecurrentNode();
+
+    // We've already checked the types are the same, this should not fail if
+    // this->AsSERecurrentNode() succeeded.
+    assert(other_as_recurrent);
+
+    if (this_as_recurrent->GetCoefficient() !=
+        other_as_recurrent->GetCoefficient())
+      return false;
+
+    if (this_as_recurrent->GetOffset() != other_as_recurrent->GetOffset())
+      return false;
   }
 
   // If we're dealing with a value unknown node check both nodes were created by
@@ -422,17 +442,26 @@ size_t SENodeHash::operator()(const SENode* node) const {
   if (node->GetType() == SENode::Constant)
     PushToString(node->AsSEConstantNode()->FoldToSingleValue(), &hash_string);
 
+  const SERecurrentNode* recurrent = node->AsSERecurrentNode();
+
   // If we're dealing with a recurrent expression hash the loop as well so that
   // nested inductions like i=0,i++ and j=0,j++ correspond to different nodes.
-  if (node->GetType() == SENode::RecurrentAddExpr) {
-    PushToString(
-        reinterpret_cast<uintptr_t>(node->AsSERecurrentNode()->GetLoop()),
-        &hash_string);
+  if (recurrent) {
+    PushToString(reinterpret_cast<uintptr_t>(recurrent->GetLoop()),
+                 &hash_string);
+
+    // Recurrent expressions can't be hashed using the normal method as the
+    // order of coefficient and offset matters to the hash.
+    PushToString(reinterpret_cast<uintptr_t>(recurrent->GetCoefficient()),
+                 &hash_string);
+    PushToString(reinterpret_cast<uintptr_t>(recurrent->GetOffset()),
+                 &hash_string);
+
+    return std::hash<std::u32string>{}(hash_string);
   }
 
   // Hash the result id of the original instruction which created this node if
-  // it is a value unknown
-  // node.
+  // it is a value unknown node.
   if (node->GetType() == SENode::ValueUnknown) {
     PushToString(node->AsSEValueUnknown()->ResultId(), &hash_string);
   }

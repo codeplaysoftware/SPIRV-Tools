@@ -105,10 +105,11 @@ class ScalarEvolutionAnalysis {
 
   ir::IRContext* context_;
 
-  // A map of instructions to SENodes. Not every SENode comes from an
-  // instruction however this is used when nodes are created through the analyze
-  // instruction methods.
-  std::map<const ir::Instruction*, SENode*> instruction_map_;
+  // A map of instructions to SENodes. This is used to track recurrent
+  // expressions as they are added when analyzing instructions. Recurrent
+  // expressions come from phi nodes which by nature can include recursion so we
+  // check if nodes have already been built when analyzing instructions.
+  std::map<const ir::Instruction*, SENode*> recurrent_node_map_;
 
   // Helper functor to allow two unique_ptr to nodes to be compare. Only needed
   // for the unordered_set implementation.
