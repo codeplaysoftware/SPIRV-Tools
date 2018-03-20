@@ -258,6 +258,11 @@ class LoopDependenceAnalysis {
   // Returns the resuting constant term, or nullptr if it could not be produced.
   SENode* GetConstantTerm(const ir::Loop* loop, SERecurrentNode* induction);
 
+  // Converts |value| to a std::string and returns the result.
+  // This is required because Android does not compile std::to_string.
+  template <typename valueT>
+  std::string ToString(valueT value);
+
   // Prints |debug_msg| and "\n" to the ostream pointed to by |debug_stream_|.
   // Won't print anything if |debug_stream_| is nullptr.
   void PrintDebug(std::string debug_msg);

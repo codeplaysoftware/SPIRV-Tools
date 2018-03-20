@@ -182,7 +182,7 @@ bool LoopDependenceAnalysis::IsProvablyOutwithLoopBounds(const ir::Loop* loop,
     PrintDebug(
         "IsProvablyOutwithLoopBounds found distance - bounds as a "
         "SEConstantNode with value " +
-        std::to_string(distance_minus_bounds->FoldToSingleValue()));
+        ToString(distance_minus_bounds->FoldToSingleValue()));
     // If distance - bounds > 0 we prove the distance is outwith the loop
     // bounds.
     if (distance_minus_bounds->FoldToSingleValue() > 0) {
@@ -413,6 +413,13 @@ SENode* LoopDependenceAnalysis::GetConstantTerm(const ir::Loop* loop,
   SENode* constant_term = scalar_evolution_.SimplifyExpression(
       scalar_evolution_.CreateSubtraction(offset, lower_bound));
   return constant_term;
+}
+
+template <typename valueT>
+std::string LoopDependenceAnalysis::ToString(valueT value) {
+  std::ostringstream string_stream;
+  string_stream << value;
+  return string_stream.str();
 }
 
 void LoopDependenceAnalysis::PrintDebug(std::string debug_msg) {
