@@ -280,6 +280,10 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     ir::Instruction* value_inst = def_use->GetDef(value_id);
     SENode* value_node = AnalyzeInstruction(value_inst);
 
+    // Both operands must be loop invariant.
+    if (!IsLoopInvariant(loop, value_node)) {
+      return CreateCantComputeNode();
+    }
     if (!loop->IsInsideLoop(incoming_label_id)) {
       phi_node->AddOffset(value_node);
     } else if (incoming_label_id == loop->GetLatchBlock()->id()) {
@@ -343,16 +347,23 @@ SENode* ScalarEvolutionAnalysis::GetCachedOrAdd(
 
 bool ScalarEvolutionAnalysis::IsLoopInvariant(const ir::Loop* loop,
                                               const SENode* node) const {
-  return std::none_of(
-      node->graph_cbegin(), node->graph_cend(), [loop](const SENode& expr) {
-        if (const SERecurrentNode* rec = expr.AsSERecurrentNode()) {
-          return loop->IsInsideLoop(rec->GetLoop()->GetHeaderBlock());
-        }
-        if (const SEValueUnknown* unknown = expr.AsSEValueUnknown()) {
-          return loop->IsInsideLoop(unknown->UniqueId());
-        }
+  for (auto itr = node->graph_cbegin(); itr != node->graph_cend(); ++itr) {
+    if (const SERecurrentNode* rec = itr->AsSERecurrentNode()) {
+      const ir::BasicBlock* header = rec->GetLoop()->GetHeaderBlock();
+
+      // If the header block is not the same as |loop| header block or is not
+      // inside the loop then assume invariance.
+      if (header != loop->GetHeaderBlock() && !loop->IsInsideLoop(header))
         return false;
-      });
+    }
+    if (const SEValueUnknown* unknown = itr->AsSEValueUnknown()) {
+      // If the instruction is inside the loop we conservatively assume it is
+      // loop variant.
+      if (loop->IsInsideLoop(unknown->UniqueId())) return false;
+    }
+  }
+
+  return true;
 }
 
 std::string SENode::AsString() const {
