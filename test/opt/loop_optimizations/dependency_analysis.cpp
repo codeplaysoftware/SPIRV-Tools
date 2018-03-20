@@ -2229,8 +2229,7 @@ void CheckDependenceAndDirection(
   opt::DistanceVector dv_entry(2);
   EXPECT_EQ(expected_dependence,
             analysis->GetDependence(source, destination, &dv_entry));
-  // TODO: Enable after `operator==` is added
-  // EXPECT_EQ(expected_distance, dv_entry);
+  EXPECT_EQ(expected_distance, dv_entry);
 }
 
 /*
