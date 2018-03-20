@@ -280,7 +280,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     ir::Instruction* value_inst = def_use->GetDef(value_id);
     SENode* value_node = AnalyzeInstruction(value_inst);
 
-    if (incoming_label_id == loop->GetPreHeaderBlock()->id()) {
+    if (!loop->IsInsideLoop(incoming_label_id)) {
       phi_node->AddOffset(value_node);
     } else if (incoming_label_id == loop->GetLatchBlock()->id()) {
       // Assumed to be in the form of step + phi.
@@ -697,6 +697,7 @@ class IsGreaterThanZero {
         return Signedness::kNegative;
       }
     }
+    return Signedness::kPositiveOrNegative;
   }
 
   Signedness Visit(const SECantCompute*) {

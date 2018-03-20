@@ -373,7 +373,7 @@ ir::BasicBlock* LoopPeeling::CreateBlockBefore(ir::BasicBlock* bb) {
                      ir::IRContext::kAnalysisDefUse |
                          ir::IRContext::kAnalysisInstrToBlockMapping)
       .AddBranch(bb->id());
-  cfg.AddEdge(new_bb->id(), bb->id());
+  cfg.RegisterBlock(new_bb.get());
 
   // Add the basic block to the function.
   ir::Function::iterator it = loop_utils_.GetFunction()->FindBlock(bb->id());
@@ -602,6 +602,10 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
         return nullptr;
       }
 
+      if (!loop_to_peel->IsLCSSA()) {
+        LoopUtils(context(), loop_to_peel).MakeLoopClosedSSA();
+      }
+
       bool peeled_loop;
       ir::Loop* still_peelable_loop;
       std::tie(peeled_loop, still_peelable_loop) = ProcessLoop(loop_to_peel);
@@ -818,6 +822,19 @@ LoopPeelingPass::LoopPeelingInfo::GetPeelingInfo(ir::BasicBlock* bb) const {
 
   if ((is_lhs_rec && is_rhs_rec) || (!is_lhs_rec && !is_rhs_rec)) {
     return GetNoneDirection();
+  }
+
+  if (is_lhs_rec) {
+    if (!lhs->AsSERecurrentNode() ||
+        lhs->AsSERecurrentNode()->GetLoop() != loop_) {
+      return GetNoneDirection();
+    }
+  }
+  if (is_rhs_rec) {
+    if (!rhs->AsSERecurrentNode() ||
+        rhs->AsSERecurrentNode()->GetLoop() != loop_) {
+      return GetNoneDirection();
+    }
   }
 
   // If the op code is ==, then we try a peel before or after.

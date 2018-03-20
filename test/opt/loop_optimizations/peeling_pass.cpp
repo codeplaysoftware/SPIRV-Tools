@@ -26,10 +26,10 @@ using namespace spvtools;
 class PeelingTest : public PassTest<::testing::Test> {
  public:
   // Generic routine to run the loop peeling pass and check
-  opt::LoopPeelingPass::LoopPeelingStats RunPeelingTest(
+  opt::LoopPeelingPass::LoopPeelingStats AssembleAndRunPeelingTest(
       const std::string& text_head, const std::string& text_tail, SpvOp opcode,
-      const std::string& res_id, const std::string& op1, const std::string& op2,
-      size_t nb_of_loops) {
+      const std::string& res_id, const std::string& op1,
+      const std::string& op2) {
     std::string opcode_str;
     switch (opcode) {
       case SpvOpSLessThan:
@@ -61,11 +61,59 @@ class PeelingTest : public PassTest<::testing::Test> {
     SinglePassRunAndDisassemble<opt::LoopPeelingPass>(
         text_head + test_cond + text_tail, true, true, &stats);
 
+    return stats;
+  }
+
+  // Generic routine to run the loop peeling pass and check
+  opt::LoopPeelingPass::LoopPeelingStats RunPeelingTest(
+      const std::string& text_head, const std::string& text_tail, SpvOp opcode,
+      const std::string& res_id, const std::string& op1, const std::string& op2,
+      size_t nb_of_loops) {
+    opt::LoopPeelingPass::LoopPeelingStats stats = AssembleAndRunPeelingTest(
+        text_head, text_tail, opcode, res_id, op1, op2);
+
     ir::Function& f = *context()->module()->begin();
     ir::LoopDescriptor& ld = *context()->GetLoopDescriptor(&f);
     EXPECT_EQ(ld.NumLoops(), nb_of_loops);
+    if (ld.NumLoops() != nb_of_loops) {
+      std::vector<uint32_t> binary;
+      context()->module()->ToBinary(&binary, true);
+      std::string optimized_asm;
+      tools_.Disassemble(binary, &optimized_asm, disassemble_options_);
+      std::cerr << optimized_asm << "\n";
+    }
 
     return stats;
+  }
+
+  using PeelTraceType =
+      std::vector<std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t>>;
+
+  void BuildAndCheckTrace(const std::string& text_head,
+                          const std::string& text_tail, SpvOp opcode,
+                          const std::string& res_id, const std::string& op1,
+                          const std::string& op2,
+                          const PeelTraceType& expected_peel_trace,
+                          size_t expected_nb_of_loops) {
+    auto stats = RunPeelingTest(text_head, text_tail, opcode, res_id, op1, op2,
+                                expected_nb_of_loops);
+
+    EXPECT_EQ(stats.peeled_loops_.size(), expected_peel_trace.size());
+    if (stats.peeled_loops_.size() != expected_peel_trace.size()) {
+      return;
+    }
+
+    PeelTraceType::const_iterator expected_trace_it =
+        expected_peel_trace.begin();
+    decltype(stats.peeled_loops_)::const_iterator stats_it =
+        stats.peeled_loops_.begin();
+
+    while (expected_trace_it != expected_peel_trace.end()) {
+      EXPECT_EQ(expected_trace_it->first, std::get<1>(*stats_it));
+      EXPECT_EQ(expected_trace_it->second, std::get<2>(*stats_it));
+      ++expected_trace_it;
+      ++stats_it;
+    }
   }
 };
 
@@ -618,31 +666,12 @@ TEST_F(PeelingTest, MultiplePeelingPass) {
                OpFunctionEnd
   )";
 
-  using PeelTraceType =
-      std::vector<std::pair<opt::LoopPeelingPass::PeelDirection, uint32_t>>;
   auto run_test = [&text_head, &text_tail, this](
                       SpvOp opcode, const std::string& op1,
                       const std::string& op2,
                       const PeelTraceType& expected_peel_trace) {
-    auto stats = RunPeelingTest(text_head, text_tail, opcode, "%22", op1, op2,
-                                expected_peel_trace.size() + 1);
-
-    EXPECT_EQ(stats.peeled_loops_.size(), expected_peel_trace.size());
-    if (stats.peeled_loops_.size() != expected_peel_trace.size()) {
-      return;
-    }
-
-    PeelTraceType::const_iterator expected_trace_it =
-        expected_peel_trace.begin();
-    decltype(stats.peeled_loops_)::const_iterator stats_it =
-        stats.peeled_loops_.begin();
-
-    while (expected_trace_it != expected_peel_trace.end()) {
-      EXPECT_EQ(expected_trace_it->first, std::get<1>(*stats_it));
-      EXPECT_EQ(expected_trace_it->second, std::get<2>(*stats_it));
-      ++expected_trace_it;
-      ++stats_it;
-    }
+    BuildAndCheckTrace(text_head, text_tail, opcode, "%22", op1, op2,
+                       expected_peel_trace, expected_peel_trace.size() + 1);
   };
 
   // Test LT
@@ -816,6 +845,153 @@ TEST_F(PeelingTest, MultiplePeelingPass) {
 
     run_test(SpvOpINotEqual, "%int_9", "%38",
              {{opt::LoopPeelingPass::PeelDirection::kBefore, 1u}});
+  }
+}
+
+/*
+Test are derivation of the following generated test from the following GLSL +
+--eliminate-local-multi-store
+
+#version 330 core
+void main() {
+  int a = 0;
+  for (int i = 0; i < 10; i++) {
+    for (int j = 0; j < 10; j++) {
+      if (i < 3) {
+        a += 2;
+      }
+    }
+  }
+}
+*/
+TEST_F(PeelingTest, PeelingNestedPass) {
+  const std::string text_head = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %main "main"
+               OpExecutionMode %main OriginLowerLeft
+               OpSource GLSL 330
+               OpName %main "main"
+               OpName %a "a"
+               OpName %i "i"
+               OpName %j "j"
+       %void = OpTypeVoid
+          %3 = OpTypeFunction %void
+        %int = OpTypeInt 32 1
+%_ptr_Function_int = OpTypePointer Function %int
+      %int_0 = OpConstant %int 0
+     %int_10 = OpConstant %int 10
+       %bool = OpTypeBool
+      %int_7 = OpConstant %int 7
+      %int_3 = OpConstant %int 3
+      %int_2 = OpConstant %int 2
+      %int_1 = OpConstant %int 1
+         %43 = OpUndef %int
+       %main = OpFunction %void None %3
+          %5 = OpLabel
+          %a = OpVariable %_ptr_Function_int Function
+          %i = OpVariable %_ptr_Function_int Function
+          %j = OpVariable %_ptr_Function_int Function
+               OpStore %a %int_0
+               OpStore %i %int_0
+               OpBranch %11
+         %11 = OpLabel
+         %41 = OpPhi %int %int_0 %5 %45 %14
+         %42 = OpPhi %int %int_0 %5 %40 %14
+         %44 = OpPhi %int %43 %5 %46 %14
+               OpLoopMerge %13 %14 None
+               OpBranch %15
+         %15 = OpLabel
+         %19 = OpSLessThan %bool %42 %int_10
+               OpBranchConditional %19 %12 %13
+         %12 = OpLabel
+               OpStore %j %int_0
+               OpBranch %21
+         %21 = OpLabel
+         %45 = OpPhi %int %41 %12 %47 %24
+         %46 = OpPhi %int %int_0 %12 %38 %24
+               OpLoopMerge %23 %24 None
+               OpBranch %25
+         %25 = OpLabel
+         %27 = OpSLessThan %bool %46 %int_10
+               OpBranchConditional %27 %22 %23
+         %22 = OpLabel
+  )";
+
+  const std::string text_tail = R"(
+               OpSelectionMerge %32 None
+               OpBranchConditional %30 %31 %32
+         %31 = OpLabel
+         %35 = OpIAdd %int %45 %int_2
+               OpStore %a %35
+               OpBranch %32
+         %32 = OpLabel
+         %47 = OpPhi %int %45 %22 %35 %31
+               OpBranch %24
+         %24 = OpLabel
+         %38 = OpIAdd %int %46 %int_1
+               OpStore %j %38
+               OpBranch %21
+         %23 = OpLabel
+               OpBranch %14
+         %14 = OpLabel
+         %40 = OpIAdd %int %42 %int_1
+               OpStore %i %40
+               OpBranch %11
+         %13 = OpLabel
+               OpReturn
+               OpFunctionEnd
+  )";
+
+  auto run_test =
+      [&text_head, &text_tail, this](
+          SpvOp opcode, const std::string& op1, const std::string& op2,
+          const PeelTraceType& expected_peel_trace, size_t nb_of_loops) {
+        BuildAndCheckTrace(text_head, text_tail, opcode, "%30", op1, op2,
+                           expected_peel_trace, nb_of_loops);
+      };
+
+  // Peeling outer before by a factor of 3.
+  {
+    SCOPED_TRACE("Peel before iv_i < 3");
+
+    // Expect peel before by a factor of 3 and 4 loops at the end.
+    run_test(SpvOpSLessThan, "%42", "%int_3",
+             {{opt::LoopPeelingPass::PeelDirection::kBefore, 3u}}, 4);
+  }
+  // Peeling outer loop after by a factor of 3.
+  {
+    SCOPED_TRACE("Peel after iv_i < 7");
+
+    // Expect peel after by a factor of 3 and 4 loops at the end.
+    run_test(SpvOpSLessThan, "%42", "%int_7",
+             {{opt::LoopPeelingPass::PeelDirection::kAfter, 3u}}, 4);
+  }
+
+  // Peeling inner loop before by a factor of 3.
+  {
+    SCOPED_TRACE("Peel before iv_j < 3");
+
+    // Expect peel before by a factor of 3 and 3 loops at the end.
+    run_test(SpvOpSLessThan, "%46", "%int_3",
+             {{opt::LoopPeelingPass::PeelDirection::kBefore, 3u}}, 3);
+  }
+  // Peeling inner loop after by a factor of 3.
+  {
+    SCOPED_TRACE("Peel after iv_j < 7");
+
+    // Expect peel after by a factor of 3 and 3 loops at the end.
+    run_test(SpvOpSLessThan, "%46", "%int_7",
+             {{opt::LoopPeelingPass::PeelDirection::kAfter, 3u}}, 3);
+  }
+
+  // Not unworkable condition.
+  {
+    SCOPED_TRACE("No peel");
+
+    // Expect no peeling and 2 loops at the end.
+    run_test(SpvOpSLessThan, "%46", "%42", {}, 2);
   }
 }
 

@@ -476,7 +476,6 @@ void LoopUtils::MakeLoopClosedSSA() {
   }
 
   context_->InvalidateAnalysesExceptFor(
-      ir::IRContext::Analysis::kAnalysisDefUse |
       ir::IRContext::Analysis::kAnalysisCFG |
       ir::IRContext::Analysis::kAnalysisDominatorAnalysis |
       ir::IRContext::Analysis::kAnalysisLoopAnalysis);
@@ -488,7 +487,6 @@ ir::Loop* LoopUtils::CloneLoop(
   analysis::DefUseManager* def_use_mgr = context_->get_def_use_mgr();
 
   std::unique_ptr<ir::Loop> new_loop = MakeUnique<ir::Loop>(context_);
-  if (loop_->HasParent()) new_loop->SetParent(loop_->GetParent());
 
   ir::CFG& cfg = *context_->cfg();
 
