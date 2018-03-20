@@ -29,7 +29,8 @@
 namespace spvtools {
 namespace opt {
 
-struct DistanceEntry {
+class DistanceEntry {
+ public:
   enum Directions {
     NONE = 0,
     LT = 1,
@@ -49,12 +50,31 @@ struct DistanceEntry {
         peel_first(false),
         peel_last(false),
         distance(0) {}
+
+  bool operator==(const DistanceEntry& rhs) {
+    return direction == rhs.direction && peel_first == rhs.peel_first &&
+           peel_last == rhs.peel_last && distance == rhs.distance;
+  }
+  bool operator!=(const DistanceEntry& rhs) { return !(*this == rhs); }
 };
 
-struct DistanceVector {
+class DistanceVector {
  public:
   DistanceVector(size_t size) : entries(size, DistanceEntry{}) {}
   std::vector<DistanceEntry> entries;
+
+  bool operator==(const DistanceVector& rhs) {
+    if (entries.size() != rhs.entries.size()) {
+      return false;
+    }
+    for (size_t i = 0; i < entries.size(); ++i) {
+      if (entries[i] != rhs.entries[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+  bool operator!=(const DistanceVector& rhs) { return !(*this == rhs); }
 };
 
 class LoopDependenceAnalysis {
