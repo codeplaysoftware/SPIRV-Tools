@@ -16,7 +16,7 @@
 
 #include <memory>
 #include <string>
-#include <set>
+#include <unordered_set>
 #include <vector>
 
 #include "../assembly_builder.h"
@@ -127,8 +127,9 @@ TEST(DependencyAnalysis, ZIV) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-  opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+  ir::Loop* loop = &ld.GetLoopByIndex(0);
+  std::vector<const ir::Loop*> loops{loop};
+  opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
   const ir::Instruction* store[4];
   int stores_found = 0;
@@ -143,31 +144,31 @@ TEST(DependencyAnalysis, ZIV) {
     EXPECT_TRUE(store[i]);
   }
 
-  // 29 -> 30 tests looking through constants
+  // 29 -> 30 tests looking through constants.
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(29),
                                        store[0], &distance_vector));
   }
 
-  // 36 -> 37 tests looking through additions
+  // 36 -> 37 tests looking through additions.
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(36),
                                        store[1], &distance_vector));
   }
 
-  // 41 -> 42 tests looking at same index across two different arrays
+  // 41 -> 42 tests looking at same index across two different arrays.
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(41),
                                        store[2], &distance_vector));
   }
 
   // 48 -> 49 tests looking through additions for same index in two different
-  // arrays
+  // arrays.
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(48),
                                        store[3], &distance_vector));
   }
@@ -283,8 +284,9 @@ TEST(DependencyAnalysis, SymbolicZIV) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-  opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+  ir::Loop* loop = &ld.GetLoopByIndex(0);
+  std::vector<const ir::Loop*> loops{loop};
+  opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
   const ir::Instruction* store[4];
   int stores_found = 0;
@@ -299,33 +301,33 @@ TEST(DependencyAnalysis, SymbolicZIV) {
     EXPECT_TRUE(store[i]);
   }
 
-  // independent due to loop bounds (won't enter if N <= 0)
-  // 39 -> 40 tests looking through symbols and multiplicaiton
+  // independent due to loop bounds (won't enter if N <= 0).
+  // 39 -> 40 tests looking through symbols and multiplicaiton.
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(39),
                                        store[0], &distance_vector));
   }
 
-  // 48 -> 49 tests looking through symbols and multiplication + addition
+  // 48 -> 49 tests looking through symbols and multiplication + addition.
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(48),
                                        store[1], &distance_vector));
   }
 
-  // 56 -> 57 tests looking through symbols and arithmetic on load and store
+  // 56 -> 57 tests looking through symbols and arithmetic on load and store.
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(56),
                                        store[2], &distance_vector));
   }
 
   // independent as different arrays
   // 63 -> 64 tests looking through symbols and load/store from/to different
-  // arrays
+  // arrays.
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(63),
                                        store[3], &distance_vector));
   }
@@ -518,8 +520,9 @@ TEST(DependencyAnalysis, SIV) {
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -535,43 +538,46 @@ TEST(DependencyAnalysis, SIV) {
     }
 
     // = dependence
-    // 33 -> 34 tests looking at SIV in same array
+    // 33 -> 34 tests looking at SIV in same array.
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(33), store[0], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::EQ);
-      EXPECT_EQ(distance_vector.distance, 0);
-    }
-
-    // < 1 dependence
-    // 44 -> 45 tests looking at SIV in same array with addition
-    {
-      opt::DistanceVector distance_vector{};
-      EXPECT_FALSE(analysis.GetDependence(
-          context->get_def_use_mgr()->GetDef(44), store[1], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::LT);
-      EXPECT_EQ(distance_vector.distance, 1);
+      EXPECT_EQ(distance_vector.entries[0].direction,
+                opt::DistanceEntry::Directions::EQ);
+      EXPECT_EQ(distance_vector.entries[0].distance, 0);
     }
 
     // > -1 dependence
-    // 54 -> 55 tests looking at SIV in same array with subtraction
+    // 44 -> 45 tests looking at SIV in same array with addition.
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
+      EXPECT_FALSE(analysis.GetDependence(
+          context->get_def_use_mgr()->GetDef(44), store[1], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].direction,
+                opt::DistanceEntry::Directions::GT);
+      EXPECT_EQ(distance_vector.entries[0].distance, -1);
+    }
+
+    // < 1 dependence
+    // 54 -> 55 tests looking at SIV in same array with subtraction.
+    {
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(54), store[2], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::GT);
-      EXPECT_EQ(distance_vector.distance, -1);
+      EXPECT_EQ(distance_vector.entries[0].direction,
+                opt::DistanceEntry::Directions::LT);
+      EXPECT_EQ(distance_vector.entries[0].distance, 1);
     }
 
     // <=> dependence
-    // 61 -> 62 tests looking at SIV in same array with multiplication
+    // 61 -> 62 tests looking at SIV in same array with multiplication.
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(61), store[3], &distance_vector));
-      EXPECT_EQ(distance_vector.direction,
-                opt::DistanceVector::Directions::ALL);
+      EXPECT_EQ(distance_vector.entries[0].direction,
+                opt::DistanceEntry::Directions::ALL);
     }
   }
   // For the loop in function b.
@@ -579,8 +585,9 @@ TEST(DependencyAnalysis, SIV) {
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -596,43 +603,46 @@ TEST(DependencyAnalysis, SIV) {
     }
 
     // = dependence
-    // 78 -> 79 tests looking at SIV in same array
+    // 78 -> 79 tests looking at SIV in same array.
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(78), store[0], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::EQ);
-      EXPECT_EQ(distance_vector.distance, 0);
+      EXPECT_EQ(distance_vector.entries[0].direction,
+                opt::DistanceEntry::Directions::EQ);
+      EXPECT_EQ(distance_vector.entries[0].distance, 0);
     }
 
     // < 1 dependence
-    // 85 -> 86 tests looking at SIV in same array with addition
+    // 85 -> 86 tests looking at SIV in same array with addition.
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(85), store[1], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::LT);
-      EXPECT_EQ(distance_vector.distance, 1);
+      EXPECT_EQ(distance_vector.entries[0].direction,
+                opt::DistanceEntry::Directions::LT);
+      EXPECT_EQ(distance_vector.entries[0].distance, 1);
     }
 
     // > -1 dependence
-    // 92 -> 93 tests looking at SIV in same array with subtraction
+    // 92 -> 93 tests looking at SIV in same array with subtraction.
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(92), store[2], &distance_vector));
-      EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::GT);
-      EXPECT_EQ(distance_vector.distance, -1);
+      EXPECT_EQ(distance_vector.entries[0].direction,
+                opt::DistanceEntry::Directions::GT);
+      EXPECT_EQ(distance_vector.entries[0].distance, -1);
     }
 
     // <=> dependence
-    // 99 -> 100 tests looking at SIV in same array with multiplication
+    // 99 -> 100 tests looking at SIV in same array with multiplication.
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(99), store[3], &distance_vector));
-      EXPECT_EQ(distance_vector.direction,
-                opt::DistanceVector::Directions::ALL);
+      EXPECT_EQ(distance_vector.entries[0].direction,
+                opt::DistanceEntry::Directions::ALL);
     }
   }
 }
@@ -650,14 +660,13 @@ void a() {
   int N = int(c.x);
   int C = 2;
   int a = 2;
-  for (int i = 0; i < N; i++) {
-    arr[i+2*N] = arr[i+N];
-    arr2[i+N] = arr2[i+2*N] + C;
-    arr3[2*i+2*N+1] = arr3[2*i+N+1];
-    arr4[a*i+N+1] = arr4[a*i+2*N+1];
+  for (int i = 0; i < N; i++) { // Bounds are N - 1
+    arr[i+2*N] = arr[i+N]; // |distance| = N
+    arr2[i+N] = arr2[i+2*N] + C; // |distance| = N
+    arr3[2*i+2*N+1] = arr3[2*i+N+1]; // |distance| = N
+    arr4[a*i+N+1] = arr4[a*i+2*N+1]; // |distance| = N
   }
 }
-
 void b() {
   int[13] arr;
   int[15] arr2;
@@ -666,14 +675,13 @@ void b() {
   int N = int(c.x);
   int C = 2;
   int a = 2;
-  for (int i = N; i > 0; i--) {
-    arr[i+2*N] = arr[i+N];
-    arr2[i+N] = arr2[i+2*N] + C;
-    arr3[2*i+2*N+1] = arr3[2*i+N+1];
-    arr4[a*i+N+1] = arr4[a*i+2*N+1];
+  for (int i = N; i > 0; i--) { // Bounds are N - 1
+    arr[i+2*N] = arr[i+N]; // |distance| = N
+    arr2[i+N] = arr2[i+2*N] + C; // |distance| = N
+    arr3[2*i+2*N+1] = arr3[2*i+N+1]; // |distance| = N
+    arr4[a*i+N+1] = arr4[a*i+2*N+1]; // |distance| = N
   }
 }
-
 void main(){
   a();
   b();
@@ -890,8 +898,9 @@ TEST(DependencyAnalysis, SymbolicSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -909,29 +918,33 @@ TEST(DependencyAnalysis, SymbolicSIV) {
     // independent due to loop bounds (won't enter when N <= 0)
     // 49 -> 50 tests looking through SIV and symbols with multiplication
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(49),
-                                         store[0], &distance_vector));
+      opt::DistanceVector distance_vector{loops.size()};
+      // Independent but not yet supported.
+      EXPECT_FALSE(analysis.GetDependence(
+          context->get_def_use_mgr()->GetDef(49), store[0], &distance_vector));
     }
 
     // 63 -> 66 tests looking through SIV and symbols with multiplication and +
     // C
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
+      // Independent.
       EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(63),
                                          store[1], &distance_vector));
     }
 
     // 84 -> 85 tests looking through arithmetic on SIV and symbols
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(84),
-                                         store[2], &distance_vector));
+      opt::DistanceVector distance_vector{loops.size()};
+      // Independent but not yet supported.
+      EXPECT_FALSE(analysis.GetDependence(
+          context->get_def_use_mgr()->GetDef(84), store[2], &distance_vector));
     }
 
     // 101 -> 102 tests looking through symbol arithmetic on SIV and symbols
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
+      // Independent.
       EXPECT_TRUE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(101), store[3], &distance_vector));
     }
@@ -941,8 +954,9 @@ TEST(DependencyAnalysis, SymbolicSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -957,33 +971,36 @@ TEST(DependencyAnalysis, SymbolicSIV) {
       EXPECT_TRUE(store[i]);
     }
 
-    // independent due to loop bounds (won't enter when N <= 0)
-    // 129 -> 130 tests looking through SIV and symbols with multiplication
+    // independent due to loop bounds (won't enter when N <= 0).
+    // 129 -> 130 tests looking through SIV and symbols with multiplication.
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(
+      opt::DistanceVector distance_vector{loops.size()};
+      // Independent but not yet supported.
+      EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(129), store[0], &distance_vector));
     }
 
     // 140 -> 143 tests looking through SIV and symbols with multiplication and
-    // +
-    // C
+    // + C.
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
+      // Independent.
       EXPECT_TRUE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(140), store[1], &distance_vector));
     }
 
-    // 157 -> 158 tests looking through arithmetic on SIV and symbols
+    // 157 -> 158 tests looking through arithmetic on SIV and symbols.
     {
-      opt::DistanceVector distance_vector{};
-      EXPECT_TRUE(analysis.GetDependence(
+      opt::DistanceVector distance_vector{loops.size()};
+      // Independent but not yet supported.
+      EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(157), store[2], &distance_vector));
     }
 
-    // 174 -> 175 tests looking through symbol arithmetic on SIV and symbols
+    // 174 -> 175 tests looking through symbol arithmetic on SIV and symbols.
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
+      // Independent.
       EXPECT_TRUE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(174), store[3], &distance_vector));
     }
@@ -1373,15 +1390,16 @@ TEST(DependencyAnalysis, Crossing) {
   EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
                              << text << std::endl;
 
-  // First two tests can be split into two loops
-  // Tests even crossing subscripts from low to high indexes
+  // First two tests can be split into two loops.
+  // Tests even crossing subscripts from low to high indexes.
   // 47 -> 48
   {
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 29)) {
@@ -1389,19 +1407,20 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(47),
                                         store, &distance_vector));
   }
 
-  // Tests even crossing subscripts from high to low indexes
+  // Tests even crossing subscripts from high to low indexes.
   // 67 -> 68
   {
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 54)) {
@@ -1409,20 +1428,21 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(67),
                                         store, &distance_vector));
   }
 
-  // Next two tests can have an end peeled, then be split
-  // Tests uneven crossing subscripts from low to high indexes
+  // Next two tests can have an end peeled, then be split.
+  // Tests uneven crossing subscripts from low to high indexes.
   // 92 -> 93
   {
     const ir::Function* f = spvtest::GetFunction(module, 10);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 75)) {
@@ -1430,19 +1450,20 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(92),
                                         store, &distance_vector));
   }
 
-  // Tests uneven crossing subscripts from high to low indexes
+  // Tests uneven crossing subscripts from high to low indexes.
   // 113 -> 114
   {
     const ir::Function* f = spvtest::GetFunction(module, 12);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 99)) {
@@ -1450,20 +1471,21 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(113),
                                         store, &distance_vector));
   }
 
-  // First two tests can be split into two loops
-  // Tests even crossing subscripts from low to high indexes
+  // First two tests can be split into two loops.
+  // Tests even crossing subscripts from low to high indexes.
   // 134 -> 135
   {
     const ir::Function* f = spvtest::GetFunction(module, 14);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 121)) {
@@ -1471,19 +1493,20 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(134),
                                         store, &distance_vector));
   }
 
-  // Tests even crossing subscripts from high to low indexes
+  // Tests even crossing subscripts from high to low indexes.
   // 154 -> 155
   {
     const ir::Function* f = spvtest::GetFunction(module, 16);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 142)) {
@@ -1491,20 +1514,21 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(154),
                                         store, &distance_vector));
   }
 
-  // Next two tests can have an end peeled, then be split
-  // Tests uneven crossing subscripts from low to high indexes
+  // Next two tests can have an end peeled, then be split.
+  // Tests uneven crossing subscripts from low to high indexes.
   // 175 -> 176
   {
     const ir::Function* f = spvtest::GetFunction(module, 18);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 162)) {
@@ -1512,19 +1536,20 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(175),
                                         store, &distance_vector));
   }
 
-  // Tests uneven crossing subscripts from high to low indexes
+  // Tests uneven crossing subscripts from high to low indexes.
   // 196 -> 197
   {
     const ir::Function* f = spvtest::GetFunction(module, 20);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 183)) {
@@ -1532,7 +1557,7 @@ TEST(DependencyAnalysis, Crossing) {
         store = &inst;
       }
     }
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(196),
                                         store, &distance_vector));
   }
@@ -1797,8 +1822,9 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 6);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -1817,38 +1843,38 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     // index.
     // 34 -> 35
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(34), store[0], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_first);
+      EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
     // Tests identifying peel first with weak zero with source as zero index.
     // 38 -> 39
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(38), store[1], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_first);
+      EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
     // Tests identifying peel first with weak zero with destination as zero
     // index.
     // 43 -> 44
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(43), store[2], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_last);
+      EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
 
     // Tests identifying peel first with weak zero with source as zero index.
     // 47 -> 48
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(47), store[3], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_last);
+      EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
   }
   // For the loop in function b
@@ -1856,8 +1882,9 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 8);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -1876,38 +1903,38 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     // index.
     // 66 -> 67
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(66), store[0], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_first);
+      EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
     // Tests identifying peel first with weak zero with source as zero index.
     // 70 -> 71
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(70), store[1], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_first);
+      EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
     // Tests identifying peel first with weak zero with destination as zero
     // index.
     // 74 -> 75
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(74), store[2], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_last);
+      EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
 
     // Tests identifying peel first with weak zero with source as zero index.
     // 78 -> 79
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(78), store[3], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_last);
+      EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
   }
   // For the loop in function c
@@ -1915,9 +1942,9 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 10);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
-
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
     const ir::Instruction* store[4];
     int stores_found = 0;
     for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 84)) {
@@ -1935,38 +1962,38 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     // index.
     // 93 -> 94
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(93), store[0], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_first);
+      EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
     // Tests identifying peel first with weak zero with source as zero index.
     // 97 -> 98
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(97), store[1], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_first);
+      EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
     // Tests identifying peel first with weak zero with destination as zero
     // index.
     // 101 -> 102
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(101), store[2], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_last);
+      EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
 
     // Tests identifying peel first with weak zero with source as zero index.
     // 105 -> 106
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(105), store[3], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_last);
+      EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
   }
   // For the loop in function d
@@ -1974,8 +2001,9 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     const ir::Function* f = spvtest::GetFunction(module, 12);
     ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-    std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-    opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+    ir::Loop* loop = &ld.GetLoopByIndex(0);
+    std::vector<const ir::Loop*> loops{loop};
+    opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
     const ir::Instruction* store[4];
     int stores_found = 0;
@@ -1994,38 +2022,38 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
     // index.
     // 120 -> 121
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(120), store[0], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_first);
+      EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
     // Tests identifying peel first with weak zero with source as zero index.
     // 124 -> 125
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(124), store[1], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_first);
+      EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
     // Tests identifying peel first with weak zero with destination as zero
     // index.
     // 128 -> 129
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(128), store[2], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_last);
+      EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
 
     // Tests identifying peel first with weak zero with source as zero index.
     // 132 -> 133
     {
-      opt::DistanceVector distance_vector{};
+      opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(132), store[3], &distance_vector));
-      EXPECT_TRUE(distance_vector.peel_last);
+      EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
   }
 }
@@ -2126,8 +2154,9 @@ TEST(DependencyAnalysis, MultipleSubscriptZIVSIV) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0)};
-  opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+  ir::Loop* loop = &ld.GetLoopByIndex(0);
+  std::vector<const ir::Loop*> loops{loop};
+  opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
   const ir::Instruction* store[6];
   int stores_found = 0;
@@ -2144,63 +2173,64 @@ TEST(DependencyAnalysis, MultipleSubscriptZIVSIV) {
 
   // 30 -> 31
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(30),
                                         store[0], &distance_vector));
-    EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::EQ);
-    EXPECT_EQ(distance_vector.distance, 0);
+    EXPECT_EQ(distance_vector.entries[0].direction,
+              opt::DistanceEntry::Directions::EQ);
+    EXPECT_EQ(distance_vector.entries[0].distance, 0);
   }
 
   // 36 -> 37
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(36),
                                        store[1], &distance_vector));
-    EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::NONE);
   }
 
   // 41 -> 42
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(41),
                                        store[2], &distance_vector));
-    EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::NONE);
   }
 
   // 46 -> 47
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(46),
                                        store[3], &distance_vector));
-    EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::NONE);
+    EXPECT_EQ(distance_vector.entries[0].direction,
+              opt::DistanceEntry::Directions::EQ);
   }
 
   // 51 -> 52
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(51),
                                        store[4], &distance_vector));
-    EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::NONE);
+    EXPECT_EQ(distance_vector.entries[0].direction,
+              opt::DistanceEntry::Directions::EQ);
   }
 
   // 54 -> 55
   {
-    opt::DistanceVector distance_vector{};
+    opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(54),
                                        store[5], &distance_vector));
-    EXPECT_EQ(distance_vector.direction, opt::DistanceVector::Directions::NONE);
   }
 }
 
 void CheckDependenceAndDirection(
     const ir::Instruction* source, const ir::Instruction* destination,
     bool expected_dependence,
-    opt::DistanceVector::Directions expected_direction,
+    opt::DistanceVector expected_distance,
     opt::LoopDependenceAnalysis* analysis) {
-  opt::DistanceVector dv_entry{};
+  opt::DistanceVector dv_entry(2);
   EXPECT_EQ(expected_dependence,
             analysis->GetDependence(source, destination, &dv_entry));
-  EXPECT_EQ(expected_direction, dv_entry.direction);
+  // TODO: Enable after `operator==` is added
+  // EXPECT_EQ(expected_distance, dv_entry);
 }
 
 /*
@@ -2232,8 +2262,6 @@ void main(){
       arr[5*i] = arr[10*j]; // 14
       arr[9*i] = arr[3*j]; // 15
       arr[3*i] = arr[9*j]; // 16
-      arr[3*i] = arr[9*j-4]; // 17
-      arr[3*i] = arr[9*j-N]; // 18
     }
   }
 }
@@ -2277,8 +2305,8 @@ TEST(DependencyAnalysis, MIV) {
          %74 = OpConstant %6 4
         %184 = OpConstant %6 5
         %197 = OpConstant %6 9
-        %230 = OpConstant %6 1
-        %235 = OpUndef %6
+        %213 = OpConstant %6 1
+        %218 = OpUndef %6
           %4 = OpFunction %2 None %3
           %5 = OpLabel
           %8 = OpVariable %7 Function
@@ -2296,174 +2324,160 @@ TEST(DependencyAnalysis, MIV) {
                OpStore %23 %24
                OpBranch %25
          %25 = OpLabel
-        %234 = OpPhi %6 %24 %5 %233 %28
-        %236 = OpPhi %6 %235 %5 %237 %28
+        %217 = OpPhi %6 %24 %5 %216 %28
+        %219 = OpPhi %6 %218 %5 %220 %28
                OpLoopMerge %27 %28 None
                OpBranch %29
          %29 = OpLabel
-         %33 = OpSLessThan %32 %234 %31
+         %33 = OpSLessThan %32 %217 %31
                OpBranchConditional %33 %26 %27
          %26 = OpLabel
                OpStore %34 %9
                OpBranch %35
          %35 = OpLabel
-        %237 = OpPhi %6 %9 %26 %231 %38
+        %220 = OpPhi %6 %9 %26 %214 %38
                OpLoopMerge %37 %38 None
                OpBranch %39
          %39 = OpLabel
-         %41 = OpSLessThan %32 %237 %31
+         %41 = OpSLessThan %32 %220 %31
                OpBranchConditional %41 %36 %37
          %36 = OpLabel
-         %48 = OpAccessChain %7 %45 %237
+         %48 = OpAccessChain %7 %45 %220
          %49 = OpLoad %6 %48
-         %50 = OpAccessChain %7 %45 %234
+         %50 = OpAccessChain %7 %45 %217
                OpStore %50 %49
-         %53 = OpAccessChain %7 %45 %234
+         %53 = OpAccessChain %7 %45 %217
          %54 = OpLoad %6 %53
-         %55 = OpAccessChain %7 %45 %237
+         %55 = OpAccessChain %7 %45 %220
                OpStore %55 %54
-         %57 = OpISub %6 %237 %9
-         %59 = OpIAdd %6 %234 %11
+         %57 = OpISub %6 %220 %9
+         %59 = OpIAdd %6 %217 %11
          %60 = OpAccessChain %7 %45 %59
          %61 = OpLoad %6 %60
          %62 = OpAccessChain %7 %45 %57
                OpStore %62 %61
-         %65 = OpISub %6 %237 %9
-         %68 = OpIAdd %6 %234 %11
+         %65 = OpISub %6 %220 %9
+         %68 = OpIAdd %6 %217 %11
          %69 = OpAccessChain %7 %45 %68
          %70 = OpLoad %6 %69
          %71 = OpAccessChain %7 %45 %65
                OpStore %71 %70
-         %73 = OpIMul %6 %9 %234
-         %76 = OpIMul %6 %74 %237
+         %73 = OpIMul %6 %9 %217
+         %76 = OpIMul %6 %74 %220
          %77 = OpIAdd %6 %76 %11
          %78 = OpAccessChain %7 %45 %77
          %79 = OpLoad %6 %78
          %80 = OpAccessChain %7 %45 %73
                OpStore %80 %79
-         %82 = OpIMul %6 %9 %234
-         %84 = OpIMul %6 %74 %237
+         %82 = OpIMul %6 %9 %217
+         %84 = OpIMul %6 %74 %220
          %85 = OpAccessChain %7 %45 %84
          %86 = OpLoad %6 %85
          %87 = OpAccessChain %7 %45 %82
                OpStore %87 %86
-         %90 = OpIAdd %6 %234 %237
-         %93 = OpIAdd %6 %234 %237
+         %90 = OpIAdd %6 %217 %220
+         %93 = OpIAdd %6 %217 %220
          %94 = OpAccessChain %7 %45 %93
          %95 = OpLoad %6 %94
          %96 = OpAccessChain %7 %45 %90
                OpStore %96 %95
-         %98 = OpIMul %6 %31 %234
-        %100 = OpIAdd %6 %98 %237
-        %102 = OpIMul %6 %31 %234
-        %104 = OpIAdd %6 %102 %237
+         %98 = OpIMul %6 %31 %217
+        %100 = OpIAdd %6 %98 %220
+        %102 = OpIMul %6 %31 %217
+        %104 = OpIAdd %6 %102 %220
         %105 = OpAccessChain %7 %45 %104
         %106 = OpLoad %6 %105
         %107 = OpAccessChain %7 %45 %100
                OpStore %107 %106
-        %109 = OpIMul %6 %31 %234
-        %111 = OpIMul %6 %31 %237
+        %109 = OpIMul %6 %31 %217
+        %111 = OpIMul %6 %31 %220
         %112 = OpIAdd %6 %109 %111
-        %114 = OpIMul %6 %31 %234
-        %116 = OpIMul %6 %31 %237
+        %114 = OpIMul %6 %31 %217
+        %116 = OpIMul %6 %31 %220
         %117 = OpIAdd %6 %114 %116
         %118 = OpIAdd %6 %117 %11
         %119 = OpAccessChain %7 %45 %118
         %120 = OpLoad %6 %119
         %121 = OpAccessChain %7 %45 %112
                OpStore %121 %120
-        %123 = OpIMul %6 %31 %234
-        %125 = OpIMul %6 %31 %237
+        %123 = OpIMul %6 %31 %217
+        %125 = OpIMul %6 %31 %220
         %126 = OpIAdd %6 %123 %125
-        %128 = OpIMul %6 %31 %234
-        %131 = OpIMul %6 %22 %237
+        %128 = OpIMul %6 %31 %217
+        %131 = OpIMul %6 %22 %220
         %132 = OpIAdd %6 %128 %131
         %133 = OpIAdd %6 %132 %11
         %134 = OpAccessChain %7 %45 %133
         %135 = OpLoad %6 %134
         %136 = OpAccessChain %7 %45 %126
                OpStore %136 %135
-        %138 = OpIMul %6 %31 %234
-        %140 = OpIMul %6 %31 %237
+        %138 = OpIMul %6 %31 %217
+        %140 = OpIMul %6 %31 %220
         %141 = OpIAdd %6 %138 %140
-        %143 = OpIMul %6 %31 %234
-        %145 = OpIMul %6 %31 %237
+        %143 = OpIMul %6 %31 %217
+        %145 = OpIMul %6 %31 %220
         %146 = OpIAdd %6 %143 %145
         %148 = OpIAdd %6 %146 %22
         %149 = OpAccessChain %7 %45 %148
         %150 = OpLoad %6 %149
         %151 = OpAccessChain %7 %45 %141
                OpStore %151 %150
-        %153 = OpIMul %6 %31 %234
-        %156 = OpIMul %6 %22 %237
+        %153 = OpIMul %6 %31 %217
+        %156 = OpIMul %6 %22 %220
         %157 = OpIAdd %6 %153 %156
-        %159 = OpIMul %6 %31 %234
-        %161 = OpIMul %6 %31 %237
+        %159 = OpIMul %6 %31 %217
+        %161 = OpIMul %6 %31 %220
         %162 = OpIAdd %6 %159 %161
         %163 = OpIAdd %6 %162 %11
         %164 = OpAccessChain %7 %45 %163
         %165 = OpLoad %6 %164
         %166 = OpAccessChain %7 %45 %157
                OpStore %166 %165
-        %168 = OpIMul %6 %31 %234
-        %170 = OpIMul %6 %31 %237
+        %168 = OpIMul %6 %31 %217
+        %170 = OpIMul %6 %31 %220
         %171 = OpIAdd %6 %168 %170
         %173 = OpIAdd %6 %171 %22
-        %175 = OpIMul %6 %31 %234
-        %177 = OpIMul %6 %31 %237
+        %175 = OpIMul %6 %31 %217
+        %177 = OpIMul %6 %31 %220
         %178 = OpIAdd %6 %175 %177
         %179 = OpAccessChain %7 %45 %178
         %180 = OpLoad %6 %179
         %181 = OpAccessChain %7 %45 %173
                OpStore %181 %180
-        %183 = OpIMul %6 %31 %234
-        %186 = OpIMul %6 %184 %237
+        %183 = OpIMul %6 %31 %217
+        %186 = OpIMul %6 %184 %220
         %187 = OpAccessChain %7 %45 %186
         %188 = OpLoad %6 %187
         %189 = OpAccessChain %7 %45 %183
                OpStore %189 %188
-        %191 = OpIMul %6 %184 %234
-        %193 = OpIMul %6 %31 %237
+        %191 = OpIMul %6 %184 %217
+        %193 = OpIMul %6 %31 %220
         %194 = OpAccessChain %7 %45 %193
         %195 = OpLoad %6 %194
         %196 = OpAccessChain %7 %45 %191
                OpStore %196 %195
-        %199 = OpIMul %6 %197 %234
-        %201 = OpIMul %6 %11 %237
+        %199 = OpIMul %6 %197 %217
+        %201 = OpIMul %6 %11 %220
         %202 = OpAccessChain %7 %45 %201
         %203 = OpLoad %6 %202
         %204 = OpAccessChain %7 %45 %199
                OpStore %204 %203
-        %206 = OpIMul %6 %11 %234
-        %208 = OpIMul %6 %197 %237
+        %206 = OpIMul %6 %11 %217
+        %208 = OpIMul %6 %197 %220
         %209 = OpAccessChain %7 %45 %208
         %210 = OpLoad %6 %209
         %211 = OpAccessChain %7 %45 %206
                OpStore %211 %210
-        %213 = OpIMul %6 %11 %234
-        %215 = OpIMul %6 %197 %237
-        %216 = OpISub %6 %215 %74
-        %217 = OpAccessChain %7 %45 %216
-        %218 = OpLoad %6 %217
-        %219 = OpAccessChain %7 %45 %213
-               OpStore %219 %218
-        %221 = OpIMul %6 %11 %234
-        %223 = OpIMul %6 %197 %237
-        %225 = OpISub %6 %223 %22
-        %226 = OpAccessChain %7 %45 %225
-        %227 = OpLoad %6 %226
-        %228 = OpAccessChain %7 %45 %221
-               OpStore %228 %227
                OpBranch %38
          %38 = OpLabel
-        %231 = OpIAdd %6 %237 %230
-               OpStore %34 %231
+        %214 = OpIAdd %6 %220 %213
+               OpStore %34 %214
                OpBranch %35
          %37 = OpLabel
                OpBranch %28
          %28 = OpLabel
-        %233 = OpIAdd %6 %234 %230
-               OpStore %23 %233
+        %216 = OpIAdd %6 %217 %213
+               OpStore %23 %216
                OpBranch %25
          %27 = OpLabel
                OpReturn
@@ -2479,11 +2493,12 @@ TEST(DependencyAnalysis, MIV) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0),
-                                         &ld.GetLoopByIndex(1)};
-  opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+  std::vector<const ir::Loop*> loops{&ld.GetLoopByIndex(0),
+                                     &ld.GetLoopByIndex(1)};
 
-  constexpr int instructions_expected = 19;
+  opt::LoopDependenceAnalysis analysis{context.get(), loops};
+
+  constexpr int instructions_expected = 17;
   const ir::Instruction* store[instructions_expected];
   const ir::Instruction* load[instructions_expected];
   int stores_found = 0;
@@ -2507,47 +2522,36 @@ TEST(DependencyAnalysis, MIV) {
   EXPECT_EQ(instructions_expected, stores_found);
   EXPECT_EQ(instructions_expected, loads_found);
 
-  constexpr auto directions_all = opt::DistanceVector::Directions::ALL;
-  constexpr auto directions_none = opt::DistanceVector::Directions::NONE;
+   auto directions_all = opt::DistanceEntry::Directions::ALL;
+   auto directions_none = opt::DistanceEntry::Directions::NONE;
 
-  CheckDependenceAndDirection(load[0], store[0], false, directions_all,
-                              &analysis);
-  CheckDependenceAndDirection(load[1], store[1], false, directions_all,
-                              &analysis);
-  CheckDependenceAndDirection(load[2], store[2], false, directions_all,
-                              &analysis);
-  CheckDependenceAndDirection(load[3], store[3], false, directions_all,
-                              &analysis);
-  CheckDependenceAndDirection(load[4], store[4], true, directions_none,
-                              &analysis);
-  CheckDependenceAndDirection(load[5], store[5], false, directions_all,
-                              &analysis);
-  CheckDependenceAndDirection(load[6], store[6], false, directions_all,
-                              &analysis);
-  CheckDependenceAndDirection(load[7], store[7], false, directions_all,
-                              &analysis);
-  CheckDependenceAndDirection(load[8], store[8], true, directions_none,
-                              &analysis);
-  CheckDependenceAndDirection(load[9], store[9], false, directions_all,
-                              &analysis);
-  CheckDependenceAndDirection(load[10], store[10], false, directions_all,
-                              &analysis);
-  CheckDependenceAndDirection(load[11], store[11], false, directions_all,
-                              &analysis);
-  CheckDependenceAndDirection(load[12], store[12], false, directions_all,
-                              &analysis);
-  CheckDependenceAndDirection(load[13], store[13], true, directions_none,
-                              &analysis);
-  CheckDependenceAndDirection(load[14], store[14], true, directions_none,
-                              &analysis);
-  CheckDependenceAndDirection(load[15], store[15], true, directions_none,
-                              &analysis);
-  CheckDependenceAndDirection(load[16], store[16], true, directions_none,
-                              &analysis);
-  CheckDependenceAndDirection(load[17], store[17], true, directions_none,
-                              &analysis);
-  CheckDependenceAndDirection(load[18], store[18], false, directions_all,
-                              &analysis);
+   auto dependent = opt::DistanceVector({directions_all, directions_all});
+   auto independent = opt::DistanceVector({directions_none, directions_none});
+
+   CheckDependenceAndDirection(load[0], store[0], false, dependent, &analysis);
+   CheckDependenceAndDirection(load[1], store[1], false, dependent, &analysis);
+   CheckDependenceAndDirection(load[2], store[2], false, dependent, &analysis);
+   CheckDependenceAndDirection(load[3], store[3], false, dependent, &analysis);
+   CheckDependenceAndDirection(load[4], store[4], true, independent, &analysis);
+   CheckDependenceAndDirection(load[5], store[5], false, dependent, &analysis);
+   CheckDependenceAndDirection(load[6], store[6], false, dependent, &analysis);
+   CheckDependenceAndDirection(load[7], store[7], false, dependent, &analysis);
+   CheckDependenceAndDirection(load[8], store[8], true, independent, &analysis);
+   CheckDependenceAndDirection(load[9], store[9], false, dependent, &analysis);
+   CheckDependenceAndDirection(load[10], store[10], false, dependent,
+                               &analysis);
+   CheckDependenceAndDirection(load[11], store[11], false, dependent,
+                               &analysis);
+   CheckDependenceAndDirection(load[12], store[12], false, dependent,
+                               &analysis);
+   CheckDependenceAndDirection(load[13], store[13], true, independent,
+                               &analysis);
+   CheckDependenceAndDirection(load[14], store[14], true, independent,
+                               &analysis);
+   CheckDependenceAndDirection(load[15], store[15], true, independent,
+                               &analysis);
+   CheckDependenceAndDirection(load[16], store[16], true, independent,
+                               &analysis);
 }
 
 void PartitionSubscripts(const ir::Instruction* instruction_0,

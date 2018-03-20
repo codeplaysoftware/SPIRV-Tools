@@ -18,15 +18,18 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <ostream>
 #include <vector>
 
+#include "opt/instruction.h"
 #include "opt/ir_context.h"
 #include "opt/loop_descriptor.h"
 #include "opt/scalar_analysis.h"
+
 namespace spvtools {
 namespace opt {
 
-struct DistanceVector {
+struct DistanceEntry {
   enum Directions {
     NONE = 0,
     LT = 1,
@@ -41,19 +44,32 @@ struct DistanceVector {
   bool peel_first;
   bool peel_last;
   int64_t distance;
-  DistanceVector()
+  DistanceEntry()
       : direction(Directions::ALL),
+        peel_first(false),
+        peel_last(false),
+        distance(0) {}
+
+  DistanceEntry(Directions direction_)
+      : direction(direction_),
         peel_first(false),
         peel_last(false),
         distance(0) {}
 };
 
+struct DistanceVector {
+ public:
+  DistanceVector(size_t size) : entries(size, DistanceEntry{}) {}
+  DistanceVector(std::vector<DistanceEntry> entries_) : entries(entries_) {}
+  std::vector<DistanceEntry> entries;
+};
+
 class LoopDependenceAnalysis {
  public:
-  LoopDependenceAnalysis(ir::IRContext* context, std::vector<const ir::Loop*> loops)
+  LoopDependenceAnalysis(ir::IRContext* context,
+                         std::vector<const ir::Loop*> loops)
       : context_(context),
         loops_(loops),
-        loop_(*loops[0]),
         scalar_evolution_(context),
         debug_stream_(nullptr){};
 
@@ -76,39 +92,43 @@ class LoopDependenceAnalysis {
   // Returns true if |subscript_pair| represents a MIV pair
   bool IsMIV(const std::pair<SENode*, SENode*>& subscript_pair);
 
-  // Finds the lower bound of the loop as an SENode* and returns the result.
+  // Finds the lower bound of |loop| as an SENode* and returns the result.
   // The lower bound is the starting value of the loops induction variable
-  SENode* GetLowerBound();
+  SENode* GetLowerBound(const ir::Loop* loop);
 
-  // Finds the upper bound of the loop as an SENode* and returns the result.
+  // Finds the upper bound of |loop| as an SENode* and returns the result.
   // The upper bound is the last value before the loop exit condition is met.
-  SENode* GetUpperBound();
+  SENode* GetUpperBound(const ir::Loop* loop);
 
   // Returns true if |value| is between |bound_one| and |bound_two| (inclusive).
   bool IsWithinBounds(int64_t value, int64_t bound_one, int64_t bound_two);
 
-  // Finds the loop bounds as upper_bound - lower_bound and returns the
+  // Finds the bounds of |loop| as upper_bound - lower_bound and returns the
   // resulting SENode.
   // If the operations can not be completed a nullptr is returned.
-  SENode* GetTripCount();
+  SENode* GetTripCount(const ir::Loop* loop);
 
   // Returns the SENode* produced by building an SENode from the result of
-  // calling GetInductionInitValue on loop_.
+  // calling GetInductionInitValue on |loop|.
   // If the operation can not be completed a nullptr is returned.
-  SENode* GetFirstTripInductionNode();
+  SENode* GetFirstTripInductionNode(const ir::Loop* loop);
 
   // Returns the SENode* produced by building an SENode from the result of
   // GetFirstTripInductionNode + (GetTripCount - 1) * induction_coefficient.
   // If the operation can not be completed a nullptr is returned.
-  SENode* GetFinalTripInductionNode(SENode* induction_coefficient);
+  SENode* GetFinalTripInductionNode(const ir::Loop* loop,
+                                    SENode* induction_coefficient);
 
   std::set<const ir::Loop*> CollectLoops(
       const std::vector<SERecurrentNode*>& nodes);
 
+  std::set<const ir::Loop*> CollectLoops(SENode* source, SENode* destination);
+
   // Returns true if |distance| is provably within the loop bounds.
   // This method is able to handle some symbolic cases which IsWithinBounds
   // can't handle.
-  bool IsProvablyOutwithLoopBounds(SENode* distance);
+  bool IsProvablyOutwithLoopBounds(const ir::Loop* loop, SENode* distance,
+                                   SENode* coefficient);
 
   // Sets the ostream for debug information for the analysis.
   void SetDebugStream(std::ostream& debug_stream) {
@@ -130,9 +150,25 @@ class LoopDependenceAnalysis {
       const std::vector<ir::Instruction*>& source_subscripts,
       const std::vector<ir::Instruction*>& destination_subscripts);
 
-  ir::Instruction* GetOperandDefinition(const ir::Instruction* instruction,
-                                        int id);
+  // Returns the ir::Loop* matching the loop for |subscript_pair|.
+  // |subscript_pair| must be an SIV pair.
+  const ir::Loop* GetLoopForSubscriptPair(
+      std::pair<SENode*, SENode*>* subscript_pair);
 
+  // Returns the DistanceEntry matching the loop for |subscript_pair|.
+  // |subscript_pair| must be an SIV pair.
+  DistanceEntry* GetDistanceEntryForSubscriptPair(
+      std::pair<SENode*, SENode*>* subscript_pair,
+      DistanceVector* distance_vector);
+
+
+  // Returns the DistanceEntry matching |loop|.
+  DistanceEntry* GetDistanceEntryForLoop(
+      const ir::Loop* loop,
+      DistanceVector* distance_vector);
+
+  // Returns a vector of Instruction* which form the subscripts of the array
+  // access defined by the access chain |instruction|.
   std::vector<ir::Instruction*> GetSubscripts(
       const ir::Instruction* instruction);
 
@@ -141,7 +177,6 @@ class LoopDependenceAnalysis {
 
   // The loop nest we are analysing the dependence of.
   std::vector<const ir::Loop*> loops_;
-  const ir::Loop& loop_;
 
   // The ScalarEvolutionAnalysis used by this analysis to store and perform much
   // of its logic.
@@ -151,7 +186,11 @@ class LoopDependenceAnalysis {
   std::ostream* debug_stream_;
 
   // Returns true if independence can be proven and false if it can't be proven.
-  bool ZIVTest(SENode* source, SENode* destination,
+  bool ZIVTest(SENode* source, SENode* destination);
+
+  // Analyzes the subscript pair to find an applicable SIV test.
+  // Returns true if independence and be proven and false if it can't be proven.
+  bool SIVTest(std::pair<SENode*, SENode*>* subscript_pair,
                DistanceVector* distance_vector);
 
   // Takes the form a*i + c1, a*i + c2
@@ -162,13 +201,14 @@ class LoopDependenceAnalysis {
   //              > if distance < 0
   // Returns true if independence is proven and false if it can't be proven.
   bool StrongSIVTest(SENode* source, SENode* destination, SENode* coeff,
-                     DistanceVector* distance_vector);
+                     DistanceEntry* distance_entry);
 
   // Takes for form a*i + c1, a*i + c2
   // where c1 and c2 are loop invariant and a is constant.
   // c1 and/or c2 contain one or more SEValueUnknown nodes.
   bool SymbolicStrongSIVTest(SENode* source, SENode* destination,
-                             DistanceVector* distance_vector);
+                             SENode* coefficient,
+                             DistanceEntry* distance_entry);
 
   // Takes the form a1*i + c1, a2*i + c2
   // where a1 = 0
@@ -176,7 +216,7 @@ class LoopDependenceAnalysis {
   // Returns true if independence is proven and false if it can't be proven.
   bool WeakZeroSourceSIVTest(SENode* source, SERecurrentNode* destination,
                              SENode* coefficient,
-                             DistanceVector* distance_vector);
+                             DistanceEntry* distance_entry);
 
   // Takes the form a1*i + c1, a2*i + c2
   // where a2 = 0
@@ -184,15 +224,19 @@ class LoopDependenceAnalysis {
   // Returns true if independence is proven and false if it can't be proven.
   bool WeakZeroDestinationSIVTest(SERecurrentNode* source, SENode* destination,
                                   SENode* coefficient,
-                                  DistanceVector* distance_vector);
+                                  DistanceEntry* distance_entry);
 
   // Takes the form a1*i + c1, a2*i + c2
   // where a1 = -a2
   // distance = (c2 - c1) / 2*a1
   // Returns true if independence is proven and false if it can't be proven.
   bool WeakCrossingSIVTest(SENode* source, SENode* destination,
-                           SENode* coefficient,
-                           DistanceVector* distance_vector);
+                           SENode* coefficient, DistanceEntry* distance_entry);
+
+  // Uses the def_use_mgr to get the instruction referenced by
+  // SingleWordInOperand(|id|) when called on |instruction|.
+  ir::Instruction* GetOperandDefinition(const ir::Instruction* instruction,
+                                        int id);
 
   // Perform the GCD test if both, the source and the destination nodes, are in
   // the form a0*i0 + a1*i1 + ... an*in + c.
@@ -210,7 +254,7 @@ class LoopDependenceAnalysis {
   // Takes the offset from the induction variable and subtracts the lower bound
   // from it to get the constant term added to the induction.
   // Returns the resuting constant term, or nullptr if it could not be produced.
-  SENode* GetConstantTerm(SERecurrentNode* induction);
+  SENode* GetConstantTerm(const ir::Loop* loop, SERecurrentNode* induction);
 
   // Prints |debug_msg| and "\n" to the ostream pointed to by |debug_stream_|.
   // Won't print anything if |debug_stream_| is nullptr.
