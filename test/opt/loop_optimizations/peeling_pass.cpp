@@ -996,6 +996,18 @@ TEST_F(PeelingTest, PeelingNestedPass) {
     // Expect no peeling and 2 loops at the end.
     run_test(SpvOpSLessThan, "%46", "%42", {}, 2);
   }
+
+  // Could do a peeling of 3, but the goes over the threshold.
+  {
+    SCOPED_TRACE("Over threshold");
+
+    size_t current_threshold =
+        spvtools::opt::LoopPeelingPass::GetLoopPeelingThreshold();
+    spvtools::opt::LoopPeelingPass::SetLoopPeelingThreshold(1u);
+    // Expect no peeling and 2 loops at the end.
+    run_test(SpvOpSLessThan, "%46", "%int_7", {}, 2);
+    spvtools::opt::LoopPeelingPass::SetLoopPeelingThreshold(current_threshold);
+  }
 }
 /*
 Test are derivation of the following generated test from the following GLSL +

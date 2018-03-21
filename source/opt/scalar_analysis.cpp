@@ -301,6 +301,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzeAddOp(const ir::Instruction* inst) {
 
 SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     const ir::Instruction* phi) {
+  recurrent_node_map_[phi] = CreateCantComputeNode();
   // The phi should only have two incoming value pairs.
   if (phi->NumInOperands() != 4) {
     return CreateCantComputeNode();
@@ -343,7 +344,8 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
       phi_node->AddOffset(value_node);
     } else if (incoming_label_id == loop->GetLatchBlock()->id()) {
       // Assumed to be in the form of step + phi.
-      if (value_node->GetType() != SENode::Add) return CreateCantComputeNode();
+      if (value_node->GetType() != SENode::Add)
+        return recurrent_node_map_[phi] = CreateCantComputeNode();
 
       SENode* step_node = nullptr;
       SENode* phi_operand = nullptr;
@@ -363,22 +365,25 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
         phi_operand = operand_2;
 
       // If it is not in the form step + phi exit out.
-      if (!(step_node && phi_operand)) return CreateCantComputeNode();
+      if (!(step_node && phi_operand))
+        return recurrent_node_map_[phi] = CreateCantComputeNode();
 
       // If the phi operand is not the same phi node exit out.
-      if (phi_operand != phi_node.get()) return CreateCantComputeNode();
+      if (phi_operand != phi_node.get())
+        return recurrent_node_map_[phi] = CreateCantComputeNode();
 
       if (!IsLoopInvariant(loop, step_node)) {
-        return CreateCantComputeNode();
+        return recurrent_node_map_[phi] = CreateCantComputeNode();
       }
 
       phi_node->AddCoefficient(step_node);
     }
   }
 
-  recurrent_node_map_[phi] = GetCachedOrAdd(std::move(phi_node));
+  SENode*& phi_recurrent_node = recurrent_node_map_[phi];
+  phi_recurrent_node = GetCachedOrAdd(std::move(phi_node));
 
-  return recurrent_node_map_[phi];
+  return phi_recurrent_node;
 }
 
 SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode(

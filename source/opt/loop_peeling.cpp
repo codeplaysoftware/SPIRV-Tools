@@ -134,7 +134,15 @@ void LoopPeeling::DuplicateAndConnectLoop(
   cloned_loop_->SetMergeBlock(loop_->GetOrCreatePreHeaderBlock());
 }
 
-void LoopPeeling::InsertCanonicalInductionVariable() {
+void LoopPeeling::InsertCanonicalInductionVariable(
+    LoopUtils::LoopCloningResult* clone_results) {
+  if (original_loop_canonical_induction_variable_) {
+    canonical_induction_variable_ =
+        context_->get_def_use_mgr()->GetDef(clone_results->value_map_.at(
+            original_loop_canonical_induction_variable_->result_id()));
+    return;
+  }
+
   ir::BasicBlock::iterator insert_point =
       GetClonedLoop()->GetLatchBlock()->tail();
   if (GetClonedLoop()->GetLatchBlock()->GetMergeInst()) {
@@ -411,7 +419,7 @@ void LoopPeeling::PeelBefore(uint32_t peel_factor) {
   DuplicateAndConnectLoop(&clone_results);
 
   // Add a canonical induction variable "canonical_induction_variable_".
-  InsertCanonicalInductionVariable();
+  InsertCanonicalInductionVariable(&clone_results);
 
   InstructionBuilder builder(context_,
                              &*cloned_loop_->GetPreHeaderBlock()->tail(),
@@ -475,7 +483,7 @@ void LoopPeeling::PeelAfter(uint32_t peel_factor) {
   DuplicateAndConnectLoop(&clone_results);
 
   // Add a canonical induction variable "canonical_induction_variable_".
-  InsertCanonicalInductionVariable();
+  InsertCanonicalInductionVariable(&clone_results);
 
   InstructionBuilder builder(context_,
                              &*cloned_loop_->GetPreHeaderBlock()->tail(),
@@ -592,25 +600,19 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
   for (ir::Loop* loop : to_process_loop) {
     CodeMetrics loop_size;
     loop_size.Analyze(*loop);
-    size_t code_size = loop_size.roi_size_;
 
-    auto try_peel = [&code_size, &loop_size, &modified,
+    auto try_peel = [&loop_size, &modified,
                      this](ir::Loop* loop_to_peel) -> ir::Loop* {
-      // This does not take into account branch elimination opportunities and
-      // the unrolling.
-      if (code_size + loop_size.roi_size_ > code_grow_threshold_) {
-        return nullptr;
-      }
-
       if (!loop_to_peel->IsLCSSA()) {
         LoopUtils(context(), loop_to_peel).MakeLoopClosedSSA();
       }
 
       bool peeled_loop;
       ir::Loop* still_peelable_loop;
-      std::tie(peeled_loop, still_peelable_loop) = ProcessLoop(loop_to_peel);
+      std::tie(peeled_loop, still_peelable_loop) =
+          ProcessLoop(loop_to_peel, &loop_size);
+
       if (peeled_loop) {
-        code_size += loop_size.roi_size_;
         modified = true;
       }
 
@@ -626,7 +628,8 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
   return modified;
 }
 
-std::pair<bool, ir::Loop*> LoopPeelingPass::ProcessLoop(ir::Loop* loop) {
+std::pair<bool, ir::Loop*> LoopPeelingPass::ProcessLoop(
+    ir::Loop* loop, CodeMetrics* loop_size) {
   opt::ScalarEvolutionAnalysis* scev_analysis =
       context()->GetScalarEvolutionAnalysis();
   // Default values for bailing out.
@@ -650,12 +653,42 @@ std::pair<bool, ir::Loop*> LoopPeelingPass::ProcessLoop(ir::Loop* loop) {
     return bail_out;
   }
 
+  ir::Instruction* canonical_induction_variable = nullptr;
+
+  loop->GetHeaderBlock()->WhileEachPhiInst([&canonical_induction_variable,
+                                            scev_analysis,
+                                            this](ir::Instruction* insn) {
+    if (const SERecurrentNode* iv =
+            scev_analysis->AnalyzeInstruction(insn)->AsSERecurrentNode()) {
+      const SEConstantNode* offset = iv->GetOffset()->AsSEConstantNode();
+      const SEConstantNode* coeff = iv->GetCoefficient()->AsSEConstantNode();
+      if (offset && coeff && offset->FoldToSingleValue() == 0 &&
+          coeff->FoldToSingleValue() == 1) {
+        if (context()->get_type_mgr()->GetType(insn->type_id())->AsInteger()) {
+          canonical_induction_variable = insn;
+          return false;
+        }
+      }
+    }
+    return true;
+  });
+
+  bool is_signed = canonical_induction_variable
+                       ? context()
+                             ->get_type_mgr()
+                             ->GetType(canonical_induction_variable->type_id())
+                             ->AsInteger()
+                             ->IsSigned()
+                       : false;
+
   LoopPeeling peeler(
-      loop, InstructionBuilder(context(), loop->GetHeaderBlock(),
-                               ir::IRContext::kAnalysisDefUse |
-                                   ir::IRContext::kAnalysisInstrToBlockMapping)
-                .Add32BitConstantInteger<uint32_t>(
-                    static_cast<uint32_t>(iterations), false));
+      loop,
+      InstructionBuilder(context(), loop->GetHeaderBlock(),
+                         ir::IRContext::kAnalysisDefUse |
+                             ir::IRContext::kAnalysisInstrToBlockMapping)
+          .Add32BitConstantInteger<uint32_t>(static_cast<uint32_t>(iterations),
+                                             is_signed),
+      canonical_induction_variable);
 
   if (!peeler.CanPeelLoop()) {
     return bail_out;
@@ -705,6 +738,13 @@ std::pair<bool, ir::Loop*> LoopPeelingPass::ProcessLoop(ir::Loop* loop) {
 
   // Do the peel if we can.
   if (direction == PeelDirection::kNone) return bail_out;
+
+  // This does not take into account branch elimination opportunities and
+  // the unrolling. It assumes the peeled loop will be unrolled as well.
+  if (factor * loop_size->roi_size_ > code_grow_threshold_) {
+    return bail_out;
+  }
+  loop_size->roi_size_ *= factor;
 
   // Find if a loop should be peeled again.
   ir::Loop* extra_opportunity = nullptr;
