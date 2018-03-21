@@ -119,6 +119,11 @@ class Optimizer {
   // output is sent to the |out| output stream.
   Optimizer& SetPrintAll(std::ostream* out);
 
+  // Sets the option to print the resource utilization of each pass. If |out|
+  // is null, then no output is generated. Otherwise, output is sent to the
+  // |out| output stream.
+  Optimizer& SetTimeReport(std::ostream* out);
+
  private:
   struct Impl;                  // Opaque struct for holding internal data.
   std::unique_ptr<Impl> impl_;  // Unique pointer to internal data.
@@ -543,6 +548,13 @@ Optimizer::PassToken CreateSimplificationPass();
 // LoopUtils::CanPerformUnroll method. Any loop that does not meet the criteria
 // won't be unrolled. See CanPerformUnroll LoopUtils.h for more information.
 Optimizer::PassToken CreateLoopUnrollPass(bool fully_unroll, int factor = 0);
+
+// Create the SSA rewrite pass.
+// This pass converts load/store operations on function local variables into
+// operations on SSA IDs.  This allows SSA optimizers to act on these variables.
+// Only variables that are local to the function and of supported types are
+// processed (see IsSSATargetVar for details).
+Optimizer::PassToken CreateSSARewritePass();
 
 }  // namespace spvtools
 

@@ -215,6 +215,11 @@ Optimizer& Optimizer::SetPrintAll(std::ostream* out) {
   return *this;
 }
 
+Optimizer& Optimizer::SetTimeReport(std::ostream* out) {
+  impl_->pass_manager.SetTimeReport(out);
+  return *this;
+}
+
 Optimizer::PassToken CreateNullPass() {
   return MakeUnique<Optimizer::PassToken::Impl>(MakeUnique<opt::NullPass>());
 }
@@ -431,4 +436,10 @@ Optimizer::PassToken CreateLoopUnrollPass(bool fully_unroll, int factor) {
   return MakeUnique<Optimizer::PassToken::Impl>(
       MakeUnique<opt::LoopUnroller>(fully_unroll, factor));
 }
+
+Optimizer::PassToken CreateSSARewritePass() {
+  return MakeUnique<Optimizer::PassToken::Impl>(
+      MakeUnique<opt::SSARewritePass>());
+}
+
 }  // namespace spvtools
