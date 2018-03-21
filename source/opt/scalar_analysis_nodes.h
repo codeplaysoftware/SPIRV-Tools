@@ -46,7 +46,7 @@ class SENode {
  public:
   enum SENodeType {
     Constant,
-    RecurrentExpr,
+    RecurrentAddExpr,
     Add,
     Multiply,
     Negative,
@@ -54,18 +54,32 @@ class SENode {
     CanNotCompute
   };
 
+  using ChildContainerType = std::vector<SENode*>;
+
   explicit SENode(opt::ScalarEvolutionAnalysis* parent_analysis)
-      : parent_analysis_(parent_analysis) {}
+      : parent_analysis_(parent_analysis), unique_id_(++NumberOfNodes) {}
 
   virtual SENodeType GetType() const = 0;
 
   virtual ~SENode() {}
 
-  inline void AddChild(SENode* child) {
-    children_.push_back(child);
+  virtual inline void AddChild(SENode* child) {
+    // If this is a constant node, assert.
+    if (AsSEConstantNode()) {
+      assert(false && "Trying to add a child node to a constant!");
+    }
 
-    // Children are sorted so the hashing
-    std::sort(children_.begin(), children_.end());
+    // Find the first point in the vector where |child| is greater than the node
+    // currently in the vector.
+    auto find_first_less_than = [child](const SENode* node) {
+      return child->unique_id_ <= node->unique_id_;
+    };
+
+    auto position = std::find_if_not(children_.begin(), children_.end(),
+                                     find_first_less_than);
+    // Children are sorted so the hashing and equality operator will be the same
+    // for a node with the same children. X+Y should be the same as Y+X.
+    children_.insert(position, child);
   }
 
   // Get the type as an std::string. This is used to represent the node in the
@@ -88,8 +102,8 @@ class SENode {
   inline const SENode* GetChild(size_t index) const { return children_[index]; }
 
   // Iterator to iterate over the child nodes.
-  using iterator = std::vector<SENode*>::iterator;
-  using const_iterator = std::vector<SENode*>::const_iterator;
+  using iterator = ChildContainerType::iterator;
+  using const_iterator = ChildContainerType::const_iterator;
 
   // Iterate over immediate child nodes.
   iterator begin() { return children_.begin(); }
@@ -116,8 +130,8 @@ class SENode {
   const_dag_iterator graph_cend() const { return const_dag_iterator(); }
 
   // Return the vector of immediate children.
-  const std::vector<SENode*>& GetChildren() const { return children_; }
-  std::vector<SENode*>& GetChildren() { return children_; }
+  const ChildContainerType& GetChildren() const { return children_; }
+  ChildContainerType& GetChildren() { return children_; }
 
 // Implements a casting method for each type.
 #define DeclareCastMethod(target)                  \
@@ -138,9 +152,16 @@ class SENode {
   }
 
  protected:
-  std::vector<SENode*> children_;
+  ChildContainerType children_;
 
   opt::ScalarEvolutionAnalysis* parent_analysis_;
+
+  // The unique id of this node, assigned on creation by incrementing the static
+  // node count.
+  uint32_t unique_id_;
+
+  // The number of nodes created.
+  static uint32_t NumberOfNodes;
 };
 
 // Function object to handle the hashing of SENodes. Hashing algorithm hashes
@@ -164,22 +185,27 @@ class SEConstantNode : public SENode {
   SEConstantNode* AsSEConstantNode() override { return this; }
   const SEConstantNode* AsSEConstantNode() const override { return this; }
 
+  inline void AddChild(SENode*) final {
+    assert(false && "Attempting to add a child to a constant node!");
+  }
+
  protected:
   int64_t literal_value_;
 };
 
 // A node represeting a recurrent expression in the code. A recurrent expression
-// is an expression with a loop variant as one of its terms, such as an
-// induction variable. The actual value of a recurrent expression is coefficent_
-// * iteration + offset_, hence an induction variable i=0, i++ becomes a
-// recurrent expression with an offset of zero and a coefficient of one.
+// is an expression whose value can be expressed as a linear expression of the
+// loop iterations. Such as an induction variable. The actual value of a
+// recurrent expression is coefficent_ * iteration + offset_, hence an
+// induction variable i=0, i++ becomes a recurrent expression with an offset of
+// zero and a coefficient of one.
 class SERecurrentNode : public SENode {
  public:
   SERecurrentNode(opt::ScalarEvolutionAnalysis* parent_analysis,
                   const ir::Loop* loop)
       : SENode(parent_analysis), loop_(loop) {}
 
-  SENodeType GetType() const final { return RecurrentExpr; }
+  SENodeType GetType() const final { return RecurrentAddExpr; }
 
   inline void AddCoefficient(SENode* child) {
     coefficient_ = child;
@@ -250,21 +276,21 @@ class SENegative : public SENode {
 class SEValueUnknown : public SENode {
  public:
   // SEValueUnknowns must come from an instruction |unique_id| is the unique id
-  // of that instruction. This is so we can compare value unknowns and have a
+  // of that instruction. This is so we cancompare value unknowns and have a
   // unique value unknown for each instruction.
   SEValueUnknown(opt::ScalarEvolutionAnalysis* parent_analysis,
-                 uint32_t unique_id)
-      : SENode(parent_analysis), unique_id_(unique_id) {}
+                 uint32_t result_id)
+      : SENode(parent_analysis), result_id_(result_id) {}
 
   SENodeType GetType() const final { return ValueUnknown; }
 
   SEValueUnknown* AsSEValueUnknown() override { return this; }
   const SEValueUnknown* AsSEValueUnknown() const override { return this; }
 
-  inline uint32_t UniqueId() const { return unique_id_; }
+  inline uint32_t ResultId() const { return result_id_; }
 
  private:
-  uint32_t unique_id_;
+  uint32_t result_id_;
 };
 
 // A node which we cannot reason about at all.

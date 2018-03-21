@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "opt/scalar_analysis.h"
+
 #include <functional>
 #include <map>
 #include <memory>
@@ -19,7 +21,47 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include "opt/scalar_analysis.h"
+
+// Simplifies scalar analysis DAGs.
+//
+// 1. Given a node passed to SimplifyExpression we first simplify the graph by
+// calling SimplifyPolynomial. This groups like nodes following basic arithmetic
+// rules, so multiple adds of the same load instruction could be grouped into a
+// single multiply of that instruction. SimplifyPolynomial will traverse the DAG
+// and build up an accumulator buffer for each class of instruction it finds.
+// For example take the loop:
+// for (i=0, i<N; i++) { i+B+23+4+B+C; }
+// In this example the expression "i+B+23+4+B+C" has four classes of
+// instruction, induction variable i, the two value unknowns B and C, and the
+// constants. The accumulator buffer is then used to rebuild the graph using
+// the accumulation of each type. This example would then be folded into
+// i+2*B+C+27.
+//
+// This new graph contains a single add node (or if only one type found then
+// just that node) with each of the like terms (or multiplication node) as a
+// child.
+//
+// 2. FoldRecurrentAddExpressions is then called on this new DAG. This will take
+// RecurrentAddExpressions which are with respect to the same loop and fold them
+// into a single new RecurrentAddExpression with respect to that same loop. An
+// expression can have multiple RecurrentAddExpression's with respect to
+// different loops in the case of nested loops. These expressions cannot be
+// folded further. For example:
+//
+// for (i=0; i<N;i++) for(j=0,k=1; j<N;++j,++k)
+//
+// The 'j' and 'k' are RecurrentAddExpression with respect to the second loop
+// and 'i' to the first. If 'j' and 'k' are used in an expression together then
+// they will be folded into a new RecurrentAddExpression with respect to the
+// second loop in that expression.
+//
+//
+// 3. If the DAG now only contains a single RecurrentAddExpression we can now
+// perform a final optimization SimplifyRecurrentAddExpression. This will
+// transform the entire DAG into a RecurrentAddExpression. Additions to the
+// RecurrentAddExpression are added to the offset field and multiplications to
+// the coefficient.
+//
 
 namespace spvtools {
 namespace opt {
@@ -79,7 +121,7 @@ class SENodeSimplifyImpl {
   // If the graph contains a recurrent expression, ie, an expression with the
   // loop iterations as a term in the expression, then the whole expression
   // can be rewritten to be a recurrent expression.
-  SENode* SimplifyRecurrentExpression(SERecurrentNode* node);
+  SENode* SimplifyRecurrentAddExpression(SERecurrentNode* node);
 
   // Simplify the whole graph by linking like terms together in a single flat
   // add node. So X*2 + Y -Y + 3 +6 would become X*2 + 9. Where X and Y are a
@@ -97,7 +139,7 @@ class SENodeSimplifyImpl {
   //
   // We can fold the i + temp into a single expression. Rec(0,1) + Rec(0,10) can
   // become Rec(0,11).
-  SENode* FoldRecurrentExpressions(SENode*);
+  SENode* FoldRecurrentAddExpressions(SENode*);
 };
 
 // From a |multiply| build up the accumulator objects.
@@ -115,10 +157,10 @@ bool SENodeSimplifyImpl::AccumulatorsFromMultiply(SENode* multiply,
 
   // Work out which operand is the unknown value.
   if (operand_1->GetType() == SENode::ValueUnknown ||
-      operand_1->GetType() == SENode::RecurrentExpr)
+      operand_1->GetType() == SENode::RecurrentAddExpr)
     value_unknown = operand_1;
   else if (operand_2->GetType() == SENode::ValueUnknown ||
-           operand_2->GetType() == SENode::RecurrentExpr)
+           operand_2->GetType() == SENode::RecurrentAddExpr)
     value_unknown = operand_2;
 
   // Work out which operand is the constant coefficient.
@@ -135,13 +177,13 @@ bool SENodeSimplifyImpl::AccumulatorsFromMultiply(SENode* multiply,
 
   int64_t sign = negation ? -1 : 1;
 
+  auto iterator = accumulators_.find(value_unknown);
+  int64_t new_value = constant->AsSEConstantNode()->FoldToSingleValue() * sign;
   // Add the result of the multiplication to the accumulators.
-  if (accumulators_.find(value_unknown) != accumulators_.end()) {
-    accumulators_[value_unknown] +=
-        constant->AsSEConstantNode()->FoldToSingleValue() * sign;
+  if (iterator != accumulators_.end()) {
+    (*iterator).second += new_value;
   } else {
-    accumulators_[value_unknown] =
-        constant->AsSEConstantNode()->FoldToSingleValue() * sign;
+    accumulators_.insert({value_unknown, new_value});
   }
 
   return true;
@@ -161,30 +203,28 @@ SENode* SENodeSimplifyImpl::Simplify() {
 
   // Fold recurrent expressions which are with respect to the same loop into a
   // single recurrent expression.
-  simplified_polynomial = FoldRecurrentExpressions(simplified_polynomial);
+  simplified_polynomial = FoldRecurrentAddExpressions(simplified_polynomial);
 
-  // Traverse the new DAG to find the recurrent expression. If there is more
-  // than one there is nothing further we can do.
+  // Traverse the immediate children of the new node to find the recurrent
+  // expression. If there is more than one there is nothing further we can do.
   for (SENode* child : simplified_polynomial->GetChildren()) {
-    if (child->GetType() == SENode::RecurrentExpr) {
+    if (child->GetType() == SENode::RecurrentAddExpr) {
       recurrent_expr = child->AsSERecurrentNode();
     }
   }
 
   // We need to count the number of unique recurrent expressions in the DAG to
   // ensure there is only one.
-  std::set<SENode*> recurrent_expressions_in_dag;
-
   for (auto child_iterator = simplified_polynomial->graph_begin();
        child_iterator != simplified_polynomial->graph_end(); ++child_iterator) {
-    // If the child is a recurrent expression add it to the set.
-    if (child_iterator->GetType() == SENode::RecurrentExpr) {
-      recurrent_expressions_in_dag.insert(&*child_iterator);
+    if (child_iterator->GetType() == SENode::RecurrentAddExpr &&
+        recurrent_expr != child_iterator->AsSERecurrentNode()) {
+      return simplified_polynomial;
     }
   }
 
-  if (recurrent_expr && recurrent_expressions_in_dag.size() == 1) {
-    return SimplifyRecurrentExpression(recurrent_expr);
+  if (recurrent_expr) {
+    return SimplifyRecurrentAddExpression(recurrent_expr);
   }
 
   return simplified_polynomial;
@@ -202,12 +242,13 @@ void SENodeSimplifyImpl::GatherAccumulatorsFromChildNodes(SENode* new_node,
         child->AsSEConstantNode()->FoldToSingleValue() * sign;
 
   } else if (child->GetType() == SENode::ValueUnknown ||
-             child->GetType() == SENode::RecurrentExpr) {
-    // If we've incountered this term before add to the accumulator for it.
-    if (accumulators_.find(child) == accumulators_.end())
-      accumulators_[child] = sign;
+             child->GetType() == SENode::RecurrentAddExpr) {
+    auto iterator = accumulators_.find(child);
+    // If we've encountered this term before add to the accumulator for it.
+    if (iterator == accumulators_.end())
+      accumulators_.insert({child, sign});
     else
-      accumulators_[child] += sign;
+      (*iterator).second += sign;
 
   } else if (child->GetType() == SENode::Multiply) {
     if (!AccumulatorsFromMultiply(child, negation)) {
@@ -282,7 +323,7 @@ SENode* SENodeSimplifyImpl::SimplifyPolynomial() {
         new_add->AddChild(
             analysis_.CreateMultiplyNode(count_as_constant, term));
       } else {
-        assert(term->GetType() == SENode::RecurrentExpr &&
+        assert(term->GetType() == SENode::RecurrentAddExpr &&
                "We only handle value unknowns or recurrent expressions");
 
         // Create a new recurrent expression by adding the count to the
@@ -305,7 +346,7 @@ SENode* SENodeSimplifyImpl::SimplifyPolynomial() {
   return analysis_.GetCachedOrAdd(std::move(new_add));
 }
 
-SENode* SENodeSimplifyImpl::FoldRecurrentExpressions(SENode* root) {
+SENode* SENodeSimplifyImpl::FoldRecurrentAddExpressions(SENode* root) {
   std::unique_ptr<SEAddNode> new_node{new SEAddNode(&analysis_)};
 
   // A mapping of loops to the list of recurrent expressions which are with
@@ -323,7 +364,7 @@ SENode* SENodeSimplifyImpl::FoldRecurrentExpressions(SENode* root) {
       negation = true;
     }
 
-    if (child->GetType() == SENode::RecurrentExpr) {
+    if (child->GetType() == SENode::RecurrentAddExpr) {
       const ir::Loop* loop = child->AsSERecurrentNode()->GetLoop();
 
       SERecurrentNode* rec = child->AsSERecurrentNode();
@@ -391,7 +432,7 @@ SENode* SENodeSimplifyImpl::FoldRecurrentExpressions(SENode* root) {
   return analysis_.GetCachedOrAdd(std::move(new_node));
 }
 
-SENode* SENodeSimplifyImpl::SimplifyRecurrentExpression(
+SENode* SENodeSimplifyImpl::SimplifyRecurrentAddExpression(
     SERecurrentNode* recurrent_expr) {
   const std::vector<SENode*>& children = node_->GetChildren();
 
@@ -399,11 +440,11 @@ SENode* SENodeSimplifyImpl::SimplifyRecurrentExpression(
       recurrent_expr->GetParentAnalysis(), recurrent_expr->GetLoop())};
 
   // Create and simplify the new offset node.
-  SENode* new_offset = analysis_.CreateAddNode(recurrent_expr->GetOffset(),
-                                               analysis_.CreateConstant(0));
+  SENode* new_offset = analysis_.CreateAddNode(
+      recurrent_expr->GetOffset(), analysis_.CreateConstant(0), false);
 
   for (SENode* child : children) {
-    if (child->GetType() != SENode::RecurrentExpr) {
+    if (child->GetType() != SENode::RecurrentAddExpr) {
       new_offset->AddChild(child);
     }
   }
