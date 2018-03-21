@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef LIBSPIRV_OPT_LOOP_DEPENDENCE_H_
-#define LIBSPIRV_OPT_LOOP_DEPENDENCE_H_
+#ifndef SOURCE_OPT_LOOP_DEPENDENCE_H_
+#define SOURCE_OPT_LOOP_DEPENDENCE_H_
 
 #include <algorithm>
 #include <cstdint>
 #include <map>
 #include <ostream>
+#include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "opt/instruction.h"
@@ -60,7 +63,7 @@ class DistanceEntry {
 
 class DistanceVector {
  public:
-  DistanceVector(size_t size) : entries(size, DistanceEntry{}) {}
+  explicit DistanceVector(size_t size) : entries(size, DistanceEntry{}) {}
   std::vector<DistanceEntry> entries;
 
   bool operator==(const DistanceVector& rhs) {
@@ -84,7 +87,7 @@ class LoopDependenceAnalysis {
       : context_(context),
         loops_(loops),
         scalar_evolution_(context),
-        debug_stream_(nullptr){};
+        debug_stream_(nullptr) {}
 
   // Finds the dependence between |source| and |destination|.
   // |source| should be an OpLoad.
@@ -283,7 +286,7 @@ class LoopDependenceAnalysis {
   void PrintDebug(std::string debug_msg);
 };
 
-}  // namespace ir
+}  // namespace opt
 }  // namespace spvtools
 
-#endif  // LIBSPIRV_OPT_LOOP_DEPENDENCE_H__
+#endif  // SOURCE_OPT_LOOP_DEPENDENCE_H__
