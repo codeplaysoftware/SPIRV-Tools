@@ -19,6 +19,12 @@
 #include "opt/loop_descriptor.h"
 #include "opt/loop_peeling.h"
 
+extern "C" {
+void __cxa_pure_virtual(void) {
+  assert(false && "Pure virtual function called!");
+}
+}
+
 namespace {
 
 using namespace spvtools;
