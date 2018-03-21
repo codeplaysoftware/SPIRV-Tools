@@ -81,15 +81,9 @@ if(${COMPILER_IS_LIKE_GNU})
     endif()
   endif()
 
-  if(${SPIRV_WERROR})
-    set(SPIRV_WARNINGS ${SPIRV_WARNINGS} -Werror)
-  endif()
 elseif(MSVC)
   set(SPIRV_WARNINGS -D_CRT_SECURE_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS /wd4800)
 
-  if(${SPIRV_WERROR})
-    set(SPIRV_WARNINGS ${SPIRV_WARNINGS} /WX)
-  endif()
 endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/source)
