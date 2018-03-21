@@ -2523,8 +2523,8 @@ TEST(DependencyAnalysis, MIV) {
   EXPECT_EQ(instructions_expected, stores_found);
   EXPECT_EQ(instructions_expected, loads_found);
 
-  auto directions_all = opt::DistanceEntry::Directions::ALL;
-  auto directions_none = opt::DistanceEntry::Directions::NONE;
+  auto directions_all = opt::DistanceEntry(opt::DistanceEntry::Directions::ALL);
+  auto directions_none = opt::DistanceEntry(opt::DistanceEntry::Directions::NONE);
 
   auto dependent = opt::DistanceVector({directions_all, directions_all});
   auto independent = opt::DistanceVector({directions_none, directions_none});
