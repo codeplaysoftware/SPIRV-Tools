@@ -76,21 +76,36 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     // auto subscript = GetSubscriptForInstruction(source_subscript);
     auto subscript_pair = std::make_pair(source_node, destination_node);
 
+    const ir::Loop* loop = GetLoopForSubscriptPair(&subscript_pair);
+    if (loop) {
+      if (!IsSupportedLoop(loop)) {
+        PrintDebug(
+            "GetDependence found an unsupported loop form. Assuming <=> for "
+            "loop.");
+        DistanceEntry* distance_entry =
+            GetDistanceEntryForSubscriptPair(&subscript_pair, distance_vector);
+        if (distance_entry) {
+          distance_entry->direction = DistanceEntry::Directions::ALL;
+        }
+        continue;
+      }
+    }
+
     // If either node is simplified to a CanNotCompute we can't perform any
     // analysis so must assume <=> dependence and return.
     if (source_node->GetType() == SENode::CanNotCompute ||
         destination_node->GetType() == SENode::CanNotCompute) {
       // Record the <=> dependence if we can get a DistanceEntry
+      PrintDebug(
+          "GetDependence found source_node || destination_node as "
+          "CanNotCompute. Abandoning evaluation for this subscript.");
       DistanceEntry* distance_entry =
           GetDistanceEntryForSubscriptPair(&subscript_pair, distance_vector);
       if (distance_entry) {
         distance_entry->direction = DistanceEntry::Directions::ALL;
       }
-      break;
+      continue;
     }
-
-    // auto subscript = GetSubscriptForInstruction(source_subscript);
-    // auto subscript_pair = std::make_pair(source_node, destination_node);
 
     // We have no induction variables so can apply a ZIV test.
     if (IsZIV(subscript_pair)) {
@@ -112,13 +127,14 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
 
     // We have multiple induction variables so should attempt an MIV test.
     if (IsMIV(subscript_pair)) {
+      PrintDebug("Found a MIV subscript pair.");
       if (GCDMIVTest(source_node, destination_node)) {
-        // TODO: The group was independent, set the appearing loops to
-        // TODO: Directions::NONE
+        PrintDebug("Proved independence with the GCD test.");
         auto current_loops = CollectLoops(source_node, destination_node);
 
-        for (auto loop : current_loops) {
-          auto distance_entry = GetDistanceEntryForLoop(loop, distance_vector);
+        for (auto current_loop : current_loops) {
+          auto distance_entry =
+              GetDistanceEntryForLoop(current_loop, distance_vector);
           distance_entry->direction = DistanceEntry::Directions::NONE;
         }
         return true;
@@ -344,6 +360,8 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
         return true;
       }
     }
+  } else {
+    PrintDebug("StrongSIVTest was unable to gather lower and upper bounds.");
   }
 
   // Otherwise we can get a direction as follows
@@ -446,6 +464,10 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
           ToString(coefficient_value) + "\n\tdistance: " + ToString(distance) +
           "\n");
     }
+  } else {
+    PrintDebug(
+        "WeakZeroSourceSIVTest was unable to fold delta and coefficient to "
+        "constants.");
   }
 
   // If we can prove the distance is outside the bounds we prove independence.
@@ -472,6 +494,10 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
       distance_entry->distance = distance;
       return true;
     }
+  } else {
+    PrintDebug(
+        "WeakZeroSourceSIVTest was unable to find lower and upper bound as "
+        "SEConstantNodes.");
   }
 
   // Now we want to see if we can detect to peel the first or last iterations.
@@ -501,6 +527,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
       distance_entry->peel_first = true;
       return false;
     }
+  } else {
+    PrintDebug("WeakZeroSourceSIVTest was unable to build first_trip_SENode");
   }
 
   // We get the LastTripValue as GetFinalTripInductionNode(coefficient) +
@@ -528,6 +556,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
       distance_entry->peel_last = true;
       return false;
     }
+  } else {
+    PrintDebug("WeakZeroSourceSIVTest was unable to build final_trip_SENode");
   }
 
   // We were unable to prove independence or discern any additional information.
@@ -579,6 +609,10 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
           ToString(coefficient_value) + "\n\tdistance: " + ToString(distance) +
           "\n");
     }
+  } else {
+    PrintDebug(
+        "WeakZeroDestinationSIVTest was unable to fold delta and coefficient "
+        "to constants.");
   }
 
   // If we can prove the distance is outside the bounds we prove independence.
@@ -605,6 +639,10 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
       distance_entry->distance = distance;
       return true;
     }
+  } else {
+    PrintDebug(
+        "WeakZeroDestinationSIVTest was unable to find lower and upper bound "
+        "as SEConstantNodes.");
   }
 
   // Now we want to see if we can detect to peel the first or last iterations.
@@ -633,6 +671,9 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
       distance_entry->peel_first = true;
       return false;
     }
+  } else {
+    PrintDebug(
+        "WeakZeroDestinationSIVTest was unable to build first_trip_SENode");
   }
 
   // We get the LastTripValue as GetFinalTripInductionNode(coefficient) +
@@ -660,6 +701,9 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
       distance_entry->peel_last = true;
       return false;
     }
+  } else {
+    PrintDebug(
+        "WeakZeroDestinationSIVTest was unable to build final_trip_SENode");
   }
 
   // We were unable to prove independence or discern any additional information.
@@ -722,6 +766,10 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
       distance_entry->distance = 0;
       return false;
     }
+  } else {
+    PrintDebug(
+        "WeakCrossingSIVTest was unable to fold offset_delta and coefficient "
+        "to constants.");
   }
 
   // We were unable to prove independence or discern any additional information.
@@ -937,8 +985,8 @@ LoopDependenceAnalysis::PartitionSubscripts(
           k = j;
         } else {
           // Add partitions[j] to partitions[k] and discard partitions[j]
-          partitions[k].insert(current_partition.begin(),
-                               current_partition.end());
+          partitions[static_cast<size_t>(k)].insert(current_partition.begin(),
+                                                    current_partition.end());
           current_partition.clear();
         }
       }

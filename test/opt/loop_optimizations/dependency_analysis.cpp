@@ -2221,11 +2221,11 @@ TEST(DependencyAnalysis, MultipleSubscriptZIVSIV) {
   }
 }
 
-void CheckDependenceAndDirection(
-    const ir::Instruction* source, const ir::Instruction* destination,
-    bool expected_dependence,
-    opt::DistanceVector expected_distance,
-    opt::LoopDependenceAnalysis* analysis) {
+void CheckDependenceAndDirection(const ir::Instruction* source,
+                                 const ir::Instruction* destination,
+                                 bool expected_dependence,
+                                 opt::DistanceVector expected_distance,
+                                 opt::LoopDependenceAnalysis* analysis) {
   opt::DistanceVector dv_entry(2);
   EXPECT_EQ(expected_dependence,
             analysis->GetDependence(source, destination, &dv_entry));
@@ -2254,9 +2254,11 @@ void main(){
       arr[10*i+j] = arr[10*i+j]; // 7
       arr[10*i+10*j] = arr[10*i+10*j+3]; // 8
       arr[10*i+10*j] = arr[10*i+N*j+3]; // 9, bail out because of N coefficient
-      arr[10*i+10*j] = arr[10*i+10*j+N]; // 10, bail out because of N constant term
+      arr[10*i+10*j] = arr[10*i+10*j+N]; // 10, bail out because of N constant
+term
       arr[10*i+N*j] = arr[10*i+10*j+3]; // 11, bail out because of N coefficient
-      arr[10*i+10*j+N] = arr[10*i+10*j]; // 12, bail out because of N constant term
+      arr[10*i+10*j+N] = arr[10*i+10*j]; // 12, bail out because of N constant
+term
       arr[10*i] = arr[5*j]; // 13
       arr[5*i] = arr[10*j]; // 14
       arr[9*i] = arr[3*j]; // 15
@@ -2521,36 +2523,33 @@ TEST(DependencyAnalysis, MIV) {
   EXPECT_EQ(instructions_expected, stores_found);
   EXPECT_EQ(instructions_expected, loads_found);
 
-   auto directions_all = opt::DistanceEntry::Directions::ALL;
-   auto directions_none = opt::DistanceEntry::Directions::NONE;
+  auto directions_all = opt::DistanceEntry(opt::DistanceEntry::Directions::ALL);
+  auto directions_none = opt::DistanceEntry(opt::DistanceEntry::Directions::NONE);
 
-   auto dependent = opt::DistanceVector({directions_all, directions_all});
-   auto independent = opt::DistanceVector({directions_none, directions_none});
+  auto dependent = opt::DistanceVector({directions_all, directions_all});
+  auto independent = opt::DistanceVector({directions_none, directions_none});
 
-   CheckDependenceAndDirection(load[0], store[0], false, dependent, &analysis);
-   CheckDependenceAndDirection(load[1], store[1], false, dependent, &analysis);
-   CheckDependenceAndDirection(load[2], store[2], false, dependent, &analysis);
-   CheckDependenceAndDirection(load[3], store[3], false, dependent, &analysis);
-   CheckDependenceAndDirection(load[4], store[4], true, independent, &analysis);
-   CheckDependenceAndDirection(load[5], store[5], false, dependent, &analysis);
-   CheckDependenceAndDirection(load[6], store[6], false, dependent, &analysis);
-   CheckDependenceAndDirection(load[7], store[7], false, dependent, &analysis);
-   CheckDependenceAndDirection(load[8], store[8], true, independent, &analysis);
-   CheckDependenceAndDirection(load[9], store[9], false, dependent, &analysis);
-   CheckDependenceAndDirection(load[10], store[10], false, dependent,
-                               &analysis);
-   CheckDependenceAndDirection(load[11], store[11], false, dependent,
-                               &analysis);
-   CheckDependenceAndDirection(load[12], store[12], false, dependent,
-                               &analysis);
-   CheckDependenceAndDirection(load[13], store[13], true, independent,
-                               &analysis);
-   CheckDependenceAndDirection(load[14], store[14], true, independent,
-                               &analysis);
-   CheckDependenceAndDirection(load[15], store[15], true, independent,
-                               &analysis);
-   CheckDependenceAndDirection(load[16], store[16], true, independent,
-                               &analysis);
+  CheckDependenceAndDirection(load[0], store[0], false, dependent, &analysis);
+  CheckDependenceAndDirection(load[1], store[1], false, dependent, &analysis);
+  CheckDependenceAndDirection(load[2], store[2], false, dependent, &analysis);
+  CheckDependenceAndDirection(load[3], store[3], false, dependent, &analysis);
+  CheckDependenceAndDirection(load[4], store[4], true, independent, &analysis);
+  CheckDependenceAndDirection(load[5], store[5], false, dependent, &analysis);
+  CheckDependenceAndDirection(load[6], store[6], false, dependent, &analysis);
+  CheckDependenceAndDirection(load[7], store[7], false, dependent, &analysis);
+  CheckDependenceAndDirection(load[8], store[8], true, independent, &analysis);
+  CheckDependenceAndDirection(load[9], store[9], false, dependent, &analysis);
+  CheckDependenceAndDirection(load[10], store[10], false, dependent, &analysis);
+  CheckDependenceAndDirection(load[11], store[11], false, dependent, &analysis);
+  CheckDependenceAndDirection(load[12], store[12], false, dependent, &analysis);
+  CheckDependenceAndDirection(load[13], store[13], true, independent,
+                              &analysis);
+  CheckDependenceAndDirection(load[14], store[14], true, independent,
+                              &analysis);
+  CheckDependenceAndDirection(load[15], store[15], true, independent,
+                              &analysis);
+  CheckDependenceAndDirection(load[16], store[16], true, independent,
+                              &analysis);
 }
 
 void PartitionSubscripts(const ir::Instruction* instruction_0,
