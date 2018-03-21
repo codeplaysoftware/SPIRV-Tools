@@ -125,14 +125,14 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
 
     // We have multiple induction variables so should attempt an MIV test.
     if (IsMIV(subscript_pair)) {
-   PrintDebug("Found a MIV subscript pair.");
+      PrintDebug("Found a MIV subscript pair.");
       if (GCDMIVTest(source_node, destination_node)) {
-
         PrintDebug("Proved independence with the GCD test.");
         auto current_loops = CollectLoops(source_node, destination_node);
 
-        for (auto current_loop: current_loops) {
-          auto distance_entry = GetDistanceEntryForLoop(current_loop, distance_vector);
+        for (auto current_loop : current_loops) {
+          auto distance_entry =
+              GetDistanceEntryForLoop(current_loop, distance_vector);
           distance_entry->direction = DistanceEntry::Directions::NONE;
         }
         return true;

@@ -381,7 +381,6 @@ std::set<const ir::Loop*> LoopDependenceAnalysis::CollectLoops(
 
 int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* source,
                                                         SENode* destination) {
-
   if (!source || !destination) {
     return -1;
   }

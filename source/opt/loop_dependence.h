@@ -54,7 +54,7 @@ class DistanceEntry {
         peel_last(false),
         distance(0) {}
 
-  DistanceEntry(Directions direction_)
+  explicit DistanceEntry(Directions direction_)
       : direction(direction_),
         peel_first(false),
         peel_last(false),
@@ -68,8 +68,9 @@ class DistanceEntry {
 
 class DistanceVector {
  public:
-  DistanceVector(size_t size) : entries(size, DistanceEntry{}) {}
-  DistanceVector(std::vector<DistanceEntry> entries_) : entries(entries_) {}
+  explicit DistanceVector(size_t size) : entries(size, DistanceEntry{}) {}
+  explicit DistanceVector(std::vector<DistanceEntry> entries_)
+      : entries(entries_) {}
 
   std::vector<DistanceEntry> entries;
 
