@@ -280,7 +280,7 @@ TEST_F(ScalarAnalysisTest, LoadTest) {
   EXPECT_EQ(rec->GetOffset()->GetType(), opt::SENode::ValueUnknown);
 
   EXPECT_EQ(rec->GetCoefficient()->GetType(), opt::SENode::Constant);
-  EXPECT_EQ(rec->GetCoefficient()->AsSEConstantNode()->FoldToSingleValue(), 1);
+  EXPECT_EQ(rec->GetCoefficient()->AsSEConstantNode()->FoldToSingleValue(), 1u);
 }
 
 /*
@@ -381,7 +381,7 @@ TEST_F(ScalarAnalysisTest, SimplifySimple) {
       analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
 
   EXPECT_EQ(simplified->GetType(), opt::SENode::Constant);
-  EXPECT_EQ(simplified->AsSEConstantNode()->FoldToSingleValue(), 33);
+  EXPECT_EQ(simplified->AsSEConstantNode()->FoldToSingleValue(), 33u);
 }
 
 /*
@@ -550,7 +550,7 @@ TEST_F(ScalarAnalysisTest, Simplify) {
   subtract_node = analysis.CreateSubtraction(store_node, load_node);
   simplified_node = analysis.SimplifyExpression(subtract_node);
   EXPECT_EQ(simplified_node->GetType(), opt::SENode::Constant);
-  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 0);
+  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 0u);
 
   // Testing [i] - [i-1] == 1
   load_access_chain =
@@ -570,7 +570,7 @@ TEST_F(ScalarAnalysisTest, Simplify) {
   simplified_node = analysis.SimplifyExpression(subtract_node);
 
   EXPECT_EQ(simplified_node->GetType(), opt::SENode::Constant);
-  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 1);
+  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 1u);
 
   // Testing [i] - [i+1] == -1
   load_access_chain =
@@ -608,7 +608,7 @@ TEST_F(ScalarAnalysisTest, Simplify) {
   subtract_node = analysis.CreateSubtraction(store_node, load_node);
   simplified_node = analysis.SimplifyExpression(subtract_node);
   EXPECT_EQ(simplified_node->GetType(), opt::SENode::Constant);
-  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 0);
+  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 0u);
 
   // Testing [i+N] - [i+N] == 0
   load_access_chain =
@@ -628,7 +628,7 @@ TEST_F(ScalarAnalysisTest, Simplify) {
 
   simplified_node = analysis.SimplifyExpression(subtract_node);
   EXPECT_EQ(simplified_node->GetType(), opt::SENode::Constant);
-  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 0);
+  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 0u);
 
   // Testing [i] - [i+N] == -N
   load_access_chain =
@@ -911,7 +911,7 @@ TEST_F(ScalarAnalysisTest, SimplifyNegativeSteps) {
   EXPECT_EQ(child_2->GetType(), opt::SENode::Constant);
 
   EXPECT_EQ(child_1->AsSEConstantNode()->FoldToSingleValue(), -1);
-  EXPECT_EQ(child_2->AsSEConstantNode()->FoldToSingleValue(), 0);
+  EXPECT_EQ(child_2->AsSEConstantNode()->FoldToSingleValue(), 0u);
 
   opt::SERecurrentNode* load_simplified =
       analysis.SimplifyExpression(load_node)->AsSERecurrentNode();
@@ -1038,8 +1038,8 @@ TEST_F(ScalarAnalysisTest, SimplifyInductionsAndLoads) {
     }
   }
 
-  EXPECT_EQ(loads.size(), 3);
-  EXPECT_EQ(stores.size(), 2);
+  EXPECT_EQ(loads.size(), 3u);
+  EXPECT_EQ(stores.size(), 2u);
   {
     ir::Instruction* store_access_chain = context->get_def_use_mgr()->GetDef(
         stores[0]->GetSingleWordInOperand(0));
@@ -1208,7 +1208,7 @@ TEST_F(ScalarAnalysisTest, InductionWithVariantStep) {
     }
   }
 
-  EXPECT_EQ(phis.size(), 2);
+  EXPECT_EQ(phis.size(), 2u);
   opt::SENode* phi_node_1 = analysis.AnalyzeInstruction(phis[0]);
   opt::SENode* phi_node_2 = analysis.AnalyzeInstruction(phis[1]);
   phi_node_1->DumpDot(std::cout, true);

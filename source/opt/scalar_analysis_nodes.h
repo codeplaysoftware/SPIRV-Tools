@@ -287,7 +287,7 @@ class SEValueUnknown : public SENode {
   SEValueUnknown* AsSEValueUnknown() override { return this; }
   const SEValueUnknown* AsSEValueUnknown() const override { return this; }
 
-  inline uint32_t ResultId() const { return unique_id_; }
+  inline uint32_t ResultId() const { return result_id_; }
 
  private:
   uint32_t result_id_;

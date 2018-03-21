@@ -407,22 +407,32 @@ bool SENode::operator!=(const SENode& other) const { return !(*this == other); }
 
 namespace {
 // Helper functions to insert 32/64 bit values into the 32 bit hash string. This
-// allows us to add pointers to the string by reinterpreting thie pointers as
-// uintptr_t which will result in them going to either the uint32_t or uint64_t
-// overload depending on the platform.
+// allows us to add pointers to the string by reinterpreting the pointers as
+// uintptr_t. PushToString will deduce the type, call sizeof on it and use
+// that size to call into the correct PushToStringImpl functor depending on
+// whether it is 32 or 64 bit.
 
-static void PushToString(uint32_t id, std::u32string* str) {
-  str->push_back(id);
-}
+template <typename T, size_t size_of_t>
+struct PushToStringImpl;
 
-static void PushToString(uint64_t id, std::u32string* str) {
-  str->push_back(static_cast<uint32_t>(id << 32));
-  str->push_back(static_cast<uint32_t>(id));
-}
+template <typename T>
+struct PushToStringImpl<T, 8> {
+  void operator()(T id, std::u32string* str) {
+    str->push_back(static_cast<uint32_t>(id << 32));
+    str->push_back(static_cast<uint32_t>(id));
+  }
+};
 
-static void PushToString(int64_t id, std::u32string* str) {
-  str->push_back(static_cast<uint32_t>(id << 32));
-  str->push_back(static_cast<uint32_t>(id));
+template <typename T>
+struct PushToStringImpl<T, 4> {
+  void operator()(T id, std::u32string* str) {
+    str->push_back(static_cast<uint32_t>(id));
+  }
+};
+
+template <typename T>
+static void PushToString(T id, std::u32string* str) {
+  PushToStringImpl<T, sizeof(T)>{}(id, str);
 }
 
 }  // namespace
