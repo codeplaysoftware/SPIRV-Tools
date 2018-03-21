@@ -187,7 +187,7 @@ SENode* ScalarEvolutionAnalysis::AnalyzeConstant(const ir::Instruction* inst) {
 // Handles both addition and subtraction. If the |sub| flag is set then the
 // addition will be op1+(-op2) otherwise op1+op2.
 SENode* ScalarEvolutionAnalysis::AnalyzeAddOp(const ir::Instruction* inst) {
-  assert((inst->opcode() == SpvOp::SpvOpIAdd or
+  assert((inst->opcode() == SpvOp::SpvOpIAdd ||
           inst->opcode() == SpvOp::SpvOpISub) &&
          "Add node must be created from a OpIAdd or OpISub instruction");
 
@@ -418,7 +418,7 @@ struct PushToStringImpl;
 template <typename T>
 struct PushToStringImpl<T, 8> {
   void operator()(T id, std::u32string* str) {
-    str->push_back(static_cast<uint32_t>(id << 32));
+    str->push_back(static_cast<uint32_t>(id >> 32));
     str->push_back(static_cast<uint32_t>(id));
   }
 };
