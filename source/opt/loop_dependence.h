@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef LIBSPIRV_OPT_LOOP_DEPENDENCE_H_
-#define LIBSPIRV_OPT_LOOP_DEPENDENCE_H_
+#ifndef SOURCE_OPT_LOOP_DEPENDENCE_H_
+#define SOURCE_OPT_LOOP_DEPENDENCE_H_
 
 #include <algorithm>
 #include <cstdint>
 #include <map>
 #include <ostream>
+#include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "opt/instruction.h"
@@ -67,6 +70,7 @@ class DistanceVector {
  public:
   DistanceVector(size_t size) : entries(size, DistanceEntry{}) {}
   DistanceVector(std::vector<DistanceEntry> entries_) : entries(entries_) {}
+
   std::vector<DistanceEntry> entries;
 
   bool operator==(const DistanceVector& rhs) const {
@@ -90,7 +94,7 @@ class LoopDependenceAnalysis {
       : context_(context),
         loops_(loops),
         scalar_evolution_(context),
-        debug_stream_(nullptr){};
+        debug_stream_(nullptr) {}
 
   // Finds the dependence between |source| and |destination|.
   // |source| should be an OpLoad.
@@ -183,6 +187,17 @@ class LoopDependenceAnalysis {
   // Returns the DistanceEntry matching |loop|.
   DistanceEntry* GetDistanceEntryForLoop(const ir::Loop* loop,
                                          DistanceVector* distance_vector);
+
+  // Returns true if each loop in |loops| is in a form supported by this
+  // analysis.
+  // A loop is supported if it has a single induction variable and that
+  // induction variable has a step of +1 or -1 per loop iteration.
+  bool CheckSupportedLoops(std::vector<const ir::Loop*> loops);
+
+  // Returns true if |loop| is in a form support by this analysis.
+  // A loop is supported if it has a single induction variable and that
+  // induction variable has a step of +1 or -1 per loop iteration.
+  bool IsSupportedLoop(const ir::Loop* loop);
 
  private:
   ir::IRContext* context_;
@@ -277,14 +292,18 @@ class LoopDependenceAnalysis {
   // Converts |value| to a std::string and returns the result.
   // This is required because Android does not compile std::to_string.
   template <typename valueT>
-  std::string ToString(valueT value);
+  std::string ToString(valueT value) {
+    std::ostringstream string_stream;
+    string_stream << value;
+    return string_stream.str();
+  }
 
   // Prints |debug_msg| and "\n" to the ostream pointed to by |debug_stream_|.
   // Won't print anything if |debug_stream_| is nullptr.
   void PrintDebug(std::string debug_msg);
 };
 
-}  // namespace ir
+}  // namespace opt
 }  // namespace spvtools
 
-#endif  // LIBSPIRV_OPT_LOOP_DEPENDENCE_H__
+#endif  // SOURCE_OPT_LOOP_DEPENDENCE_H__

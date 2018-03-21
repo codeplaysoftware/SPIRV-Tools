@@ -15,7 +15,9 @@
 #include "opt/loop_dependence.h"
 
 #include <ostream>
+#include <set>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -216,7 +218,7 @@ const ir::Loop* LoopDependenceAnalysis::GetLoopForSubscriptPair(
     loops.insert((*destination_nodes_it)->GetLoop());
   }
 
-  // If we didn't find 1 loop |subscript_pair| is a subscript over multiple
+  // If we didn't find 1 loop |subscript_pair| is a subscript over multiple or 0
   // loops. We don't handle this so return nullptr.
   if (loops.size() != 1) {
     PrintDebug("GetLoopForSubscriptPair found loops.size() != 1.");
@@ -351,6 +353,9 @@ int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* node) {
 
   std::vector<SERecurrentNode*> recurrent_nodes = node->CollectRecurrentNodes();
 
+  // We don't handle loops with more than one induction variable. Therefore we
+  // can identify the number of induction variables by collecting all of the
+  // loops the collected recurrent nodes belong to.
   std::set<const ir::Loop*> loops = CollectLoops(recurrent_nodes);
 
   return static_cast<int64_t>(loops.size());
@@ -417,11 +422,38 @@ SENode* LoopDependenceAnalysis::GetConstantTerm(const ir::Loop* loop,
   return constant_term;
 }
 
-template <typename valueT>
-std::string LoopDependenceAnalysis::ToString(valueT value) {
-  std::ostringstream string_stream;
-  string_stream << value;
-  return string_stream.str();
+bool LoopDependenceAnalysis::CheckSupportedLoops(
+    std::vector<const ir::Loop*> loops) {
+  for (auto loop : loops) {
+    if (!IsSupportedLoop(loop)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool LoopDependenceAnalysis::IsSupportedLoop(const ir::Loop* loop) {
+  std::vector<ir::Instruction*> inductions{};
+  loop->GetInductionVariables(inductions);
+  if (inductions.size() != 1) {
+    return false;
+  }
+  ir::Instruction* induction = inductions[0];
+  SENode* induction_node = scalar_evolution_.SimplifyExpression(
+      scalar_evolution_.AnalyzeInstruction(induction));
+  if (!induction_node->AsSERecurrentNode()) {
+    return false;
+  }
+  SENode* induction_step =
+      induction_node->AsSERecurrentNode()->GetCoefficient();
+  if (!induction_step->AsSEConstantNode()) {
+    return false;
+  }
+  if (!(induction_step->AsSEConstantNode()->FoldToSingleValue() == 1 ||
+        induction_step->AsSEConstantNode()->FoldToSingleValue() == -1)) {
+    return false;
+  }
+  return true;
 }
 
 void LoopDependenceAnalysis::PrintDebug(std::string debug_msg) {
