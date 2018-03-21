@@ -962,7 +962,6 @@ LoopDependenceAnalysis::PartitionSubscripts(
           [loop,
            this](const std::pair<ir::Instruction*, ir::Instruction*>& elem)
               -> bool {
-
                 auto rec_0 =
                     scalar_evolution_.AnalyzeInstruction(std::get<0>(elem))
                         ->CollectRecurrentNodes();

@@ -15,8 +15,10 @@
 #include <gmock/gmock.h>
 
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "../assembly_builder.h"
@@ -2524,7 +2526,8 @@ TEST(DependencyAnalysis, MIV) {
   EXPECT_EQ(instructions_expected, loads_found);
 
   auto directions_all = opt::DistanceEntry(opt::DistanceEntry::Directions::ALL);
-  auto directions_none = opt::DistanceEntry(opt::DistanceEntry::Directions::NONE);
+  auto directions_none =
+      opt::DistanceEntry(opt::DistanceEntry::Directions::NONE);
 
   auto dependent = opt::DistanceVector({directions_all, directions_all});
   auto independent = opt::DistanceVector({directions_none, directions_none});
@@ -2594,8 +2597,10 @@ void main(){
           arr[i][j][k][l] = arr[i][l][j][k]; // 8, last 3 coupled
           arr[i][j-k][k][l] = arr[i][j][l][k]; // 9, last 3 coupled
           arr[i][j][k][l] = arr[l][i][j][k]; // 10, all 4 coupled
-          arr[i][j][k][l] = arr[j][i][l][k]; // 11, 2 coupled partitions (i,j) & (l&k)
-          arr[i][j][k][l] = arr[k][l][i][j]; // 12, 2 coupled partitions (i,k) & (j&l)
+          arr[i][j][k][l] = arr[j][i][l][k]; // 11, 2 coupled partitions (i,j) &
+(l&k)
+          arr[i][j][k][l] = arr[k][l][i][j]; // 12, 2 coupled partitions (i,k) &
+(j&l)
         }
       }
     }
@@ -2781,10 +2786,9 @@ TEST(DependencyAnalysis, SubscriptPartitioning) {
   const ir::Function* f = spvtest::GetFunction(module, 4);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
-  std::vector<const ir::Loop*> loop_nest{&ld.GetLoopByIndex(0),
-                                         &ld.GetLoopByIndex(1),
-                                         &ld.GetLoopByIndex(2),
-                                         &ld.GetLoopByIndex(3)};
+  std::vector<const ir::Loop*> loop_nest{
+      &ld.GetLoopByIndex(0), &ld.GetLoopByIndex(1), &ld.GetLoopByIndex(2),
+      &ld.GetLoopByIndex(3)};
   opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
   constexpr int instructions_expected = 13;
