@@ -260,8 +260,8 @@ class IRContext {
     return type_mgr_.get();
   }
 
-  // Returns a pointer to a def-use manager.  If the def-use manager is
-  // invalid, it is rebuilt first.
+  // Returns a pointer to the scalar evolution analysis. If it is invalid it
+  // will be rebuilt first.
   opt::ScalarEvolutionAnalysis* GetScalarEvolutionAnalysis() {
     if (!AreAnalysesValid(kAnalysisScalarEvolution)) {
       BuildScalarEvolutionAnalysis();

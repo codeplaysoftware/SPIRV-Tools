@@ -61,8 +61,11 @@ class ScalarEvolutionAnalysis {
   // negation of |operand_2|.
   SENode* CreateSubtraction(SENode* operand_1, SENode* operand_2);
 
-  // Create an addition node between two operands.
-  SENode* CreateAddNode(SENode* operand_1, SENode* operand_2);
+  // Create an addition node between two operands. The |simplify| when set will
+  // allow the function to return an SEConstant instead of an addition if the
+  // two input operands are also constant.
+  SENode* CreateAddNode(SENode* operand_1, SENode* operand_2,
+                        bool simplify = true);
 
   // Create a multiply node between two operands.
   SENode* CreateMultiplyNode(SENode* operand_1, SENode* operand_2);
@@ -95,6 +98,7 @@ class ScalarEvolutionAnalysis {
   // |prospective_node| is already in the cache just return the raw pointer.
   SENode* GetCachedOrAdd(std::unique_ptr<SENode> prospective_node);
 
+  // Checks that the graph starting from |node| is invariant to the |loop|.
   bool IsLoopInvariant(const ir::Loop* loop, const SENode* node) const;
 
   // Returns the value of |node| .
@@ -111,12 +115,23 @@ class ScalarEvolutionAnalysis {
   bool IsAlwaysGreaterOrEqualToZero(SENode* node, bool* is_ge_zero) const;
 
  private:
+  SENode* AnalyzeConstant(const ir::Instruction* inst);
+
+  // Handles both addition and subtraction. If the |is_subtraction| flag is set
+  // then the addition will be op1+(-op2) otherwise op1+op2.
+  SENode* AnalyzeAddOp(const ir::Instruction* add);
+
+  SENode* AnalyzeMultiplyOp(const ir::Instruction* multiply);
+
+  SENode* AnalyzePhiInstruction(const ir::Instruction* phi);
+
   ir::IRContext* context_;
 
-  // A map of instructions to SENodes. Not every SENode comes from an
-  // instruction however this is used when nodes are created through the analyze
-  // instruction methods.
-  std::map<const ir::Instruction*, SENode*> instruction_map_;
+  // A map of instructions to SENodes. This is used to track recurrent
+  // expressions as they are added when analyzing instructions. Recurrent
+  // expressions come from phi nodes which by nature can include recursion so we
+  // check if nodes have already been built when analyzing instructions.
+  std::map<const ir::Instruction*, SENode*> recurrent_node_map_;
 
   // Helper functor to allow two unique_ptr to nodes to be compare. Only needed
   // for the unordered_set implementation.
@@ -131,16 +146,6 @@ class ScalarEvolutionAnalysis {
   // managed by they set.
   std::unordered_set<std::unique_ptr<SENode>, SENodeHash, NodePointersEquality>
       node_cache_;
-
-  SENode* AnalyzeConstant(const ir::Instruction* inst);
-
-  // Handles both addition and subtraction. If the |is_subtraction| flag is set
-  // then the addition will be op1+(-op2) otherwise op1+op2.
-  SENode* AnalyzeAddOp(const ir::Instruction* add, bool is_subtraction);
-
-  SENode* AnalyzeMultiplyOp(const ir::Instruction* multiply);
-
-  SENode* AnalyzePhiInstruction(const ir::Instruction* phi);
 };
 
 // Wrapping class to manipulate SENode pointer using + - * / operators.
