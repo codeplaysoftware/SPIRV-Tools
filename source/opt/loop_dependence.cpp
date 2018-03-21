@@ -105,9 +105,6 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
       continue;
     }
 
-    // auto subscript = GetSubscriptForInstruction(source_subscript);
-    // auto subscript_pair = std::make_pair(source_node, destination_node);
-
     // We have no induction variables so can apply a ZIV test.
     if (IsZIV(subscript_pair)) {
       PrintDebug("Found a ZIV subscript pair");
@@ -132,7 +129,7 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
       PrintDebug(
           "Found a MIV subscript pair. MIV is currently unhandled.\n"
           "Assuming dependence in all directions for this subscript pair.");
-      return false;
+      continue;
     }
   }
 
@@ -354,6 +351,8 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
         return true;
       }
     }
+  } else {
+    PrintDebug("StrongSIVTest was unable to gather lower and upper bounds.");
   }
 
   // Otherwise we can get a direction as follows
@@ -456,6 +455,10 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
           ToString(coefficient_value) + "\n\tdistance: " + ToString(distance) +
           "\n");
     }
+  } else {
+    PrintDebug(
+        "WeakZeroSourceSIVTest was unable to fold delta and coefficient to "
+        "constants.");
   }
 
   // If we can prove the distance is outside the bounds we prove independence.
@@ -482,6 +485,10 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
       distance_entry->distance = distance;
       return true;
     }
+  } else {
+    PrintDebug(
+        "WeakZeroSourceSIVTest was unable to find lower and upper bound as "
+        "SEConstantNodes.");
   }
 
   // Now we want to see if we can detect to peel the first or last iterations.
@@ -511,6 +518,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
       distance_entry->peel_first = true;
       return false;
     }
+  } else {
+    PrintDebug("WeakZeroSourceSIVTest was unable to build first_trip_SENode");
   }
 
   // We get the LastTripValue as GetFinalTripInductionNode(coefficient) +
@@ -538,6 +547,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
       distance_entry->peel_last = true;
       return false;
     }
+  } else {
+    PrintDebug("WeakZeroSourceSIVTest was unable to build final_trip_SENode");
   }
 
   // We were unable to prove independence or discern any additional information.
@@ -589,6 +600,10 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
           ToString(coefficient_value) + "\n\tdistance: " + ToString(distance) +
           "\n");
     }
+  } else {
+    PrintDebug(
+        "WeakZeroDestinationSIVTest was unable to fold delta and coefficient "
+        "to constants.");
   }
 
   // If we can prove the distance is outside the bounds we prove independence.
@@ -615,6 +630,10 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
       distance_entry->distance = distance;
       return true;
     }
+  } else {
+    PrintDebug(
+        "WeakZeroDestinationSIVTest was unable to find lower and upper bound "
+        "as SEConstantNodes.");
   }
 
   // Now we want to see if we can detect to peel the first or last iterations.
@@ -643,6 +662,9 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
       distance_entry->peel_first = true;
       return false;
     }
+  } else {
+    PrintDebug(
+        "WeakZeroDestinationSIVTest was unable to build first_trip_SENode");
   }
 
   // We get the LastTripValue as GetFinalTripInductionNode(coefficient) +
@@ -670,6 +692,9 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
       distance_entry->peel_last = true;
       return false;
     }
+  } else {
+    PrintDebug(
+        "WeakZeroDestinationSIVTest was unable to build final_trip_SENode");
   }
 
   // We were unable to prove independence or discern any additional information.
@@ -732,6 +757,10 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
       distance_entry->distance = 0;
       return false;
     }
+  } else {
+    PrintDebug(
+        "WeakCrossingSIVTest was unable to fold offset_delta and coefficient "
+        "to constants.");
   }
 
   // We were unable to prove independence or discern any additional information.
