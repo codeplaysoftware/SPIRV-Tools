@@ -382,6 +382,9 @@ bool SENode::operator==(const SENode& other) const {
     // this->AsSERecurrentNode() succeeded.
     assert(other_as_recurrent);
 
+    if (this_as_recurrent->GetLoop() != other_as_recurrent->GetLoop())
+      return false;
+
     if (this_as_recurrent->GetCoefficient() !=
         other_as_recurrent->GetCoefficient())
       return false;
