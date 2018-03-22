@@ -478,11 +478,22 @@ void AggressiveDCEPass::Initialize(ir::IRContext* c) {
 }
 
 void AggressiveDCEPass::InitializeModuleScopeLiveInstructions() {
+  // Keep all execution modes.
   for (auto& exec : get_module()->execution_modes()) {
     AddToWorklist(&exec);
   }
+  // Keep all entry points.
   for (auto& entry : get_module()->entry_points()) {
     AddToWorklist(&entry);
+  }
+  // Keep workgroup size.
+  for (auto& anno : get_module()->annotations()) {
+    if (anno.opcode() == SpvOpDecorate) {
+      if (anno.GetSingleWordInOperand(1u) == SpvDecorationBuiltIn &&
+          anno.GetSingleWordInOperand(2u) == SpvBuiltInWorkgroupSize) {
+        AddToWorklist(&anno);
+      }
+    }
   }
 }
 
@@ -684,6 +695,14 @@ void AggressiveDCEPass::InitExtensions() {
       "SPV_AMD_gpu_shader_int16",
       "SPV_KHR_post_depth_coverage",
       "SPV_KHR_shader_atomic_counter_ops",
+      "SPV_EXT_shader_stencil_export",
+      "SPV_EXT_shader_viewport_index_layer",
+      "SPV_AMD_shader_image_load_store_lod",
+      "SPV_AMD_shader_fragment_mask",
+      "SPV_EXT_fragment_fully_covered",
+      "SPV_AMD_gpu_shader_half_float_fetch",
+      "SPV_GOOGLE_decorate_string",
+      "SPV_GOOGLE_hlsl_functionality1",
   });
 }
 

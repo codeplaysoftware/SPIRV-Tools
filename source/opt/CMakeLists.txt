@@ -59,6 +59,7 @@ add_library(SPIRV-Tools-opt
   log.h
   loop_dependence.h
   loop_descriptor.h
+  loop_peeling.h
   loop_unroller.h
   loop_utils.h
   loop_unswitch_pass.h
@@ -81,8 +82,10 @@ add_library(SPIRV-Tools-opt
   scalar_replacement_pass.h
   set_spec_constant_default_value_pass.h
   simplification_pass.h
+  ssa_rewrite_pass.h
   strength_reduction_pass.h
   strip_debug_info_pass.h
+  strip_reflect_info_pass.h
   tree_iterator.h
   type_manager.h
   types.h
@@ -136,6 +139,7 @@ add_library(SPIRV-Tools-opt
   loop_dependence.cpp
   loop_dependence_helpers.cpp
   loop_descriptor.cpp
+  loop_peeling.cpp
   loop_utils.cpp
   loop_unroller.cpp
   loop_unswitch_pass.cpp
@@ -155,8 +159,10 @@ add_library(SPIRV-Tools-opt
   scalar_replacement_pass.cpp
   set_spec_constant_default_value_pass.cpp
   simplification_pass.cpp
+  ssa_rewrite_pass.cpp
   strength_reduction_pass.cpp
   strip_debug_info_pass.cpp
+  strip_reflect_info_pass.cpp
   type_manager.cpp
   types.cpp
   unify_const_pass.cpp
