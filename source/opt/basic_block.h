@@ -20,6 +20,7 @@
 
 #include <functional>
 #include <memory>
+#include <ostream>
 #include <utility>
 #include <vector>
 
@@ -175,6 +176,19 @@ class BasicBlock {
   // indicated by |killLabel|.
   void KillAllInsts(bool killLabel);
 
+  // Splits this basic block into two. Returns a new basic block with label
+  // |labelId| containing the instructions from |iter| onwards. Instructions
+  // prior to |iter| remain in this basic block.
+  BasicBlock* SplitBasicBlock(IRContext* context, uint32_t label_id,
+                              iterator iter);
+
+  // Pretty-prints this basic block into a std::string by printing every
+  // instruction in it.
+  //
+  // |options| are the disassembly options. SPV_BINARY_TO_TEXT_OPTION_NO_HEADER
+  // is always added to |options|.
+  std::string PrettyPrint(uint32_t options = 0u) const;
+
  private:
   // The enclosing function.
   Function* function_;
@@ -256,9 +270,16 @@ inline void BasicBlock::ForEachInst(
 
 inline bool BasicBlock::WhileEachPhiInst(
     const std::function<bool(Instruction*)>& f, bool run_on_debug_line_insts) {
-  for (auto& inst : insts_) {
-    if (inst.opcode() != SpvOpPhi) break;
-    if (!inst.WhileEachInst(f, run_on_debug_line_insts)) return false;
+  if (insts_.empty()) {
+    return true;
+  }
+
+  Instruction* inst = &insts_.front();
+  while (inst != nullptr) {
+    Instruction* next_instruction = inst->NextNode();
+    if (inst->opcode() != SpvOpPhi) break;
+    if (!inst->WhileEachInst(f, run_on_debug_line_insts)) return false;
+    inst = next_instruction;
   }
   return true;
 }

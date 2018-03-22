@@ -27,6 +27,7 @@ SPVTOOLS_SRC_FILES := \
 		source/util/bit_stream.cpp \
 		source/util/parse_number.cpp \
 		source/util/string_utils.cpp \
+		source/util/timer.cpp \
 		source/val/basic_block.cpp \
 		source/val/construct.cpp \
 		source/val/function.cpp \
@@ -100,6 +101,7 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/local_single_store_elim_pass.cpp \
 		source/opt/local_ssa_elim_pass.cpp \
 		source/opt/loop_descriptor.cpp \
+		source/opt/loop_peeling.cpp \
 		source/opt/loop_unroller.cpp \
 		source/opt/loop_unswitch_pass.cpp \
 		source/opt/loop_utils.cpp \
@@ -117,8 +119,10 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/scalar_replacement_pass.cpp \
 		source/opt/set_spec_constant_default_value_pass.cpp \
 		source/opt/simplification_pass.cpp \
+		source/opt/ssa_rewrite_pass.cpp \
 		source/opt/strength_reduction_pass.cpp \
 		source/opt/strip_debug_info_pass.cpp \
+		source/opt/strip_reflect_info_pass.cpp \
 		source/opt/type_manager.cpp \
 		source/opt/types.cpp \
 		source/opt/unify_const_pass.cpp \
