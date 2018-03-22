@@ -63,10 +63,11 @@ class DistanceEntry {
         peel_last(false) {}
 
   explicit DistanceEntry(Directions direction_)
-      : direction(direction_),
+      : dependence_information(DependenceInformation::DISTANCE),
+        direction(direction_),
+        distance(0),
         peel_first(false),
-        peel_last(false),
-        distance(0) {}
+        peel_last(false) {}
   bool operator==(const DistanceEntry& rhs) const {
     return direction == rhs.direction && peel_first == rhs.peel_first &&
            peel_last == rhs.peel_last && distance == rhs.distance;
