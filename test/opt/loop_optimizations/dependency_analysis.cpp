@@ -2499,7 +2499,7 @@ TEST(DependencyAnalysis, MIV) {
 
   opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-  constexpr int instructions_expected = 17;
+  const int instructions_expected = 17;
   const ir::Instruction* store[instructions_expected];
   const ir::Instruction* load[instructions_expected];
   int stores_found = 0;
