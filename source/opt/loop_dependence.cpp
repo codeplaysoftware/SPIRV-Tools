@@ -189,6 +189,8 @@ bool LoopDependenceAnalysis::SIVTest(
             destination_node->AsSERecurrentNode()->GetCoefficient(),
             distance_entry)) {
       PrintDebug("Proved independence with WeakZeroSourceSIVTest.");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::DIRECTION;
       distance_entry->direction = DistanceEntry::Directions::NONE;
       return true;
     }
@@ -203,6 +205,8 @@ bool LoopDependenceAnalysis::SIVTest(
             source_node->AsSERecurrentNode()->GetCoefficient(),
             distance_entry)) {
       PrintDebug("Proved independence with WeakZeroDestinationSIVTest.");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::DIRECTION;
       distance_entry->direction = DistanceEntry::Directions::NONE;
       return true;
     }
@@ -231,6 +235,8 @@ bool LoopDependenceAnalysis::SIVTest(
                         source_recurrent_expr->GetCoefficient(),
                         distance_entry)) {
         PrintDebug("Proved independence with StrongSIVTest");
+        distance_entry->dependence_information =
+            DistanceEntry::DependenceInformation::DIRECTION;
         distance_entry->direction = DistanceEntry::Directions::NONE;
         return true;
       }
@@ -246,6 +252,8 @@ bool LoopDependenceAnalysis::SIVTest(
                               source_recurrent_expr->GetCoefficient(),
                               distance_entry)) {
         PrintDebug("Proved independence with WeakCrossingSIVTest");
+        distance_entry->dependence_information =
+            DistanceEntry::DependenceInformation::DIRECTION;
         distance_entry->direction = DistanceEntry::Directions::NONE;
         return true;
       }
@@ -315,6 +323,8 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
       PrintDebug(
           "StrongSIVTest proved independence through distance not being an "
           "integer.");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::DIRECTION;
       distance_entry->direction = DistanceEntry::Directions::NONE;
       return true;
     } else {
@@ -353,6 +363,8 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
         PrintDebug(
             "StrongSIVTest proved independence through distance escaping the "
             "loop bounds.");
+        distance_entry->dependence_information =
+            DistanceEntry::DependenceInformation::DISTANCE;
         distance_entry->direction = DistanceEntry::Directions::NONE;
         distance_entry->distance = distance;
         return true;
@@ -370,16 +382,22 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
       "StrongSIVTest could not prove independence. Gathering direction "
       "information.");
   if (distance > 0) {
+    distance_entry->dependence_information =
+        DistanceEntry::DependenceInformation::DISTANCE;
     distance_entry->direction = DistanceEntry::Directions::LT;
     distance_entry->distance = distance;
     return false;
   }
   if (distance == 0) {
+    distance_entry->dependence_information =
+        DistanceEntry::DependenceInformation::DISTANCE;
     distance_entry->direction = DistanceEntry::Directions::EQ;
     distance_entry->distance = 0;
     return false;
   }
   if (distance < 0) {
+    distance_entry->dependence_information =
+        DistanceEntry::DependenceInformation::DISTANCE;
     distance_entry->direction = DistanceEntry::Directions::GT;
     distance_entry->distance = distance;
     return false;
@@ -410,6 +428,8 @@ bool LoopDependenceAnalysis::SymbolicStrongSIVTest(
                                   coefficient)) {
     PrintDebug(
         "SymbolicStrongSIVTest proved independence through loop bounds.");
+    distance_entry->dependence_information =
+        DistanceEntry::DependenceInformation::DIRECTION;
     distance_entry->direction = DistanceEntry::Directions::NONE;
     return true;
   }
@@ -450,6 +470,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
       PrintDebug(
           "WeakZeroSourceSIVTest proved independence through distance not "
           "being an integer.");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::DIRECTION;
       distance_entry->direction = DistanceEntry::Directions::NONE;
       return true;
     } else {
@@ -488,6 +510,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
           ToString(lower_bound_value) + "\n\tupper bound value: " +
           ToString(upper_bound_value) + "\n\tdistance value: " +
           ToString(distance) + "\n");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::DISTANCE;
       distance_entry->direction = DistanceEntry::Directions::NONE;
       distance_entry->distance = distance;
       return true;
@@ -522,6 +546,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
       PrintDebug(
           "WeakZeroSourceSIVTest has found peeling first iteration will break "
           "dependency");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::PEEL;
       distance_entry->peel_first = true;
       return false;
     }
@@ -551,6 +577,8 @@ bool LoopDependenceAnalysis::WeakZeroSourceSIVTest(
       PrintDebug(
           "WeakZeroSourceSIVTest has found peeling final iteration will break "
           "dependency");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::PEEL;
       distance_entry->peel_last = true;
       return false;
     }
@@ -595,6 +623,8 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
       PrintDebug(
           "WeakZeroDestinationSIVTest proved independence through distance not "
           "being an integer.");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::DIRECTION;
       distance_entry->direction = DistanceEntry::Directions::NONE;
       return true;
     } else {
@@ -633,6 +663,8 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
           ToString(lower_bound_value) + "\n\tupper bound value: " +
           ToString(upper_bound_value) + "\n\tdistance value: " +
           ToString(distance));
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::DISTANCE;
       distance_entry->direction = DistanceEntry::Directions::NONE;
       distance_entry->distance = distance;
       return true;
@@ -666,6 +698,8 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
       PrintDebug(
           "WeakZeroDestinationSIVTest has found peeling first iteration will "
           "break dependency");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::PEEL;
       distance_entry->peel_first = true;
       return false;
     }
@@ -696,6 +730,8 @@ bool LoopDependenceAnalysis::WeakZeroDestinationSIVTest(
       PrintDebug(
           "WeakZeroDestinationSIVTest has found peeling final iteration will "
           "break dependency");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::PEEL;
       distance_entry->peel_last = true;
       return false;
     }
@@ -752,6 +788,8 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
       PrintDebug(
           "WeakCrossingSIVTest proved independence through distance escaping "
           "the loop bounds.");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::DIRECTION;
       distance_entry->direction = DistanceEntry::Directions::NONE;
       return true;
     } else {
@@ -760,6 +798,8 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
 
     if (distance == 0) {
       PrintDebug("WeakCrossingSIVTest found EQ dependence.");
+      distance_entry->dependence_information =
+          DistanceEntry::DependenceInformation::DISTANCE;
       distance_entry->direction = DistanceEntry::Directions::EQ;
       distance_entry->distance = 0;
       return false;

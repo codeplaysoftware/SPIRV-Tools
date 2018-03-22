@@ -183,6 +183,8 @@ TEST(DependencyAnalysisHelpers, UnsupportedLoops) {
     EXPECT_FALSE(analysis.IsSupportedLoop(loops[0]));
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(38),
                                         store[0], &distance_vector));
+    EXPECT_EQ(distance_vector.entries[0].dependence_information,
+              opt::DistanceEntry::DependenceInformation::UNKNOWN);
     EXPECT_EQ(distance_vector.entries[0].direction,
               opt::DistanceEntry::Directions::ALL);
   }
@@ -208,6 +210,8 @@ TEST(DependencyAnalysisHelpers, UnsupportedLoops) {
     EXPECT_FALSE(analysis.IsSupportedLoop(loops[0]));
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(58),
                                         store[0], &distance_vector));
+    EXPECT_EQ(distance_vector.entries[0].dependence_information,
+              opt::DistanceEntry::DependenceInformation::UNKNOWN);
     EXPECT_EQ(distance_vector.entries[0].direction,
               opt::DistanceEntry::Directions::ALL);
   }
