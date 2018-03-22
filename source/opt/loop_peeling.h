@@ -126,9 +126,6 @@ class LoopPeeling {
     if (int_type_->width() != 32) {
       return false;
     }
-    if (!loop_->IsLCSSA()) {
-      return false;
-    }
     if (!loop_->GetMergeBlock()) {
       return false;
     }
@@ -146,11 +143,13 @@ class LoopPeeling {
   }
 
   // Moves the execution of the |factor| first iterations of the loop into a
-  // dedicated loop.
+  // dedicated loop. The input loop will be transformed into LCSSA form is
+  // needed.
   void PeelBefore(uint32_t factor);
 
   // Moves the execution of the |factor| last iterations of the loop into a
-  // dedicated loop.
+  // dedicated loop. The input loop will be transformed into LCSSA form is
+  // needed.
   void PeelAfter(uint32_t factor);
 
   // Returns the cloned loop.

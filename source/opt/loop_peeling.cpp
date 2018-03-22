@@ -413,6 +413,10 @@ ir::BasicBlock* LoopPeeling::ProtectLoop(ir::Loop* loop,
 
 void LoopPeeling::PeelBefore(uint32_t peel_factor) {
   assert(CanPeelLoop() && "Cannot peel loop");
+  if (!loop_->IsLCSSA()) {
+    loop_utils_.MakeLoopClosedSSA();
+  }
+
   LoopUtils::LoopCloningResult clone_results;
 
   // Clone the loop and insert the cloned one before the loop.
@@ -477,6 +481,10 @@ void LoopPeeling::PeelBefore(uint32_t peel_factor) {
 
 void LoopPeeling::PeelAfter(uint32_t peel_factor) {
   assert(CanPeelLoop() && "Cannot peel loop");
+  if (!loop_->IsLCSSA()) {
+    loop_utils_.MakeLoopClosedSSA();
+  }
+
   LoopUtils::LoopCloningResult clone_results;
 
   // Clone the loop and insert the cloned one before the loop.
@@ -603,10 +611,6 @@ bool LoopPeelingPass::ProcessFunction(ir::Function* f) {
 
     auto try_peel = [&loop_size, &modified,
                      this](ir::Loop* loop_to_peel) -> ir::Loop* {
-      if (!loop_to_peel->IsLCSSA()) {
-        LoopUtils(context(), loop_to_peel).MakeLoopClosedSSA();
-      }
-
       bool peeled_loop;
       ir::Loop* still_peelable_loop;
       std::tie(peeled_loop, still_peelable_loop) =
