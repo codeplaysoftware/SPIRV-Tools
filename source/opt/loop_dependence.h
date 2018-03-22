@@ -34,6 +34,12 @@ namespace opt {
 
 class DistanceEntry {
  public:
+  enum DependenceInformation {
+    UNKNOWN = 0,
+    DIRECTION = 1,
+    DISTANCE = 2,
+    PEEL = 3
+  };
   enum Directions {
     NONE = 0,
     LT = 1,
@@ -44,21 +50,24 @@ class DistanceEntry {
     GE = 6,
     ALL = 7
   };
+  DependenceInformation dependence_information;
   Directions direction;
+  int64_t distance;
   bool peel_first;
   bool peel_last;
-  int64_t distance;
   DistanceEntry()
-      : direction(Directions::ALL),
+      : dependence_information(DependenceInformation::UNKNOWN),
+        direction(Directions::ALL),
+        distance(0),
         peel_first(false),
-        peel_last(false),
-        distance(0) {}
+        peel_last(false) {}
 
   explicit DistanceEntry(Directions direction_)
-      : direction(direction_),
+      : dependence_information(DependenceInformation::DISTANCE),
+        direction(direction_),
+        distance(0),
         peel_first(false),
-        peel_last(false),
-        distance(0) {}
+        peel_last(false) {}
   bool operator==(const DistanceEntry& rhs) const {
     return direction == rhs.direction && peel_first == rhs.peel_first &&
            peel_last == rhs.peel_last && distance == rhs.distance;

@@ -545,6 +545,8 @@ TEST(DependencyAnalysis, SIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(33), store[0], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::DISTANCE);
       EXPECT_EQ(distance_vector.entries[0].direction,
                 opt::DistanceEntry::Directions::EQ);
       EXPECT_EQ(distance_vector.entries[0].distance, 0);
@@ -556,6 +558,8 @@ TEST(DependencyAnalysis, SIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(44), store[1], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::DISTANCE);
       EXPECT_EQ(distance_vector.entries[0].direction,
                 opt::DistanceEntry::Directions::GT);
       EXPECT_EQ(distance_vector.entries[0].distance, -1);
@@ -567,6 +571,8 @@ TEST(DependencyAnalysis, SIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(54), store[2], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::DISTANCE);
       EXPECT_EQ(distance_vector.entries[0].direction,
                 opt::DistanceEntry::Directions::LT);
       EXPECT_EQ(distance_vector.entries[0].distance, 1);
@@ -578,6 +584,8 @@ TEST(DependencyAnalysis, SIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(61), store[3], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::UNKNOWN);
       EXPECT_EQ(distance_vector.entries[0].direction,
                 opt::DistanceEntry::Directions::ALL);
     }
@@ -610,6 +618,8 @@ TEST(DependencyAnalysis, SIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(78), store[0], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::DISTANCE);
       EXPECT_EQ(distance_vector.entries[0].direction,
                 opt::DistanceEntry::Directions::EQ);
       EXPECT_EQ(distance_vector.entries[0].distance, 0);
@@ -621,6 +631,8 @@ TEST(DependencyAnalysis, SIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(85), store[1], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::DISTANCE);
       EXPECT_EQ(distance_vector.entries[0].direction,
                 opt::DistanceEntry::Directions::LT);
       EXPECT_EQ(distance_vector.entries[0].distance, 1);
@@ -632,6 +644,8 @@ TEST(DependencyAnalysis, SIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(92), store[2], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::DISTANCE);
       EXPECT_EQ(distance_vector.entries[0].direction,
                 opt::DistanceEntry::Directions::GT);
       EXPECT_EQ(distance_vector.entries[0].distance, -1);
@@ -643,6 +657,8 @@ TEST(DependencyAnalysis, SIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(99), store[3], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::UNKNOWN);
       EXPECT_EQ(distance_vector.entries[0].direction,
                 opt::DistanceEntry::Directions::ALL);
     }
@@ -1848,6 +1864,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(34), store[0], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
@@ -1857,6 +1875,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(38), store[1], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
@@ -1867,6 +1887,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(43), store[2], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
 
@@ -1876,6 +1898,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(47), store[3], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
   }
@@ -1908,6 +1932,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(66), store[0], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
@@ -1917,6 +1943,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(70), store[1], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
@@ -1927,6 +1955,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(74), store[2], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
 
@@ -1936,6 +1966,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(78), store[3], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
   }
@@ -1967,6 +1999,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(93), store[0], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
@@ -1976,6 +2010,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(97), store[1], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
@@ -1986,6 +2022,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(101), store[2], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
 
@@ -1995,6 +2033,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(105), store[3], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
   }
@@ -2027,6 +2067,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(120), store[0], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
@@ -2036,6 +2078,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(124), store[1], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_first);
     }
 
@@ -2046,6 +2090,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(128), store[2], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
 
@@ -2055,6 +2101,8 @@ TEST(DependencyAnalysis, WeakZeroSIV) {
       opt::DistanceVector distance_vector{loops.size()};
       EXPECT_FALSE(analysis.GetDependence(
           context->get_def_use_mgr()->GetDef(132), store[3], &distance_vector));
+      EXPECT_EQ(distance_vector.entries[0].dependence_information,
+                opt::DistanceEntry::DependenceInformation::PEEL);
       EXPECT_TRUE(distance_vector.entries[0].peel_last);
     }
   }
@@ -2178,6 +2226,8 @@ TEST(DependencyAnalysis, MultipleSubscriptZIVSIV) {
     opt::DistanceVector distance_vector{loops.size()};
     EXPECT_FALSE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(30),
                                         store[0], &distance_vector));
+    EXPECT_EQ(distance_vector.entries[0].dependence_information,
+              opt::DistanceEntry::DependenceInformation::DISTANCE);
     EXPECT_EQ(distance_vector.entries[0].direction,
               opt::DistanceEntry::Directions::EQ);
     EXPECT_EQ(distance_vector.entries[0].distance, 0);
@@ -2202,8 +2252,11 @@ TEST(DependencyAnalysis, MultipleSubscriptZIVSIV) {
     opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(46),
                                        store[3], &distance_vector));
+    EXPECT_EQ(distance_vector.entries[0].dependence_information,
+              opt::DistanceEntry::DependenceInformation::DISTANCE);
     EXPECT_EQ(distance_vector.entries[0].direction,
               opt::DistanceEntry::Directions::EQ);
+    EXPECT_EQ(distance_vector.entries[0].distance, 0);
   }
 
   // 51 -> 52
@@ -2211,8 +2264,11 @@ TEST(DependencyAnalysis, MultipleSubscriptZIVSIV) {
     opt::DistanceVector distance_vector{loops.size()};
     EXPECT_TRUE(analysis.GetDependence(context->get_def_use_mgr()->GetDef(51),
                                        store[4], &distance_vector));
+    EXPECT_EQ(distance_vector.entries[0].dependence_information,
+              opt::DistanceEntry::DependenceInformation::DISTANCE);
     EXPECT_EQ(distance_vector.entries[0].direction,
               opt::DistanceEntry::Directions::EQ);
+    EXPECT_EQ(distance_vector.entries[0].distance, 0);
   }
 
   // 54 -> 55
@@ -2501,7 +2557,7 @@ TEST(DependencyAnalysis, MIV) {
 
   opt::LoopDependenceAnalysis analysis{context.get(), loops};
 
-  constexpr int instructions_expected = 17;
+  const int instructions_expected = 17;
   const ir::Instruction* store[instructions_expected];
   const ir::Instruction* load[instructions_expected];
   int stores_found = 0;
