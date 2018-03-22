@@ -63,7 +63,7 @@ class DistanceEntry {
         peel_last(false) {}
 
   explicit DistanceEntry(Directions direction_)
-      : dependence_information(DependenceInformation::DISTANCE),
+      : dependence_information(DependenceInformation::DIRECTION),
         direction(direction_),
         distance(0),
         peel_first(false),
