@@ -192,7 +192,6 @@ SENode* ScalarEvolutionAnalysis::AnalyzeAddOp(const ir::Instruction* inst) {
          "Add node must be created from a OpIAdd or OpISub instruction");
 
   opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
-  std::unique_ptr<SENode> add_node{new SEAddNode(this)};
 
   SENode* op1 =
       AnalyzeInstruction(def_use->GetDef(inst->GetSingleWordInOperand(0)));
@@ -235,7 +234,8 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
 
   // If the loop doesn't exist or doesn't have a preheader or latch block, exit
   // out.
-  if (!loop || !loop->GetLatchBlock() || !loop->GetPreHeaderBlock())
+  if (!loop || !loop->GetLatchBlock() || !loop->GetPreHeaderBlock() ||
+      loop->GetHeaderBlock() != basic_block)
     return CreateCantComputeNode();
 
   std::unique_ptr<SERecurrentNode> phi_node{new SERecurrentNode(this, loop)};
@@ -382,6 +382,9 @@ bool SENode::operator==(const SENode& other) const {
       return false;
 
     if (this_as_recurrent->GetOffset() != other_as_recurrent->GetOffset())
+      return false;
+
+    if (this_as_recurrent->GetLoop() != other_as_recurrent->GetLoop())
       return false;
   }
 
