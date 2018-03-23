@@ -70,6 +70,11 @@ class ScalarEvolutionAnalysis {
   // Create a CantComputeNode. Used to exit out of analysis.
   SENode* CreateCantComputeNode();
 
+  // Create a new recurrent node with |offset| and |coefficient|, with respect
+  // to |loop|.
+  SENode* CreateRecurrentExpression(const ir::Loop* loop, SENode* offset,
+                                    SENode* coefficient);
+
   // Construct the DAG by traversing use def chain of |inst|.
   SENode* AnalyzeInstruction(const ir::Instruction* inst);
 
@@ -92,17 +97,23 @@ class ScalarEvolutionAnalysis {
   // Checks that the graph starting from |node| is invariant to the |loop|.
   bool IsLoopInvariant(const ir::Loop* loop, const SENode* node) const;
 
+  // Find the recurrent term belonging to |loop| in the graph starting from
+  // |node| and return the coefficient of that recurrent term. Constant zero
+  // will be returned if no recurrent could be found. |node| should be in
+  // simplest form.
+  SENode* GetCoefficientFromRecurrentTerm(SENode* node, const ir::Loop* loop);
+
+  // Return a rebuilt graph starting from |node| with the recurrent expression
+  // belonging to |loop| being zeroed out. Returned node will be simplified.
+  SENode* BuildGraphWithoutRecurrentTerm(SENode* node, const ir::Loop* loop);
+
+  // Return the recurrent term belonging to |loop| if it appears in the graph
+  // starting at |node| or null if it doesn't.
+  SERecurrentNode* GetRecurrentTerm(SENode* node, const ir::Loop* loop);
+
+  SENode* UpdateChildNode(SENode* parent, SENode* child, SENode* new_child);
+
  private:
-  SENode* AnalyzeConstant(const ir::Instruction* inst);
-
-  // Handles both addition and subtraction. If the |is_subtraction| flag is set
-  // then the addition will be op1+(-op2) otherwise op1+op2.
-  SENode* AnalyzeAddOp(const ir::Instruction* add);
-
-  SENode* AnalyzeMultiplyOp(const ir::Instruction* multiply);
-
-  SENode* AnalyzePhiInstruction(const ir::Instruction* phi);
-
   ir::IRContext* context_;
 
   // A map of instructions to SENodes. This is used to track recurrent
@@ -111,7 +122,8 @@ class ScalarEvolutionAnalysis {
   // check if nodes have already been built when analyzing instructions.
   std::map<const ir::Instruction*, SENode*> recurrent_node_map_;
 
-  // Helper functor to allow two unique_ptr to nodes to be compare. Only needed
+  // Helper functor to allow two unique_ptr to nodes to be compare. Only
+  // needed
   // for the unordered_set implementation.
   struct NodePointersEquality {
     bool operator()(const std::unique_ptr<SENode>& lhs,
@@ -124,6 +136,17 @@ class ScalarEvolutionAnalysis {
   // managed by they set.
   std::unordered_set<std::unique_ptr<SENode>, SENodeHash, NodePointersEquality>
       node_cache_;
+
+  SENode* AnalyzeConstant(const ir::Instruction* inst);
+
+  // Handles both addition and subtraction. If the |is_subtraction| flag is
+  // set
+  // then the addition will be op1+(-op2) otherwise op1+op2.
+  SENode* AnalyzeAddOp(const ir::Instruction* add);
+
+  SENode* AnalyzeMultiplyOp(const ir::Instruction* multiply);
+
+  SENode* AnalyzePhiInstruction(const ir::Instruction* phi);
 };
 
 }  // namespace opt

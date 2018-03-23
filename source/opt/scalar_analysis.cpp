@@ -62,6 +62,15 @@ SENode* ScalarEvolutionAnalysis::CreateConstant(int64_t integer) {
       std::unique_ptr<SENode>(new SEConstantNode(this, integer)));
 }
 
+SENode* ScalarEvolutionAnalysis::CreateRecurrentExpression(
+    const ir::Loop* loop, SENode* offset, SENode* coefficient) {
+  std::unique_ptr<SERecurrentNode> phi_node{new SERecurrentNode(this, loop)};
+  phi_node->AddOffset(offset);
+  phi_node->AddCoefficient(coefficient);
+
+  return GetCachedOrAdd(std::move(phi_node));
+}
+
 SENode* ScalarEvolutionAnalysis::AnalyzeMultiplyOp(
     const ir::Instruction* multiply) {
   assert(multiply->opcode() == SpvOp::SpvOpIMul &&
@@ -336,6 +345,87 @@ bool ScalarEvolutionAnalysis::IsLoopInvariant(const ir::Loop* loop,
   return true;
 }
 
+SENode* ScalarEvolutionAnalysis::GetCoefficientFromRecurrentTerm(
+    SENode* node, const ir::Loop* loop) {
+  // Traverse the DAG to find the recurrent expression belonging to |loop|.
+  for (auto itr = node->graph_begin(); itr != node->graph_end(); ++itr) {
+    SERecurrentNode* rec = itr->AsSERecurrentNode();
+    if (rec && rec->GetLoop() == loop) {
+      return rec->GetCoefficient();
+    }
+  }
+  return CreateConstant(0);
+}
+
+SENode* ScalarEvolutionAnalysis::UpdateChildNode(SENode* parent,
+                                                 SENode* old_child,
+                                                 SENode* new_child) {
+  // Only handles add.
+  if (parent->GetType() != SENode::Add) return parent;
+
+  std::vector<SENode*> new_children;
+  for (SENode* child : *parent) {
+    if (child == old_child) {
+      new_children.push_back(new_child);
+    } else {
+      new_children.push_back(child);
+    }
+  }
+
+  std::unique_ptr<SENode> add_node{new SEAddNode(this)};
+  for (SENode* child : new_children) {
+    add_node->AddChild(child);
+  }
+
+  return SimplifyExpression(GetCachedOrAdd(std::move(add_node)));
+}
+
+// Rebuild the |node| eliminating, if it exists, the recurrent term which
+// belongs to the |loop|.
+SENode* ScalarEvolutionAnalysis::BuildGraphWithoutRecurrentTerm(
+    SENode* node, const ir::Loop* loop) {
+  // If the node is already a recurrent expression belonging to loop then just
+  // return the offset.
+  SERecurrentNode* recurrent = node->AsSERecurrentNode();
+  if (recurrent) {
+    if (recurrent->GetLoop() == loop) {
+      return recurrent->GetOffset();
+    } else {
+      return node;
+    }
+  }
+
+  std::vector<SENode*> new_children;
+  // Otherwise find the recurrent node in the children of this node.
+  for (auto itr : *node) {
+    recurrent = itr->AsSERecurrentNode();
+    if (recurrent && recurrent->GetLoop() == loop) {
+      new_children.push_back(recurrent->GetOffset());
+    } else {
+      new_children.push_back(itr);
+    }
+  }
+
+  std::unique_ptr<SENode> add_node{new SEAddNode(this)};
+  for (SENode* child : new_children) {
+    add_node->AddChild(child);
+  }
+
+  return SimplifyExpression(GetCachedOrAdd(std::move(add_node)));
+}
+
+// Return the recurrent term belonging to |loop| if it appears in the graph
+// starting at |node| or null if it doesn't.
+SERecurrentNode* ScalarEvolutionAnalysis::GetRecurrentTerm(
+    SENode* node, const ir::Loop* loop) {
+  for (auto itr = node->graph_begin(); itr != node->graph_end(); ++itr) {
+    SERecurrentNode* rec = itr->AsSERecurrentNode();
+    if (rec && rec->GetLoop() == loop) {
+      return rec;
+    }
+  }
+  return nullptr;
+}
 std::string SENode::AsString() const {
   switch (GetType()) {
     case Constant:
