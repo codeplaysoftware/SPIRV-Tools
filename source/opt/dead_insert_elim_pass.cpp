@@ -138,18 +138,31 @@ void DeadInsertElimPass::MarkInsertChain(ir::Instruction* insertChain,
   // If insert chain ended with phi, do recursive call on each operand
   if (insInst->opcode() != SpvOpPhi) return;
   // Mark phi visited to prevent potential infinite loop. If phi is already
-  // visited, return to avoid infinite loop
-  if (!visitedPhis_.insert(insInst->result_id()).second) return;
-  uint32_t icnt = 0;
-  insInst->ForEachInId([&icnt, &pExtIndices, &extOffset, this](uint32_t* idp) {
-    if (icnt % 2 == 0) {
-      ir::Instruction* pi = get_def_use_mgr()->GetDef(*idp);
-      MarkInsertChain(pi, pExtIndices, extOffset);
-    }
-    ++icnt;
-  });
-  // Unmark phi when done visiting
-  visitedPhis_.erase(insInst->result_id());
+  // visited, return to avoid infinite loop.
+  auto iter = visitedPhis_.find(insInst->result_id());
+  if (iter == visitedPhis_.end()) {
+    iter = visitedPhis_.emplace(insInst->result_id(), true).first;
+  } else if (iter->second) {
+    return;
+  } else {
+    iter->second = true;
+  }
+
+  // Phis may have duplicate inputs values for different edges, prune incoming
+  // ids lists before recursing.
+  std::vector<uint32_t> ids;
+  for (uint32_t i = 0; i < insInst->NumInOperands(); i += 2) {
+    ids.push_back(insInst->GetSingleWordInOperand(i));
+  }
+  std::sort(ids.begin(), ids.end());
+  auto new_end = std::unique(ids.begin(), ids.end());
+  for (auto id_iter = ids.begin(); id_iter != new_end; ++id_iter) {
+    ir::Instruction* pi = get_def_use_mgr()->GetDef(*id_iter);
+    MarkInsertChain(pi, pExtIndices, extOffset);
+  }
+
+  // Unmark phi when done visiting.
+  iter->second = false;
 }
 
 bool DeadInsertElimPass::EliminateDeadInserts(ir::Function* func) {
@@ -244,25 +257,9 @@ bool DeadInsertElimPass::EliminateDeadInsertsOnePass(ir::Function* func) {
 
 void DeadInsertElimPass::Initialize(ir::IRContext* c) {
   InitializeProcessing(c);
-
-  // Initialize extension whitelist
-  InitExtensions();
 };
 
-bool DeadInsertElimPass::AllExtensionsSupported() const {
-  // If any extension not in whitelist, return false
-  for (auto& ei : get_module()->extensions()) {
-    const char* extName =
-        reinterpret_cast<const char*>(&ei.GetInOperand(0).words[0]);
-    if (extensions_whitelist_.find(extName) == extensions_whitelist_.end())
-      return false;
-  }
-  return true;
-}
-
 Pass::Status DeadInsertElimPass::ProcessImpl() {
-  // Do not process if any disallowed extensions are enabled
-  if (!AllExtensionsSupported()) return Status::SuccessWithoutChange;
   // Process all entry point functions.
   ProcessFunction pfn = [this](ir::Function* fp) {
     return EliminateDeadInserts(fp);
@@ -276,34 +273,6 @@ DeadInsertElimPass::DeadInsertElimPass() {}
 Pass::Status DeadInsertElimPass::Process(ir::IRContext* c) {
   Initialize(c);
   return ProcessImpl();
-}
-
-void DeadInsertElimPass::InitExtensions() {
-  extensions_whitelist_.clear();
-  extensions_whitelist_.insert({
-      "SPV_AMD_shader_explicit_vertex_parameter",
-      "SPV_AMD_shader_trinary_minmax",
-      "SPV_AMD_gcn_shader",
-      "SPV_KHR_shader_ballot",
-      "SPV_AMD_shader_ballot",
-      "SPV_AMD_gpu_shader_half_float",
-      "SPV_KHR_shader_draw_parameters",
-      "SPV_KHR_subgroup_vote",
-      "SPV_KHR_16bit_storage",
-      "SPV_KHR_device_group",
-      "SPV_KHR_multiview",
-      "SPV_NVX_multiview_per_view_attributes",
-      "SPV_NV_viewport_array2",
-      "SPV_NV_stereo_view_rendering",
-      "SPV_NV_sample_mask_override_coverage",
-      "SPV_NV_geometry_shader_passthrough",
-      "SPV_AMD_texture_gather_bias_lod",
-      "SPV_KHR_storage_buffer_storage_class",
-      "SPV_KHR_variable_pointers",
-      "SPV_AMD_gpu_shader_int16",
-      "SPV_KHR_post_depth_coverage",
-      "SPV_KHR_shader_atomic_counter_ops",
-  });
 }
 
 }  // namespace opt

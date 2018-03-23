@@ -260,8 +260,8 @@ class IRContext {
     return type_mgr_.get();
   }
 
-  // Returns a pointer to a def-use manager.  If the def-use manager is
-  // invalid, it is rebuilt first.
+  // Returns a pointer to the scalar evolution analysis. If it is invalid it
+  // will be rebuilt first.
   opt::ScalarEvolutionAnalysis* GetScalarEvolutionAnalysis() {
     if (!AreAnalysesValid(kAnalysisScalarEvolution)) {
       BuildScalarEvolutionAnalysis();
@@ -494,6 +494,10 @@ class IRContext {
 
   // Remove |inst| from |id_to_name_| if it is in map.
   void RemoveFromIdToName(const Instruction* inst);
+
+  // Returns true if it is suppose to be valid but it is incorrect.  Returns
+  // true if the cfg is invalidated.
+  bool CheckCFG();
 
   // The SPIR-V syntax context containing grammar tables for opcodes and
   // operands.
@@ -752,10 +756,16 @@ void IRContext::AddAnnotationInst(std::unique_ptr<Instruction>&& a) {
 
 void IRContext::AddType(std::unique_ptr<Instruction>&& t) {
   module()->AddType(std::move(t));
+  if (AreAnalysesValid(kAnalysisDefUse)) {
+    get_def_use_mgr()->AnalyzeInstDef(&*(--types_values_end()));
+  }
 }
 
 void IRContext::AddGlobalValue(std::unique_ptr<Instruction>&& v) {
   module()->AddGlobalValue(std::move(v));
+  if (AreAnalysesValid(kAnalysisDefUse)) {
+    get_def_use_mgr()->AnalyzeInstDef(&*(--types_values_end()));
+  }
 }
 
 void IRContext::AddFunction(std::unique_ptr<Function>&& f) {

@@ -15,6 +15,7 @@
 #ifndef LIBSPIRV_OPT_CONSTRUCTS_H_
 #define LIBSPIRV_OPT_CONSTRUCTS_H_
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -27,6 +28,7 @@
 namespace spvtools {
 namespace ir {
 
+class CFG;
 class IRContext;
 class Module;
 
@@ -91,6 +93,13 @@ class Function {
     return const_iterator(&blocks_, blocks_.cend());
   }
 
+  // Returns an iterator to the basic block |id|.
+  iterator FindBlock(uint32_t bb_id) {
+    return std::find_if(begin(), end(), [bb_id](const ir::BasicBlock& it_bb) {
+      return bb_id == it_bb.id();
+    });
+  }
+
   // Runs the given function |f| on each instruction in this function, and
   // optionally on debug line instructions that might precede them.
   void ForEachInst(const std::function<void(Instruction*)>& f,
@@ -102,6 +111,18 @@ class Function {
   // and optionally on debug line instructions that might precede them.
   void ForEachParam(const std::function<void(const Instruction*)>& f,
                     bool run_on_debug_line_insts = false) const;
+
+  // Returns the context of the current function.
+  IRContext* context() const { return def_inst_->context(); }
+
+  BasicBlock* InsertBasicBlockAfter(std::unique_ptr<ir::BasicBlock>&& new_block,
+                                    BasicBlock* position);
+
+  // Pretty-prints all the basic blocks in this function into a std::string.
+  //
+  // |options| are the disassembly options. SPV_BINARY_TO_TEXT_OPTION_NO_HEADER
+  // is always added to |options|.
+  std::string PrettyPrint(uint32_t options = 0u) const;
 
  private:
   // The enclosing module.

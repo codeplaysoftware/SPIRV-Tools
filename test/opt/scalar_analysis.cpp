@@ -35,7 +35,7 @@ namespace {
 using namespace spvtools;
 using ::testing::UnorderedElementsAre;
 
-using PassClassTest = PassTest<::testing::Test>;
+using ScalarAnalysisTest = PassTest<::testing::Test>;
 
 /*
 Generated from the following GLSL + --eliminate-local-multi-store
@@ -48,7 +48,7 @@ void main() {
   }
 }
 */
-TEST_F(PassClassTest, BasicEvolutionTest) {
+TEST_F(ScalarAnalysisTest, BasicEvolutionTest) {
   const std::string text = R"(
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
@@ -119,8 +119,8 @@ TEST_F(PassClassTest, BasicEvolutionTest) {
     }
   }
 
-  EXPECT_TRUE(load);
-  EXPECT_TRUE(store);
+  EXPECT_NE(load, nullptr);
+  EXPECT_NE(store, nullptr);
 
   ir::Instruction* access_chain =
       context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
@@ -129,32 +129,31 @@ TEST_F(PassClassTest, BasicEvolutionTest) {
       access_chain->GetSingleWordInOperand(1));
   const opt::SENode* node = analysis.AnalyzeInstruction(child);
 
-  EXPECT_TRUE(node);
+  EXPECT_NE(node, nullptr);
 
   // Unsimplified node should have the form of ADD(REC(0,1), 1)
-  EXPECT_TRUE(node->GetType() == opt::SENode::Add);
+  EXPECT_EQ(node->GetType(), opt::SENode::Add);
 
   const opt::SENode* child_1 = node->GetChild(0);
   EXPECT_TRUE(child_1->GetType() == opt::SENode::Constant ||
-              child_1->GetType() == opt::SENode::RecurrentExpr);
+              child_1->GetType() == opt::SENode::RecurrentAddExpr);
 
   const opt::SENode* child_2 = node->GetChild(1);
   EXPECT_TRUE(child_2->GetType() == opt::SENode::Constant ||
-              child_2->GetType() == opt::SENode::RecurrentExpr);
+              child_2->GetType() == opt::SENode::RecurrentAddExpr);
 
   opt::SENode* simplified =
       analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
-
   // Simplified should be in the form of REC(1,1)
-  EXPECT_TRUE(simplified->GetType() == opt::SENode::RecurrentExpr);
+  EXPECT_EQ(simplified->GetType(), opt::SENode::RecurrentAddExpr);
 
-  EXPECT_TRUE(simplified->GetChild(0)->GetType() == opt::SENode::Constant);
-  EXPECT_TRUE(
-      simplified->GetChild(0)->AsSEConstantNode()->FoldToSingleValue() == 1);
+  EXPECT_EQ(simplified->GetChild(0)->GetType(), opt::SENode::Constant);
+  EXPECT_EQ(simplified->GetChild(0)->AsSEConstantNode()->FoldToSingleValue(),
+            1);
 
-  EXPECT_TRUE(simplified->GetChild(1)->GetType() == opt::SENode::Constant);
-  EXPECT_TRUE(
-      simplified->GetChild(1)->AsSEConstantNode()->FoldToSingleValue() == 1);
+  EXPECT_EQ(simplified->GetChild(1)->GetType(), opt::SENode::Constant);
+  EXPECT_EQ(simplified->GetChild(1)->AsSEConstantNode()->FoldToSingleValue(),
+            1);
 
   EXPECT_EQ(simplified->GetChild(0), simplified->GetChild(1));
 }
@@ -172,7 +171,7 @@ void main() {
 }
 
 */
-TEST_F(PassClassTest, LoadTest) {
+TEST_F(ScalarAnalysisTest, LoadTest) {
   const std::string text = R"(
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
@@ -245,7 +244,7 @@ TEST_F(PassClassTest, LoadTest) {
     }
   }
 
-  EXPECT_TRUE(load);
+  EXPECT_NE(load, nullptr);
 
   ir::Instruction* access_chain =
       context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
@@ -257,32 +256,31 @@ TEST_F(PassClassTest, LoadTest) {
 
   const opt::SENode* node = analysis.AnalyzeInstruction(child);
 
-  EXPECT_TRUE(node);
+  EXPECT_NE(node, nullptr);
 
   // Unsimplified node should have the form of ADD(REC(0,1), X)
-  EXPECT_TRUE(node->GetType() == opt::SENode::Add);
+  EXPECT_EQ(node->GetType(), opt::SENode::Add);
 
   const opt::SENode* child_1 = node->GetChild(0);
   EXPECT_TRUE(child_1->GetType() == opt::SENode::ValueUnknown ||
-              child_1->GetType() == opt::SENode::RecurrentExpr);
+              child_1->GetType() == opt::SENode::RecurrentAddExpr);
 
   const opt::SENode* child_2 = node->GetChild(1);
   EXPECT_TRUE(child_2->GetType() == opt::SENode::ValueUnknown ||
-              child_2->GetType() == opt::SENode::RecurrentExpr);
+              child_2->GetType() == opt::SENode::RecurrentAddExpr);
 
   opt::SENode* simplified =
       analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
-  EXPECT_TRUE(simplified->GetType() == opt::SENode::RecurrentExpr);
+  EXPECT_EQ(simplified->GetType(), opt::SENode::RecurrentAddExpr);
 
   const opt::SERecurrentNode* rec = simplified->AsSERecurrentNode();
 
   EXPECT_NE(rec->GetChild(0), rec->GetChild(1));
 
-  EXPECT_TRUE(rec->GetOffset()->GetType() == opt::SENode::ValueUnknown);
+  EXPECT_EQ(rec->GetOffset()->GetType(), opt::SENode::ValueUnknown);
 
-  EXPECT_TRUE(rec->GetCoefficient()->GetType() == opt::SENode::Constant);
-  EXPECT_TRUE(rec->GetCoefficient()->AsSEConstantNode()->FoldToSingleValue() ==
-              1);
+  EXPECT_EQ(rec->GetCoefficient()->GetType(), opt::SENode::Constant);
+  EXPECT_EQ(rec->GetCoefficient()->AsSEConstantNode()->FoldToSingleValue(), 1u);
 }
 
 /*
@@ -297,7 +295,7 @@ loop_invariant+ 16 * 3];
 }
 
 */
-TEST_F(PassClassTest, SimplifySimple) {
+TEST_F(ScalarAnalysisTest, SimplifySimple) {
   const std::string text = R"(
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
@@ -363,7 +361,7 @@ TEST_F(PassClassTest, SimplifySimple) {
     }
   }
 
-  EXPECT_TRUE(load);
+  EXPECT_NE(load, nullptr);
 
   ir::Instruction* access_chain =
       context->get_def_use_mgr()->GetDef(load->GetSingleWordInOperand(0));
@@ -374,16 +372,16 @@ TEST_F(PassClassTest, SimplifySimple) {
   const opt::SENode* node = analysis.AnalyzeInstruction(child);
 
   // Unsimplified is a very large graph with an add at the top.
-  EXPECT_TRUE(node);
-  EXPECT_TRUE(node->GetType() == opt::SENode::Add);
+  EXPECT_NE(node, nullptr);
+  EXPECT_EQ(node->GetType(), opt::SENode::Add);
 
   // Simplified node should resolve down to a constant expression as the loads
   // will eliminate themselves.
   opt::SENode* simplified =
       analysis.SimplifyExpression(const_cast<opt::SENode*>(node));
 
-  EXPECT_TRUE(simplified->GetType() == opt::SENode::Constant);
-  EXPECT_TRUE(simplified->AsSEConstantNode()->FoldToSingleValue() == 33);
+  EXPECT_EQ(simplified->GetType(), opt::SENode::Constant);
+  EXPECT_EQ(simplified->AsSEConstantNode()->FoldToSingleValue(), 33u);
 }
 
 /*
@@ -405,7 +403,7 @@ void main() {
 }
 
 */
-TEST_F(PassClassTest, Simplify) {
+TEST_F(ScalarAnalysisTest, Simplify) {
   const std::string text = R"(               OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
@@ -551,8 +549,8 @@ TEST_F(PassClassTest, Simplify) {
 
   subtract_node = analysis.CreateSubtraction(store_node, load_node);
   simplified_node = analysis.SimplifyExpression(subtract_node);
-  EXPECT_TRUE(simplified_node->GetType() == opt::SENode::Constant);
-  EXPECT_TRUE(simplified_node->AsSEConstantNode()->FoldToSingleValue() == 0);
+  EXPECT_EQ(simplified_node->GetType(), opt::SENode::Constant);
+  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 0u);
 
   // Testing [i] - [i-1] == 1
   load_access_chain =
@@ -571,8 +569,8 @@ TEST_F(PassClassTest, Simplify) {
   subtract_node = analysis.CreateSubtraction(store_node, load_node);
   simplified_node = analysis.SimplifyExpression(subtract_node);
 
-  EXPECT_TRUE(simplified_node->GetType() == opt::SENode::Constant);
-  EXPECT_TRUE(simplified_node->AsSEConstantNode()->FoldToSingleValue() == 1);
+  EXPECT_EQ(simplified_node->GetType(), opt::SENode::Constant);
+  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 1u);
 
   // Testing [i] - [i+1] == -1
   load_access_chain =
@@ -590,8 +588,8 @@ TEST_F(PassClassTest, Simplify) {
 
   subtract_node = analysis.CreateSubtraction(store_node, load_node);
   simplified_node = analysis.SimplifyExpression(subtract_node);
-  EXPECT_TRUE(simplified_node->GetType() == opt::SENode::Constant);
-  EXPECT_TRUE(simplified_node->AsSEConstantNode()->FoldToSingleValue() == -1);
+  EXPECT_EQ(simplified_node->GetType(), opt::SENode::Constant);
+  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), -1);
 
   // Testing [i+1] - [i+1] == 0
   load_access_chain =
@@ -609,8 +607,8 @@ TEST_F(PassClassTest, Simplify) {
 
   subtract_node = analysis.CreateSubtraction(store_node, load_node);
   simplified_node = analysis.SimplifyExpression(subtract_node);
-  EXPECT_TRUE(simplified_node->GetType() == opt::SENode::Constant);
-  EXPECT_TRUE(simplified_node->AsSEConstantNode()->FoldToSingleValue() == 0);
+  EXPECT_EQ(simplified_node->GetType(), opt::SENode::Constant);
+  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 0u);
 
   // Testing [i+N] - [i+N] == 0
   load_access_chain =
@@ -629,8 +627,8 @@ TEST_F(PassClassTest, Simplify) {
   subtract_node = analysis.CreateSubtraction(store_node, load_node);
 
   simplified_node = analysis.SimplifyExpression(subtract_node);
-  EXPECT_TRUE(simplified_node->GetType() == opt::SENode::Constant);
-  EXPECT_TRUE(simplified_node->AsSEConstantNode()->FoldToSingleValue() == 0);
+  EXPECT_EQ(simplified_node->GetType(), opt::SENode::Constant);
+  EXPECT_EQ(simplified_node->AsSEConstantNode()->FoldToSingleValue(), 0u);
 
   // Testing [i] - [i+N] == -N
   load_access_chain =
@@ -648,7 +646,7 @@ TEST_F(PassClassTest, Simplify) {
 
   subtract_node = analysis.CreateSubtraction(store_node, load_node);
   simplified_node = analysis.SimplifyExpression(subtract_node);
-  EXPECT_TRUE(simplified_node->GetType() == opt::SENode::Negative);
+  EXPECT_EQ(simplified_node->GetType(), opt::SENode::Negative);
 }
 
 /*
@@ -666,7 +664,7 @@ void main(void) {
 
 */
 
-TEST_F(PassClassTest, SimplifyMultiplyInductions) {
+TEST_F(ScalarAnalysisTest, SimplifyMultiplyInductions) {
   const std::string text = R"(
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
@@ -816,7 +814,7 @@ void main(void) {
 
 */
 
-TEST_F(PassClassTest, SimplifyNegativeSteps) {
+TEST_F(ScalarAnalysisTest, SimplifyNegativeSteps) {
   const std::string text = R"(
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
@@ -903,7 +901,7 @@ TEST_F(PassClassTest, SimplifyNegativeSteps) {
   opt::SENode* load_node = analysis.AnalyzeInstruction(load_child);
 
   EXPECT_TRUE(load_node);
-  EXPECT_EQ(load_node->GetType(), opt::SENode::RecurrentExpr);
+  EXPECT_EQ(load_node->GetType(), opt::SENode::RecurrentAddExpr);
   EXPECT_TRUE(load_node->AsSERecurrentNode());
 
   opt::SENode* child_1 = load_node->AsSERecurrentNode()->GetCoefficient();
@@ -913,7 +911,7 @@ TEST_F(PassClassTest, SimplifyNegativeSteps) {
   EXPECT_EQ(child_2->GetType(), opt::SENode::Constant);
 
   EXPECT_EQ(child_1->AsSEConstantNode()->FoldToSingleValue(), -1);
-  EXPECT_EQ(child_2->AsSEConstantNode()->FoldToSingleValue(), 0);
+  EXPECT_EQ(child_2->AsSEConstantNode()->FoldToSingleValue(), 0u);
 
   opt::SERecurrentNode* load_simplified =
       analysis.SimplifyExpression(load_node)->AsSERecurrentNode();
@@ -921,7 +919,7 @@ TEST_F(PassClassTest, SimplifyNegativeSteps) {
   EXPECT_TRUE(load_simplified);
   EXPECT_EQ(load_node, load_simplified);
 
-  EXPECT_EQ(load_simplified->GetType(), opt::SENode::RecurrentExpr);
+  EXPECT_EQ(load_simplified->GetType(), opt::SENode::RecurrentAddExpr);
   EXPECT_TRUE(load_simplified->AsSERecurrentNode());
 
   opt::SENode* simplified_child_1 =
@@ -945,7 +943,7 @@ void main(void) {
 
 */
 
-TEST_F(PassClassTest, SimplifyInductionsAndLoads) {
+TEST_F(ScalarAnalysisTest, SimplifyInductionsAndLoads) {
   const std::string text = R"(
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
@@ -1040,8 +1038,8 @@ TEST_F(PassClassTest, SimplifyInductionsAndLoads) {
     }
   }
 
-  EXPECT_EQ(loads.size(), 3);
-  EXPECT_EQ(stores.size(), 2);
+  EXPECT_EQ(loads.size(), 3u);
+  EXPECT_EQ(stores.size(), 2u);
   {
     ir::Instruction* store_access_chain = context->get_def_use_mgr()->GetDef(
         stores[0]->GetSingleWordInOperand(0));
@@ -1104,11 +1102,9 @@ TEST_F(PassClassTest, SimplifyInductionsAndLoads) {
 
     opt::SENode* difference =
         analysis.CreateSubtraction(store_simplified, load_simplified);
-    difference->DumpDot(std::cout, true);
-    std::cout << "\n\n\n";
     opt::SENode* difference_simplified =
         analysis.SimplifyExpression(difference);
-    difference_simplified->DumpDot(std::cout, true);
+
     // Check that 2*i + 2*N + 1  -  2*i + N + 1, turns into just N when both
     // sides have already been simplified into a single recurrent expression.
     EXPECT_EQ(difference_simplified->GetType(), opt::SENode::ValueUnknown);
@@ -1122,6 +1118,111 @@ TEST_F(PassClassTest, SimplifyInductionsAndLoads) {
               opt::SENode::ValueUnknown);
     EXPECT_EQ(difference_inverse->GetChild(0), difference_simplified);
   }
+}
+
+/* Generated from the following GLSL + --eliminate-local-multi-store
+
+  #version 430
+  layout(location = 1) out float array[10];
+  layout(location = 2) flat in int N;
+  void main(void) {
+    int step = 0;
+    for (int i = 0; i < N; i += step) {
+      step++;
+    }
+  }
+*/
+TEST_F(ScalarAnalysisTest, InductionWithVariantStep) {
+  const std::string text = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %2 "main" %3 %4
+               OpExecutionMode %2 OriginUpperLeft
+               OpSource GLSL 430
+               OpName %2 "main"
+               OpName %5 "step"
+               OpName %6 "i"
+               OpName %3 "N"
+               OpName %4 "array"
+               OpDecorate %3 Flat
+               OpDecorate %3 Location 2
+               OpDecorate %4 Location 1
+          %7 = OpTypeVoid
+          %8 = OpTypeFunction %7
+          %9 = OpTypeInt 32 1
+         %10 = OpTypePointer Function %9
+         %11 = OpConstant %9 0
+         %12 = OpTypePointer Input %9
+          %3 = OpVariable %12 Input
+         %13 = OpTypeBool
+         %14 = OpConstant %9 1
+         %15 = OpTypeFloat 32
+         %16 = OpTypeInt 32 0
+         %17 = OpConstant %16 10
+         %18 = OpTypeArray %15 %17
+         %19 = OpTypePointer Output %18
+          %4 = OpVariable %19 Output
+          %2 = OpFunction %7 None %8
+         %20 = OpLabel
+          %5 = OpVariable %10 Function
+          %6 = OpVariable %10 Function
+               OpStore %5 %11
+               OpStore %6 %11
+               OpBranch %21
+         %21 = OpLabel
+         %22 = OpPhi %9 %11 %20 %23 %24
+         %25 = OpPhi %9 %11 %20 %26 %24
+               OpLoopMerge %27 %24 None
+               OpBranch %28
+         %28 = OpLabel
+         %29 = OpLoad %9 %3
+         %30 = OpSLessThan %13 %25 %29
+               OpBranchConditional %30 %31 %27
+         %31 = OpLabel
+         %23 = OpIAdd %9 %22 %14
+               OpStore %5 %23
+               OpBranch %24
+         %24 = OpLabel
+         %26 = OpIAdd %9 %25 %23
+               OpStore %6 %26
+               OpBranch %21
+         %27 = OpLabel
+               OpReturn
+               OpFunctionEnd
+  )";
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 2);
+  opt::ScalarEvolutionAnalysis analysis{context.get()};
+
+  std::vector<const ir::Instruction*> phis{};
+
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, 21)) {
+    if (inst.opcode() == SpvOp::SpvOpPhi) {
+      phis.push_back(&inst);
+    }
+  }
+
+  EXPECT_EQ(phis.size(), 2u);
+  opt::SENode* phi_node_1 = analysis.AnalyzeInstruction(phis[0]);
+  opt::SENode* phi_node_2 = analysis.AnalyzeInstruction(phis[1]);
+  phi_node_1->DumpDot(std::cout, true);
+  EXPECT_NE(phi_node_1, nullptr);
+  EXPECT_NE(phi_node_2, nullptr);
+
+  EXPECT_EQ(phi_node_1->GetType(), opt::SENode::RecurrentAddExpr);
+  EXPECT_EQ(phi_node_2->GetType(), opt::SENode::CanNotCompute);
+
+  opt::SENode* simplified_1 = analysis.SimplifyExpression(phi_node_1);
+  opt::SENode* simplified_2 = analysis.SimplifyExpression(phi_node_2);
+
+  EXPECT_EQ(simplified_1->GetType(), opt::SENode::RecurrentAddExpr);
+  EXPECT_EQ(simplified_2->GetType(), opt::SENode::CanNotCompute);
 }
 
 }  // namespace
