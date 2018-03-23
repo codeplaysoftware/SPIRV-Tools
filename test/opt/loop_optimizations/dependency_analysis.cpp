@@ -2847,7 +2847,7 @@ TEST(DependencyAnalysis, SubscriptPartitioning) {
       &ld.GetLoopByIndex(3)};
   opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
 
-  constexpr int instructions_expected = 13;
+  const int instructions_expected = 13;
   const ir::Instruction* store[instructions_expected];
   const ir::Instruction* load[instructions_expected];
   int stores_found = 0;
