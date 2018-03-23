@@ -15,8 +15,10 @@
 #include <gmock/gmock.h>
 
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "../assembly_builder.h"
@@ -2607,6 +2609,281 @@ TEST(DependencyAnalysis, MIV) {
                               &analysis);
   CheckDependenceAndDirection(load[16], store[16], true, independent,
                               &analysis);
+}
+
+void PartitionSubscripts(const ir::Instruction* instruction_0,
+                         const ir::Instruction* instruction_1,
+                         opt::LoopDependenceAnalysis* analysis,
+                         std::vector<std::vector<int>> expected_ids) {
+  auto subscripts_0 = analysis->GetSubscripts(instruction_0);
+  auto subscripts_1 = analysis->GetSubscripts(instruction_1);
+
+  std::vector<std::set<std::pair<ir::Instruction*, ir::Instruction*>>>
+      expected_partition{};
+
+  for (const auto& partition : expected_ids) {
+    expected_partition.push_back({});
+    for (auto id : partition) {
+      expected_partition.back().insert({subscripts_0[id], subscripts_1[id]});
+    }
+  }
+
+  EXPECT_EQ(expected_partition,
+            analysis->PartitionSubscripts(subscripts_0, subscripts_1));
+}
+
+/*
+  Generated from the following GLSL fragment shader
+  with --eliminate-local-multi-store
+#version 440 core
+void main(){
+  int[10][10][10][10] arr;
+  for (int i = 0; i < 10; i++) {
+    for (int j = 0; j < 10; j++) {
+      for (int k = 0; k < 10; k++) {
+        for (int l = 0; l < 10; l++) {
+          arr[i][j][k][l] = arr[i][j][k][l]; // 0, all independent
+          arr[i][j][k][l] = arr[i][j][l][0]; // 1, last 2 coupled
+          arr[i][j][k][l] = arr[j][i][k][l]; // 2, first 2 coupled
+          arr[i][j][k][l] = arr[l][j][k][i]; // 3, first & last coupled
+          arr[i][j][k][l] = arr[i][k][j][l]; // 4, middle 2 coupled
+          arr[i+j][j][k][l] = arr[i][j][k][l]; // 5, first 2 coupled
+          arr[i+j+k][j][k][l] = arr[i][j][k][l]; // 6, first 3 coupled
+          arr[i+j+k+l][j][k][l] = arr[i][j][k][l]; // 7, all 4 coupled
+          arr[i][j][k][l] = arr[i][l][j][k]; // 8, last 3 coupled
+          arr[i][j-k][k][l] = arr[i][j][l][k]; // 9, last 3 coupled
+          arr[i][j][k][l] = arr[l][i][j][k]; // 10, all 4 coupled
+          arr[i][j][k][l] = arr[j][i][l][k]; // 11, 2 coupled partitions (i,j) &
+(l&k)
+          arr[i][j][k][l] = arr[k][l][i][j]; // 12, 2 coupled partitions (i,k) &
+(j&l)
+        }
+      }
+    }
+  }
+}
+*/
+TEST(DependencyAnalysis, SubscriptPartitioning) {
+  const std::string text = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %4 "main"
+               OpExecutionMode %4 OriginUpperLeft
+               OpSource GLSL 440
+               OpName %4 "main"
+               OpName %8 "i"
+               OpName %19 "j"
+               OpName %27 "k"
+               OpName %35 "l"
+               OpName %50 "arr"
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeInt 32 1
+          %7 = OpTypePointer Function %6
+          %9 = OpConstant %6 0
+         %16 = OpConstant %6 10
+         %17 = OpTypeBool
+         %43 = OpTypeInt 32 0
+         %44 = OpConstant %43 10
+         %45 = OpTypeArray %6 %44
+         %46 = OpTypeArray %45 %44
+         %47 = OpTypeArray %46 %44
+         %48 = OpTypeArray %47 %44
+         %49 = OpTypePointer Function %48
+        %208 = OpConstant %6 1
+        %217 = OpUndef %6
+          %4 = OpFunction %2 None %3
+          %5 = OpLabel
+          %8 = OpVariable %7 Function
+         %19 = OpVariable %7 Function
+         %27 = OpVariable %7 Function
+         %35 = OpVariable %7 Function
+         %50 = OpVariable %49 Function
+               OpStore %8 %9
+               OpBranch %10
+         %10 = OpLabel
+        %216 = OpPhi %6 %9 %5 %215 %13
+        %218 = OpPhi %6 %217 %5 %221 %13
+        %219 = OpPhi %6 %217 %5 %222 %13
+        %220 = OpPhi %6 %217 %5 %223 %13
+               OpLoopMerge %12 %13 None
+               OpBranch %14
+         %14 = OpLabel
+         %18 = OpSLessThan %17 %216 %16
+               OpBranchConditional %18 %11 %12
+         %11 = OpLabel
+               OpStore %19 %9
+               OpBranch %20
+         %20 = OpLabel
+        %221 = OpPhi %6 %9 %11 %213 %23
+        %222 = OpPhi %6 %219 %11 %224 %23
+        %223 = OpPhi %6 %220 %11 %225 %23
+               OpLoopMerge %22 %23 None
+               OpBranch %24
+         %24 = OpLabel
+         %26 = OpSLessThan %17 %221 %16
+               OpBranchConditional %26 %21 %22
+         %21 = OpLabel
+               OpStore %27 %9
+               OpBranch %28
+         %28 = OpLabel
+        %224 = OpPhi %6 %9 %21 %211 %31
+        %225 = OpPhi %6 %223 %21 %226 %31
+               OpLoopMerge %30 %31 None
+               OpBranch %32
+         %32 = OpLabel
+         %34 = OpSLessThan %17 %224 %16
+               OpBranchConditional %34 %29 %30
+         %29 = OpLabel
+               OpStore %35 %9
+               OpBranch %36
+         %36 = OpLabel
+        %226 = OpPhi %6 %9 %29 %209 %39
+               OpLoopMerge %38 %39 None
+               OpBranch %40
+         %40 = OpLabel
+         %42 = OpSLessThan %17 %226 %16
+               OpBranchConditional %42 %37 %38
+         %37 = OpLabel
+         %59 = OpAccessChain %7 %50 %216 %221 %224 %226
+         %60 = OpLoad %6 %59
+         %61 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %61 %60
+         %69 = OpAccessChain %7 %50 %216 %221 %226 %9
+         %70 = OpLoad %6 %69
+         %71 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %71 %70
+         %80 = OpAccessChain %7 %50 %221 %216 %224 %226
+         %81 = OpLoad %6 %80
+         %82 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %82 %81
+         %91 = OpAccessChain %7 %50 %226 %221 %224 %216
+         %92 = OpLoad %6 %91
+         %93 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %93 %92
+        %102 = OpAccessChain %7 %50 %216 %224 %221 %226
+        %103 = OpLoad %6 %102
+        %104 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %104 %103
+        %107 = OpIAdd %6 %216 %221
+        %115 = OpAccessChain %7 %50 %216 %221 %224 %226
+        %116 = OpLoad %6 %115
+        %117 = OpAccessChain %7 %50 %107 %221 %224 %226
+               OpStore %117 %116
+        %120 = OpIAdd %6 %216 %221
+        %122 = OpIAdd %6 %120 %224
+        %130 = OpAccessChain %7 %50 %216 %221 %224 %226
+        %131 = OpLoad %6 %130
+        %132 = OpAccessChain %7 %50 %122 %221 %224 %226
+               OpStore %132 %131
+        %135 = OpIAdd %6 %216 %221
+        %137 = OpIAdd %6 %135 %224
+        %139 = OpIAdd %6 %137 %226
+        %147 = OpAccessChain %7 %50 %216 %221 %224 %226
+        %148 = OpLoad %6 %147
+        %149 = OpAccessChain %7 %50 %139 %221 %224 %226
+               OpStore %149 %148
+        %158 = OpAccessChain %7 %50 %216 %226 %221 %224
+        %159 = OpLoad %6 %158
+        %160 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %160 %159
+        %164 = OpISub %6 %221 %224
+        %171 = OpAccessChain %7 %50 %216 %221 %226 %224
+        %172 = OpLoad %6 %171
+        %173 = OpAccessChain %7 %50 %216 %164 %224 %226
+               OpStore %173 %172
+        %182 = OpAccessChain %7 %50 %226 %216 %221 %224
+        %183 = OpLoad %6 %182
+        %184 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %184 %183
+        %193 = OpAccessChain %7 %50 %221 %216 %226 %224
+        %194 = OpLoad %6 %193
+        %195 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %195 %194
+        %204 = OpAccessChain %7 %50 %224 %226 %216 %221
+        %205 = OpLoad %6 %204
+        %206 = OpAccessChain %7 %50 %216 %221 %224 %226
+               OpStore %206 %205
+               OpBranch %39
+         %39 = OpLabel
+        %209 = OpIAdd %6 %226 %208
+               OpStore %35 %209
+               OpBranch %36
+         %38 = OpLabel
+               OpBranch %31
+         %31 = OpLabel
+        %211 = OpIAdd %6 %224 %208
+               OpStore %27 %211
+               OpBranch %28
+         %30 = OpLabel
+               OpBranch %23
+         %23 = OpLabel
+        %213 = OpIAdd %6 %221 %208
+               OpStore %19 %213
+               OpBranch %20
+         %22 = OpLabel
+               OpBranch %13
+         %13 = OpLabel
+        %215 = OpIAdd %6 %216 %208
+               OpStore %8 %215
+               OpBranch %10
+         %12 = OpLabel
+               OpReturn
+               OpFunctionEnd
+  )";
+
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << text << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 4);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  std::vector<const ir::Loop*> loop_nest{
+      &ld.GetLoopByIndex(0), &ld.GetLoopByIndex(1), &ld.GetLoopByIndex(2),
+      &ld.GetLoopByIndex(3)};
+  opt::LoopDependenceAnalysis analysis{context.get(), loop_nest};
+
+  const int instructions_expected = 13;
+  const ir::Instruction* store[instructions_expected];
+  const ir::Instruction* load[instructions_expected];
+  int stores_found = 0;
+  int loads_found = 0;
+
+  int block_id = 37;
+  ASSERT_TRUE(spvtest::GetBasicBlock(f, block_id));
+
+  for (const ir::Instruction& inst : *spvtest::GetBasicBlock(f, block_id)) {
+    if (inst.opcode() == SpvOp::SpvOpStore) {
+      store[stores_found] = &inst;
+      ++stores_found;
+    }
+
+    if (inst.opcode() == SpvOp::SpvOpLoad) {
+      load[loads_found] = &inst;
+      ++loads_found;
+    }
+  }
+
+  EXPECT_EQ(instructions_expected, stores_found);
+  EXPECT_EQ(instructions_expected, loads_found);
+
+  PartitionSubscripts(load[0], store[0], &analysis, {{0}, {1}, {2}, {3}});
+  PartitionSubscripts(load[1], store[1], &analysis, {{0}, {1}, {2, 3}});
+  PartitionSubscripts(load[2], store[2], &analysis, {{0, 1}, {2}, {3}});
+  PartitionSubscripts(load[3], store[3], &analysis, {{0, 3}, {1}, {2}});
+  PartitionSubscripts(load[4], store[4], &analysis, {{0}, {1, 2}, {3}});
+  PartitionSubscripts(load[5], store[5], &analysis, {{0, 1}, {2}, {3}});
+  PartitionSubscripts(load[6], store[6], &analysis, {{0, 1, 2}, {3}});
+  PartitionSubscripts(load[7], store[7], &analysis, {{0, 1, 2, 3}});
+  PartitionSubscripts(load[8], store[8], &analysis, {{0}, {1, 2, 3}});
+  PartitionSubscripts(load[9], store[9], &analysis, {{0}, {1, 2, 3}});
+  PartitionSubscripts(load[10], store[10], &analysis, {{0, 1, 2, 3}});
+  PartitionSubscripts(load[11], store[11], &analysis, {{0, 1}, {2, 3}});
+  PartitionSubscripts(load[12], store[12], &analysis, {{0, 2}, {1, 3}});
 }
 
 }  // namespace

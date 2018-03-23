@@ -202,6 +202,11 @@ class LoopDependenceAnalysis {
   DistanceEntry* GetDistanceEntryForLoop(const ir::Loop* loop,
                                          DistanceVector* distance_vector);
 
+  // Returns a vector of Instruction* which form the subscripts of the array
+  // access defined by the access chain |instruction|.
+  std::vector<ir::Instruction*> GetSubscripts(
+      const ir::Instruction* instruction);
+
   // Returns true if each loop in |loops| is in a form supported by this
   // analysis.
   // A loop is supported if it has a single induction variable and that
@@ -216,7 +221,6 @@ class LoopDependenceAnalysis {
  private:
   ir::IRContext* context_;
 
-  // The loop we are analysing the dependence of.
   // The loop nest we are analysing the dependence of.
   std::vector<const ir::Loop*> loops_;
 
@@ -279,11 +283,6 @@ class LoopDependenceAnalysis {
   // SingleWordInOperand(|id|) when called on |instruction|.
   ir::Instruction* GetOperandDefinition(const ir::Instruction* instruction,
                                         int id);
-
-  // Returns a vector of Instruction* which form the subscripts of the array
-  // access defined by the access chain |instruction|.
-  std::vector<ir::Instruction*> GetSubscripts(
-      const ir::Instruction* instruction);
 
   // Perform the GCD test if both, the source and the destination nodes, are in
   // the form a0*i0 + a1*i1 + ... an*in + c.

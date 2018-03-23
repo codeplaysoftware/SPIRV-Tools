@@ -48,6 +48,8 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
   std::vector<ir::Instruction*> destination_subscripts =
       GetSubscripts(destination);
 
+  DistanceVector distance_vector_entries(source_subscripts.size());
+
   auto sets_of_subscripts =
       PartitionSubscripts(source_subscripts, destination_subscripts);
 
