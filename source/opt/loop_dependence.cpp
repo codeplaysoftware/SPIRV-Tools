@@ -71,9 +71,9 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     SENode* destination_node = scalar_evolution_.SimplifyExpression(
         scalar_evolution_.AnalyzeInstruction(destination_subscript));
 
-    // auto subscript = GetSubscriptForInstruction(source_subscript);
     auto subscript_pair = std::make_pair(source_node, destination_node);
 
+    // Check the loops are in a form we support.
     const ir::Loop* loop = GetLoopForSubscriptPair(&subscript_pair);
     if (loop) {
       if (!IsSupportedLoop(loop)) {
@@ -820,6 +820,7 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
 }
 
 // Calculate the greatest common divisor of a & b using Stein's algorithm.
+// https://en.wikipedia.org/wiki/Binary_GCD_algorithm
 int64_t GreatestCommonDivisor(int64_t a, int64_t b) {
   // Simple cases
   if (a == b) {
@@ -854,7 +855,8 @@ int64_t GreatestCommonDivisor(int64_t a, int64_t b) {
 }
 
 // Check if node is affine, ie in the form: a0*i0 + a1*i1 + ... an*in + c
-// and ontaining only SERecurrentNode, SEAddNode and SEConstantNode
+// and contains only the following types of nodes: SERecurrentNode, SEAddNode
+// and SEConstantNode
 bool IsInCorrectFormForGCD(SENode* node) {
   bool children_ok = true;
 
@@ -870,6 +872,8 @@ bool IsInCorrectFormForGCD(SENode* node) {
   return children_ok && this_ok;
 }
 
+// If |node| is an SERecurrentNode then returns |node| or if |node| is an
+// SEAddNode returns a vector of SERecurrentNode that are its children.
 std::vector<SERecurrentNode*> GetAllTopLevelRecurrences(SENode* node) {
   auto nodes = std::vector<SERecurrentNode*>{};
   if (auto recurrent_node = node->AsSERecurrentNode()) {
@@ -886,6 +890,8 @@ std::vector<SERecurrentNode*> GetAllTopLevelRecurrences(SENode* node) {
   return nodes;
 }
 
+// If |node| is an SEConstantNode then returns |node| or if |node| is an
+// SEAddNode returns a vector of SEConstantNode that are its children.
 std::vector<SEConstantNode*> GetAllTopLevelConstants(SENode* node) {
   auto nodes = std::vector<SEConstantNode*>{};
   if (auto recurrent_node = node->AsSEConstantNode()) {
@@ -913,6 +919,8 @@ bool AreOffsetsAndCoefficientsConstant(
   return true;
 }
 
+// Fold all SEConstantNode that appear in |recurrences| and |constants| into a
+// single integer value.
 int64_t CalculateConstantTerm(const std::vector<SERecurrentNode*>& recurrences,
                               const std::vector<SEConstantNode*>& constants) {
   int64_t constant_term = 0;
@@ -984,36 +992,40 @@ LoopDependenceAnalysis::PartitionSubscripts(
 
   auto num_subscripts = source_subscripts.size();
 
-  // Create initial partitions
+  // Create initial partitions with one subscript pair per partition.
   for (size_t i = 0; i < num_subscripts; ++i) {
     partitions.push_back({{source_subscripts[i], destination_subscripts[i]}});
   }
 
+  // Iterate over the loops to create all partitions
   for (auto loop : loops_) {
     int64_t k = -1;
 
     for (size_t j = 0; j < partitions.size(); ++j) {
       auto& current_partition = partitions[j];
 
+      // Does |loop| appear in |current_partition|
       auto it = std::find_if(
           current_partition.begin(), current_partition.end(),
           [loop,
            this](const std::pair<ir::Instruction*, ir::Instruction*>& elem)
               -> bool {
-            auto rec_0 =
-                scalar_evolution_.AnalyzeInstruction(std::get<0>(elem))
-                    ->CollectRecurrentNodes();
-            auto rec_1 =
-                scalar_evolution_.AnalyzeInstruction(std::get<1>(elem))
-                    ->CollectRecurrentNodes();
+                auto source_recurrences =
+                    scalar_evolution_.AnalyzeInstruction(std::get<0>(elem))
+                        ->CollectRecurrentNodes();
+                auto destination_recurrences =
+                    scalar_evolution_.AnalyzeInstruction(std::get<1>(elem))
+                        ->CollectRecurrentNodes();
 
-            rec_0.insert(rec_0.end(), rec_1.begin(), rec_1.end());
+                source_recurrences.insert(source_recurrences.end(),
+                                          destination_recurrences.begin(),
+                                          destination_recurrences.end());
 
-            auto loops_in_pair = CollectLoops(rec_0);
-            auto end_it = loops_in_pair.end();
+                auto loops_in_pair = CollectLoops(source_recurrences);
+                auto end_it = loops_in_pair.end();
 
-            return std::find(loops_in_pair.begin(), end_it, loop) != end_it;
-          });
+                return std::find(loops_in_pair.begin(), end_it, loop) != end_it;
+              });
 
       auto has_loop = it != current_partition.end();
 
@@ -1021,7 +1033,7 @@ LoopDependenceAnalysis::PartitionSubscripts(
         if (k == -1) {
           k = j;
         } else {
-          // Add partitions[j] to partitions[k] and discard partitions[j]
+          // Add |partitions[j]| to |partitions[k]| and discard |partitions[j]|
           partitions[static_cast<size_t>(k)].insert(current_partition.begin(),
                                                     current_partition.end());
           current_partition.clear();
@@ -1030,7 +1042,7 @@ LoopDependenceAnalysis::PartitionSubscripts(
     }
   }
 
-  // Remove empty (discarded) partitions
+  // Remove discarded (empty) partitions
   partitions.erase(
       std::remove_if(
           partitions.begin(), partitions.end(),
