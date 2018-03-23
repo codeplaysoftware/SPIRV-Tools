@@ -182,13 +182,19 @@ Options (in lexicographical order):
                first as its only predecessor. Performed only on entry point
                call tree functions.
   --merge-return
-               Replace all return instructions with unconditional branches to
-               a new basic block containing an unified return.
-               This pass does not currently support structured control flow. It
-               makes no changes if the shader capability is detected.
-  --local-redundancy-elimination
-               Looks for instructions in the same basic block that compute the
-               same value, and deletes the redundant ones.
+               Changes functions that have multiple return statements so they
+               have a single return statement.
+
+               For structured control flow it is assumed that the only
+               unreachable blocks in the function are trivial merge and continue
+               blocks.
+
+               A trivial merge block contains the label and an OpUnreachable
+               instructions, nothing else.  A trivial continue block contain a
+               label and an OpBranch to the header, nothing else.
+
+               These conditions are guaranteed to be met after running
+               dead-branch elimination.
   --loop-unswitch
                Hoists loop-invariant conditionals out of loops by duplicating
                the loop on each branch of the conditional and adjusting each
@@ -256,6 +262,9 @@ Options (in lexicographical order):
                Replaces instructions whose opcode is valid for shader modules,
                but not for the current shader stage.  To have an effect, all
                entry points must have the same execution model.
+  --ssa-rewrite
+               Replace loads and stores to function local variables with
+               operations on SSA IDs.
   --scalar-replacement
                Replace aggregate function scope variables that are only accessed
                via their elements with new function variables representing each
@@ -268,7 +277,7 @@ Options (in lexicographical order):
                be separated with colon ':' without any blank spaces in between.
                e.g.: --set-spec-const-default-value "1:100 2:400"
   --simplify-instructions
-               Will simplfy all instructions in the function as much as
+               Will simplify all instructions in the function as much as
                possible.
   --skip-validation
                Will not validate the SPIR-V before optimizing.  If the SPIR-V
@@ -278,6 +287,16 @@ Options (in lexicographical order):
                Replaces instructions with equivalent and less expensive ones.
   --strip-debug
                Remove all debug instructions.
+  --strip-reflect
+               Remove all reflection information.  For now, this covers
+               reflection information defined by SPV_GOOGLE_hlsl_functionality1.
+  --time-report
+               Print the resource utilization of each pass (e.g., CPU time,
+               RSS) to standard error output. Currently it supports only Unix
+               systems. This option is the same as -ftime-report in GCC. It
+               prints CPU/WALL/USR/SYS time (and RSS if possible), but note that
+               USR/SYS time are returned by getrusage() and can have a small
+               error.
   --workaround-1209
                Rewrites instructions for which there are known driver bugs to
                avoid triggering those bugs.
@@ -411,6 +430,8 @@ OptStatus ParseFlags(int argc, const char** argv, Optimizer* optimizer,
         }
       } else if (0 == strcmp(cur_arg, "--strip-debug")) {
         optimizer->RegisterPass(CreateStripDebugInfoPass());
+      } else if (0 == strcmp(cur_arg, "--strip-reflect")) {
+        optimizer->RegisterPass(CreateStripReflectInfoPass());
       } else if (0 == strcmp(cur_arg, "--set-spec-const-default-value")) {
         if (++argi < argc) {
           auto spec_ids_vals =
@@ -501,6 +522,8 @@ OptStatus ParseFlags(int argc, const char** argv, Optimizer* optimizer,
         optimizer->RegisterPass(CreateReplaceInvalidOpcodePass());
       } else if (0 == strcmp(cur_arg, "--simplify-instructions")) {
         optimizer->RegisterPass(CreateSimplificationPass());
+      } else if (0 == strcmp(cur_arg, "--ssa-rewrite")) {
+        optimizer->RegisterPass(CreateSSARewritePass());
       } else if (0 == strcmp(cur_arg, "--loop-unroll")) {
         optimizer->RegisterPass(CreateLoopUnrollPass(true));
       } else if (0 == strcmp(cur_arg, "--loop-unroll-partial")) {
@@ -528,6 +551,8 @@ OptStatus ParseFlags(int argc, const char** argv, Optimizer* optimizer,
         optimizer->RegisterPass(CreateCCPPass());
       } else if (0 == strcmp(cur_arg, "--print-all")) {
         optimizer->SetPrintAll(&std::cerr);
+      } else if (0 == strcmp(cur_arg, "--time-report")) {
+        optimizer->SetTimeReport(&std::cerr);
       } else if ('\0' == cur_arg[1]) {
         // Setting a filename of "-" to indicate stdin.
         if (!*in_file) {

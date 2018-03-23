@@ -63,9 +63,6 @@ class DeadInsertElimPass : public MemPass {
   // arrays are not currently eliminated.
   bool EliminateDeadInsertsOnePass(ir::Function* func);
 
-  // Initialize extensions whitelist
-  void InitExtensions();
-
   // Return true if all extensions in this module are allowed by this pass.
   bool AllExtensionsSupported() const;
 
@@ -76,10 +73,7 @@ class DeadInsertElimPass : public MemPass {
   std::unordered_set<uint32_t> liveInserts_;
 
   // Visited phis as insert chain is traversed; used to avoid infinite loop
-  std::unordered_set<uint32_t> visitedPhis_;
-
-  // Extensions supported by this pass.
-  std::unordered_set<std::string> extensions_whitelist_;
+  std::unordered_map<uint32_t, bool> visitedPhis_;
 };
 
 }  // namespace opt
