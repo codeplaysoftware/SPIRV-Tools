@@ -152,9 +152,11 @@ class LoopDependenceAnalysis {
   SENode* GetFinalTripInductionNode(const ir::Loop* loop,
                                     SENode* induction_coefficient);
 
+  // Returns all the distinct loops that appear in |nodes|.
   std::set<const ir::Loop*> CollectLoops(
       const std::vector<SERecurrentNode*>& nodes);
 
+  // Returns all the distinct loops that appear in |source| and |destination|.
   std::set<const ir::Loop*> CollectLoops(SENode* source, SENode* destination);
 
   // Returns true if |distance| is provably within the loop bounds.
@@ -174,10 +176,12 @@ class LoopDependenceAnalysis {
   // Returns the ScalarEvolutionAnalysis used by this analysis.
   ScalarEvolutionAnalysis* GetScalarEvolution() { return &scalar_evolution_; }
 
-  // Partitions the subscripts into independent subscripts and minimally coupled
+  // Subscript partitioning as described in Figure 1 of 'Practical Dependence
+  // Testing' by Gina Goff, Ken Kennedy, and Chau-Wen Tseng from PLDI '91.
+  // Partitions the subscripts into separable subscripts and minimally coupled
   // sets of subscripts.
-  // Returns the partitioning of subscript pairs. Sets of size 1 indicates an
-  // independent subscript-pair and others indicate coupled sets.
+  // Returns the partitioning of subscript pairs. Sets of size 1 indicates a
+  // separable subscript-pair and others indicate coupled sets.
   std::vector<std::set<std::pair<ir::Instruction*, ir::Instruction*>>>
   PartitionSubscripts(
       const std::vector<ir::Instruction*>& source_subscripts,

@@ -2306,21 +2306,21 @@ void main(){
       arr[j] = arr[i]; // 1
       arr[j-2] = arr[i+3]; // 2
       arr[j-a] = arr[i+b]; // 3
-      arr[2*i] = arr[4*j+3]; // 4
+      arr[2*i] = arr[4*j+3]; // 4, independent
       arr[2*i] = arr[4*j]; // 5
       arr[i+j] = arr[i+j]; // 6
       arr[10*i+j] = arr[10*i+j]; // 7
-      arr[10*i+10*j] = arr[10*i+10*j+3]; // 8
+      arr[10*i+10*j] = arr[10*i+10*j+3]; // 8, independent
       arr[10*i+10*j] = arr[10*i+N*j+3]; // 9, bail out because of N coefficient
       arr[10*i+10*j] = arr[10*i+10*j+N]; // 10, bail out because of N constant
-term
+                                         // term
       arr[10*i+N*j] = arr[10*i+10*j+3]; // 11, bail out because of N coefficient
       arr[10*i+10*j+N] = arr[10*i+10*j]; // 12, bail out because of N constant
-term
-      arr[10*i] = arr[5*j]; // 13
-      arr[5*i] = arr[10*j]; // 14
-      arr[9*i] = arr[3*j]; // 15
-      arr[3*i] = arr[9*j]; // 16
+                                         // term
+      arr[10*i] = arr[5*j]; // 13, independent
+      arr[5*i] = arr[10*j]; // 14, independent
+      arr[9*i] = arr[3*j]; // 15, independent
+      arr[3*i] = arr[9*j]; // 16, independent
     }
   }
 }
