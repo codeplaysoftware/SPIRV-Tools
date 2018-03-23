@@ -775,9 +775,9 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
     int64_t coefficient_value = coefficient_constant->FoldToSingleValue();
     // Check if the distance is not integral or if it has a non-integral part
     // equal to 1/2.
-    if (delta_value % (2 * coefficient_value) != 0 ||
-        (delta_value % (2 * coefficient_value)) / (2 * coefficient_value) !=
-            0.5) {
+    if (delta_value % (2 * coefficient_value) != 0 &&
+        static_cast<float>(delta_value % (2 * coefficient_value)) /
+             static_cast<float>(2 * coefficient_value) != 0.5) {
       PrintDebug(
           "WeakCrossingSIVTest proved independence through distance escaping "
           "the loop bounds.");
