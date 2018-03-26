@@ -79,7 +79,6 @@ SENode* LoopDependenceAnalysis::GetLowerBound(const ir::Loop* loop) {
   }
 }
 
-// TODO(Alexander): Perhaps the -1 and +1 should actually the loop step?
 SENode* LoopDependenceAnalysis::GetUpperBound(const ir::Loop* loop) {
   ir::Instruction* cond_inst = loop->GetConditionInst();
   if (!cond_inst) {

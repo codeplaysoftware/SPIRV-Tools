@@ -338,14 +338,6 @@ class Loop {
   // Returns nullptr if it can't be found.
   ir::Instruction* GetConditionInst() const;
 
-  // Returns the instruction for the lower bound of the loop if it can be found.
-  // Returns nullptr if it can't be found.
-  ir::Instruction* GetLowerBoundInst() const;
-
-  // Returns the instruction for the upper bound of the loop if it can be found.
-  // Returns nullptr if it can't be found.
-  ir::Instruction* GetUpperBoundInst() const;
-
  private:
   IRContext* context_;
   // The block which marks the start of the loop.
