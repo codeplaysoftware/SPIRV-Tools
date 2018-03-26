@@ -161,30 +161,6 @@ ir::Instruction* Loop::GetConditionInst() const {
   return nullptr;
 }
 
-ir::Instruction* Loop::GetLowerBoundInst() const {
-  ir::Instruction* condition_inst = GetConditionInst();
-  if (!condition_inst) {
-    return nullptr;
-  }
-  opt::analysis::DefUseManager* def_use_manager = context_->get_def_use_mgr();
-
-  ir::Instruction* lower_bound =
-      def_use_manager->GetDef(condition_inst->GetSingleWordInOperand(0));
-  return lower_bound;
-}
-
-ir::Instruction* Loop::GetUpperBoundInst() const {
-  ir::Instruction* condition_inst = GetConditionInst();
-  if (!condition_inst) {
-    return nullptr;
-  }
-  opt::analysis::DefUseManager* def_use_manager = context_->get_def_use_mgr();
-
-  ir::Instruction* upper_bound =
-      def_use_manager->GetDef(condition_inst->GetSingleWordInOperand(1));
-  return upper_bound;
-}
-
 // Extract the initial value from the |induction| OpPhi instruction and store it
 // in |value|. If the function couldn't find the initial value of |induction|
 // return false.
