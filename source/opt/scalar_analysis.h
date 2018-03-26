@@ -42,8 +42,7 @@ namespace opt {
 // usable form with SimplifyExpression.
 class ScalarEvolutionAnalysis {
  public:
-  explicit ScalarEvolutionAnalysis(ir::IRContext* context)
-      : context_(context) {}
+  explicit ScalarEvolutionAnalysis(ir::IRContext* context);
 
   // Create a unary negative node on |operand|.
   SENode* CreateNegation(SENode* operand);
@@ -121,6 +120,10 @@ class ScalarEvolutionAnalysis {
   // expressions come from phi nodes which by nature can include recursion so we
   // check if nodes have already been built when analyzing instructions.
   std::map<const ir::Instruction*, SENode*> recurrent_node_map_;
+
+  // On creation we create and cache the CantCompute node so we not need to
+  // perform a needless create step.
+  SENode* cached_cant_compute_;
 
   // Helper functor to allow two unique_ptr to nodes to be compare. Only
   // needed

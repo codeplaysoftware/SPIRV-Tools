@@ -133,6 +133,9 @@ class SENode {
   const ChildContainerType& GetChildren() const { return children_; }
   ChildContainerType& GetChildren() { return children_; }
 
+  // Return true if this node is a cant compute node.
+  bool IsCantCompute() const { return GetType() == CanNotCompute; }
+
 // Implements a casting method for each type.
 #define DeclareCastMethod(target)                  \
   virtual target* As##target() { return nullptr; } \
@@ -193,12 +196,12 @@ class SEConstantNode : public SENode {
   int64_t literal_value_;
 };
 
-// A node represeting a recurrent expression in the code. A recurrent expression
-// is an expression whose value can be expressed as a linear expression of the
-// loop iterations. Such as an induction variable. The actual value of a
-// recurrent expression is coefficent_ * iteration + offset_, hence an
-// induction variable i=0, i++ becomes a recurrent expression with an offset of
-// zero and a coefficient of one.
+// A node representing a recurrent expression in the code. A recurrent
+// expression is an expression whose value can be expressed as a linear
+// expression of the loop iterations. Such as an induction variable. The actual
+// value of a recurrent expression is coefficent_ * iteration + offset_, hence
+// an induction variable i=0, i++ becomes a recurrent expression with an offset
+// of zero and a coefficient of one.
 class SERecurrentNode : public SENode {
  public:
   SERecurrentNode(opt::ScalarEvolutionAnalysis* parent_analysis,

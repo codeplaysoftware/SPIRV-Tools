@@ -23,9 +23,9 @@
 
 // Transforms a given scalar operation instruction into a DAG representation.
 //
-// 1. Take an instruction and traverse the its operands until we reach a
-// constant node or any instruction which we do not know how to compute the
-// value of, such as a load.
+// 1. Take an instruction and traverse its operands until we reach a
+// constant node or an instruction which we do not know how to compute the
+// value, such as a load.
 //
 // 2. Create a new node for each instruction traversed and build the nodes for
 // the in operands of that instruction as well.
@@ -48,7 +48,17 @@ namespace opt {
 
 uint32_t SENode::NumberOfNodes = 0;
 
+ScalarEvolutionAnalysis::ScalarEvolutionAnalysis(ir::IRContext* context)
+    : context_(context) {
+  // Create and cached the CantComputeNode.
+  cached_cant_compute_ =
+      GetCachedOrAdd(std::unique_ptr<SECantCompute>(new SECantCompute(this)));
+}
+
 SENode* ScalarEvolutionAnalysis::CreateNegation(SENode* operand) {
+  // If operand is can't compute then the whole graph is can't compute.
+  if (operand->IsCantCompute()) return CreateCantComputeNode();
+
   if (operand->GetType() == SENode::Constant) {
     return CreateConstant(-operand->AsSEConstantNode()->FoldToSingleValue());
   }
@@ -64,6 +74,12 @@ SENode* ScalarEvolutionAnalysis::CreateConstant(int64_t integer) {
 
 SENode* ScalarEvolutionAnalysis::CreateRecurrentExpression(
     const ir::Loop* loop, SENode* offset, SENode* coefficient) {
+  assert(loop && "Recurrent add expressions must have a valid loop.");
+
+  // If operands are can't compute then the whole graph is can't compute.
+  if (offset->IsCantCompute() || coefficient->IsCantCompute())
+    return CreateCantComputeNode();
+
   std::unique_ptr<SERecurrentNode> phi_node{new SERecurrentNode(this, loop)};
   phi_node->AddOffset(offset);
   phi_node->AddCoefficient(coefficient);
@@ -87,6 +103,10 @@ SENode* ScalarEvolutionAnalysis::AnalyzeMultiplyOp(
 
 SENode* ScalarEvolutionAnalysis::CreateMultiplyNode(SENode* operand_1,
                                                     SENode* operand_2) {
+  // If operands are can't compute then the whole graph is can't compute.
+  if (operand_1->IsCantCompute() || operand_2->IsCantCompute())
+    return CreateCantComputeNode();
+
   if (operand_1->GetType() == SENode::Constant &&
       operand_2->GetType() == SENode::Constant) {
     return CreateConstant(operand_1->AsSEConstantNode()->FoldToSingleValue() *
@@ -122,6 +142,10 @@ SENode* ScalarEvolutionAnalysis::CreateAddNode(SENode* operand_1,
     return CreateConstant(operand_1->AsSEConstantNode()->FoldToSingleValue() +
                           operand_2->AsSEConstantNode()->FoldToSingleValue());
   }
+
+  // If operands are can't compute then the whole graph is can't compute.
+  if (operand_1->IsCantCompute() || operand_2->IsCantCompute())
+    return CreateCantComputeNode();
 
   std::unique_ptr<SENode> add_node{new SEAddNode(this)};
 
@@ -166,10 +190,10 @@ SENode* ScalarEvolutionAnalysis::AnalyzeInstruction(
 }
 
 SENode* ScalarEvolutionAnalysis::AnalyzeConstant(const ir::Instruction* inst) {
-  assert(inst->NumInOperands() == 1);
-
   if (inst->opcode() == SpvOp::SpvOpConstantNull) return CreateConstant(0);
 
+  assert(inst->opcode() == SpvOp::SpvOpConstant);
+  assert(inst->NumInOperands() == 1);
   int64_t value = 0;
 
   // Look up the instruction in the constant manager.
@@ -257,6 +281,9 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
     ir::Instruction* value_inst = def_use->GetDef(value_id);
     SENode* value_node = AnalyzeInstruction(value_inst);
 
+    // If any operand is CantCompute then the whole graph is CantCompute.
+    if (value_node->IsCantCompute()) return CreateCantComputeNode();
+
     if (incoming_label_id == loop->GetPreHeaderBlock()->id()) {
       phi_node->AddOffset(value_node);
     } else if (incoming_label_id == loop->GetLatchBlock()->id()) {
@@ -302,13 +329,12 @@ SENode* ScalarEvolutionAnalysis::AnalyzePhiInstruction(
 SENode* ScalarEvolutionAnalysis::CreateValueUnknownNode(
     const ir::Instruction* inst) {
   std::unique_ptr<SEValueUnknown> load_node{
-      new SEValueUnknown(this, inst->unique_id())};
+      new SEValueUnknown(this, inst->result_id())};
   return GetCachedOrAdd(std::move(load_node));
 }
 
 SENode* ScalarEvolutionAnalysis::CreateCantComputeNode() {
-  return GetCachedOrAdd(
-      std::unique_ptr<SECantCompute>(new SECantCompute(this)));
+  return cached_cant_compute_;
 }
 
 // Add the created node into the cache of nodes. If it already exists return it.
@@ -330,7 +356,7 @@ bool ScalarEvolutionAnalysis::IsLoopInvariant(const ir::Loop* loop,
     if (const SERecurrentNode* rec = itr->AsSERecurrentNode()) {
       const ir::BasicBlock* header = rec->GetLoop()->GetHeaderBlock();
 
-      // If the loop which the recurrent expression belongs to is either |loop|
+      // If the loop which the recurrent expression belongs to is either |loop
       // or a nested loop inside |loop| then we assume it is variant.
       if (loop->IsInsideLoop(header)) {
         return false;

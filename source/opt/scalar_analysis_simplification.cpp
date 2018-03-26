@@ -214,7 +214,6 @@ SENode* SENodeSimplifyImpl::Simplify() {
   simplified_polynomial =
       EliminateZeroCoefficientRecurrents(simplified_polynomial);
 
-
   // Traverse the immediate children of the new node to find the recurrent
   // expression. If there is more than one there is nothing further we can do.
   for (SENode* child : simplified_polynomial->GetChildren()) {
@@ -486,7 +485,6 @@ SENode* SENodeSimplifyImpl::EliminateZeroCoefficientRecurrents(SENode* node) {
 
   return analysis_.GetCachedOrAdd(std::move(new_add));
 }
-
 
 SENode* SENodeSimplifyImpl::SimplifyRecurrentAddExpression(
     SERecurrentNode* recurrent_expr) {
