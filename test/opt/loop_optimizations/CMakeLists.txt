@@ -84,3 +84,21 @@ add_spvtools_unittest(TARGET unswitch_test
         unswitch.cpp
     LIBS SPIRV-Tools-opt
 )
+
+add_spvtools_unittest(TARGET peeling_test
+    SRCS ../function_utils.h
+        peeling.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET loop_dependency_analysis
+    SRCS ../function_utils.h
+        dependency_analysis.cpp
+    LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET loop_dependency_analysis_helpers
+    SRCS ../function_utils.h
+        dependency_analysis_helpers.cpp
+    LIBS SPIRV-Tools-opt
+)
