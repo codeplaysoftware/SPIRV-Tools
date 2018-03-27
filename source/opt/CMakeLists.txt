@@ -75,6 +75,7 @@ add_library(SPIRV-Tools-opt
   propagator.h
   redundancy_elimination.h
   reflect.h
+  register_pressure.h
   remove_duplicates_pass.h
   replace_invalid_opc.h
   scalar_analysis.h
@@ -151,6 +152,7 @@ add_library(SPIRV-Tools-opt
   private_to_local_pass.cpp
   propagator.cpp
   redundancy_elimination.cpp
+  register_pressure.cpp
   remove_duplicates_pass.cpp
   replace_invalid_opc.cpp
   scalar_analysis.cpp
