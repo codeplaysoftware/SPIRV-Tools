@@ -26,6 +26,8 @@
 #include "opt/ir_context.h"
 #include "opt/loop_descriptor.h"
 #include "opt/loop_utils.h"
+#include "opt/pass.h"
+#include "opt/scalar_analysis.h"
 
 namespace spvtools {
 namespace opt {
@@ -61,13 +63,6 @@ namespace opt {
 //   - The loop must not have any ambiguous iterators updates (see
 //     "CanPeelLoop").
 // The method "CanPeelLoop" checks that those constrained are met.
-//
-// FIXME(Victor): Allow the utility it accept an canonical induction variable
-// rather than automatically create one.
-// FIXME(Victor): When possible, evaluate the initial value of the second loop
-// iterating values rather than using the exit value of the first loop.
-// FIXME(Victor): Make the utility work-out the upper bound without having to
-// provide it. This should become easy once the scalar evolution is in.
 class LoopPeeling {
  public:
   // LoopPeeling constructor.
@@ -75,20 +70,33 @@ class LoopPeeling {
   // |loop_iteration_count| is the instruction holding the |loop| iteration
   // count, must be invariant for |loop| and must be of an int 32 type (signed
   // or unsigned).
-  LoopPeeling(ir::IRContext* context, ir::Loop* loop,
-              ir::Instruction* loop_iteration_count)
-      : context_(context),
-        loop_utils_(context, loop),
+  // |canonical_induction_variable| is an induction variable that can be used to
+  // count the number of iterations, must be of the same type as
+  // |loop_iteration_count| and start at 0 and increase by step of one at each
+  // iteration. The value nullptr is interpreted as no suitable variable exists
+  // and one will be created.
+  LoopPeeling(ir::Loop* loop, ir::Instruction* loop_iteration_count,
+              ir::Instruction* canonical_induction_variable = nullptr)
+      : context_(loop->GetContext()),
+        loop_utils_(loop->GetContext(), loop),
         loop_(loop),
         loop_iteration_count_(!loop->IsInsideLoop(loop_iteration_count)
                                   ? loop_iteration_count
                                   : nullptr),
         int_type_(nullptr),
+        original_loop_canonical_induction_variable_(
+            canonical_induction_variable),
         canonical_induction_variable_(nullptr) {
     if (loop_iteration_count_) {
       int_type_ = context_->get_type_mgr()
                       ->GetType(loop_iteration_count_->type_id())
                       ->AsInteger();
+      if (canonical_induction_variable_) {
+        assert(canonical_induction_variable_->type_id() ==
+                   loop_iteration_count_->type_id() &&
+               "loop_iteration_count and canonical_induction_variable does not "
+               "have the same type");
+      }
     }
     GetIteratingExitValues();
   }
@@ -165,6 +173,8 @@ class LoopPeeling {
   // same.
   bool do_while_form_;
 
+  // The canonical induction variable from the original loop if it exist.
+  ir::Instruction* original_loop_canonical_induction_variable_;
   // The canonical induction variable of the cloned loop. The induction variable
   // is initialized to 0 and incremented by step of 1.
   ir::Instruction* canonical_induction_variable_;
@@ -179,7 +189,8 @@ class LoopPeeling {
 
   // Insert the canonical induction variable into the first loop as a simplified
   // counter.
-  void InsertCanonicalInductionVariable();
+  void InsertCanonicalInductionVariable(
+      LoopUtils::LoopCloningResult* clone_results);
 
   // Fixes the exit condition of the before loop. The function calls
   // |condition_builder| to get the condition to use in the conditional branch
@@ -215,6 +226,101 @@ class LoopPeeling {
   // The function returns the if block protecting the loop.
   ir::BasicBlock* ProtectLoop(ir::Loop* loop, ir::Instruction* condition,
                               ir::BasicBlock* if_merge);
+};
+
+// Implements a loop peeling optimization.
+// For each loop, the pass will try to peel it if there is conditions that
+// are true for the "N" first or last iterations of the loop.
+// To avoid code size explosion, too large loops will not be peeled.
+class LoopPeelingPass : public Pass {
+ public:
+  // Describes the peeling direction.
+  enum class PeelDirection {
+    kNone,    // Cannot peel
+    kBefore,  // Can peel before
+    kAfter    // Can peel last
+  };
+
+  // Holds some statistics about peeled function.
+  struct LoopPeelingStats {
+    std::vector<std::tuple<const ir::Loop*, PeelDirection, uint32_t>>
+        peeled_loops_;
+  };
+
+  LoopPeelingPass(LoopPeelingStats* stats = nullptr) : stats_(stats) {}
+
+  // Sets the loop peeling growth threshold. If the code size increase is above
+  // |code_grow_threshold|, the loop will not be peeled.
+  static void SetLoopPeelingThreshold(size_t code_grow_threshold) {
+    code_grow_threshold_ = code_grow_threshold;
+  }
+
+  // Returns the loop peeling code growth threshold.
+  static size_t GetLoopPeelingThreshold() { return code_grow_threshold_; }
+
+  const char* name() const override { return "loop-peeling"; }
+
+  // Processes the given |module|. Returns Status::Failure if errors occur when
+  // processing. Returns the corresponding Status::Success if processing is
+  // succesful to indicate whether changes have been made to the modue.
+  Pass::Status Process(ir::IRContext* context) override;
+
+ private:
+  static size_t code_grow_threshold_;
+  LoopPeelingStats* stats_;
+
+  // Describes the peeling direction.
+  enum class CmpOperator {
+    kLT,  // less than
+    kGT,  // greater than
+    kLE,  // less than or equal
+    kGE,  // greater than or equal
+  };
+
+  class LoopPeelingInfo {
+   public:
+    using Direction = std::pair<PeelDirection, uint32_t>;
+
+    LoopPeelingInfo(ir::Loop* loop, size_t loop_max_iterations,
+                    opt::ScalarEvolutionAnalysis* scev_analysis)
+        : context_(loop->GetContext()),
+          loop_(loop),
+          scev_analysis_(scev_analysis),
+          loop_max_iterations_(loop_max_iterations) {}
+
+    Direction GetPeelingInfo(ir::BasicBlock* bb) const;
+
+   private:
+    ir::IRContext* context_;
+    ir::Loop* loop_;
+    opt::ScalarEvolutionAnalysis* scev_analysis_;
+    size_t loop_max_iterations_;
+
+    uint32_t GetFirstLoopInvariantOperand(ir::Instruction* condition) const;
+    uint32_t GetFirstNonLoopInvariantOperand(ir::Instruction* condition) const;
+
+    SExpression GetValueAtFirstIteration(SERecurrentNode* rec) const;
+    SExpression GetValueAtIteration(SERecurrentNode* rec,
+                                    int64_t iteration) const;
+    SExpression GetValueAtLastIteration(SERecurrentNode* rec) const;
+
+    bool EvalOperator(CmpOperator cmp_op, SExpression lhs, SExpression rhs,
+                      bool* result) const;
+
+    Direction HandleEquality(SExpression lhs, SExpression rhs) const;
+    Direction HandleInequality(CmpOperator cmp_op, SExpression lhs,
+                               SERecurrentNode* rhs) const;
+
+    static Direction GetNoneDirection() {
+      return Direction{LoopPeelingPass::PeelDirection::kNone, 0};
+    }
+  };
+
+  // Peel profitable loops in |f|.
+  bool ProcessFunction(ir::Function* f);
+  // Peel |loop| if profitable.
+  std::pair<bool, ir::Loop*> ProcessLoop(ir::Loop* loop,
+                                         CodeMetrics* loop_size);
 };
 
 }  // namespace opt
