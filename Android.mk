@@ -39,6 +39,7 @@ SPVTOOLS_SRC_FILES := \
 		source/validate_atomics.cpp \
 		source/validate_barriers.cpp \
 		source/validate_bitwise.cpp \
+		source/validate_builtins.cpp \
 		source/validate_capability.cpp \
 		source/validate_cfg.cpp \
 		source/validate_composites.cpp \
@@ -69,6 +70,7 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/composite.cpp \
 		source/opt/const_folding_rules.cpp \
 		source/opt/constants.cpp \
+		source/opt/copy_prop_arrays.cpp \
 		source/opt/dead_branch_elim_pass.cpp \
 		source/opt/dead_insert_elim_pass.cpp \
 		source/opt/dead_variable_elimination.cpp \
@@ -116,6 +118,8 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/redundancy_elimination.cpp \
 		source/opt/remove_duplicates_pass.cpp \
 		source/opt/replace_invalid_opc.cpp \
+		source/opt/scalar_analysis.cpp \
+		source/opt/scalar_analysis_simplification.cpp \
 		source/opt/scalar_replacement_pass.cpp \
 		source/opt/set_spec_constant_default_value_pass.cpp \
 		source/opt/simplification_pass.cpp \
