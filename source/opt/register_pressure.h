@@ -29,6 +29,7 @@
 namespace spvtools {
 namespace ir {
 class IRContext;
+class Loop;
 class LoopDescriptor;
 }  // namespace ir
 
@@ -110,6 +111,33 @@ class RegisterLiveness {
   RegionRegisterLiveness* GetOrInsert(uint32_t bb_id) {
     return &block_pressure_[bb_id];
   }
+
+  // Compute the register pressure for the |loop| and store the result into
+  // |reg_pressure|. The live-in set corresponds to the live-in set of the header
+  // block, the live-out set of the loop corresponds to the union of the live-in
+  // sets of each exit basic block.
+  void ComputeLoopRegisterPressure(const ir::Loop& loop,
+                                   RegionRegisterLiveness* reg_pressure) const;
+
+  // Estimate the register pressure for the |l1| and |l2| as if they were making
+  // one unique loop. The result is stored into |simulation_resut|.
+  void SimluateFusion(const ir::Loop& l1, const ir::Loop& l2,
+                      RegionRegisterLiveness* simulation_resut) const;
+
+  // Estimate the register pressure of |loop| after it has been fissioned
+  // according to |moved_instructions| and |copied_instructions|. The function
+  // assumes that the fission creates a new loop before |loop|, moves any
+  // instructions present inside |moved_instructions| and copies any
+  // instructions present inside |copied_instructions| into this new loop.
+  // The set |loop1_sim_resut| store the simulation result of the loop with the
+  // moved instructions. The set |loop2_sim_resut| store the simulation result
+  // of the loop with the removed instructions.
+  void SimluateFission(
+      const ir::Loop& loop,
+      const std::unordered_set<ir::Instruction*>& moved_instructions,
+      const std::unordered_set<ir::Instruction*>& copied_instructions,
+      RegionRegisterLiveness* loop1_sim_resut,
+      RegionRegisterLiveness* loop2_sim_resut) const;
 
  private:
   using RegionRegisterLivenessMap =

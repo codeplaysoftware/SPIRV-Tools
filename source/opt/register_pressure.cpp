@@ -258,5 +258,35 @@ void RegisterLiveness::Analyze(ir::Function* f) {
   ComputeRegisterLiveness(this, f).Compute();
 }
 
+void RegisterLiveness::ComputeLoopRegisterPressure(
+    const ir::Loop& loop, RegionRegisterLiveness* reg_pressure) const {
+  reg_pressure->live_out_.clear();
+  reg_pressure->registers_classes_.clear();
+
+  const RegionRegisterLiveness* header_live_inout = Get(loop.GetHeaderBlock());
+  reg_pressure->live_in_ = header_live_inout->live_in_;
+
+  std::unordered_set<uint32_t> exit_blocks;
+  loop.GetExitBlocks(&exit_blocks);
+
+  for (uint32_t bb_id : exit_blocks) {
+    const RegionRegisterLiveness* live_inout = Get(bb_id);
+    reg_pressure->live_out_.insert(live_inout->live_in_.begin(),
+                                   live_inout->live_in_.end());
+  }
+}
+
+void RegisterLiveness::SimluateFusion(
+    const ir::Loop&, const ir::Loop& l2,
+    RegionRegisterLiveness* simulation_resut) const {
+  ComputeLoopRegisterPressure(l2, simulation_resut);
+}
+
+void RegisterLiveness::SimluateFission(const ir::Loop&,
+                                       const std::unordered_set<ir::Instruction*>&,
+                                       const std::unordered_set<ir::Instruction*>&,
+                                       RegionRegisterLiveness*,
+                                       RegionRegisterLiveness*) const {}
+
 }  // namespace opt
 }  // namespace spvtools
