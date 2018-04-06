@@ -14,6 +14,9 @@
 
 #include "opt/loop_dependence.h"
 
+#include <list>
+#include <memory>
+#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,6 +27,8 @@
 
 namespace spvtools {
 namespace opt {
+
+using SubscriptPair = std::pair<SENode*, SENode*>;
 
 bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
                                            const ir::Instruction* destination,
@@ -112,7 +117,7 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     // We have no induction variables so can apply a ZIV test.
     if (IsZIV(subscript_pair)) {
       PrintDebug("Found a ZIV subscript pair");
-      if (ZIVTest(source_node, destination_node)) {
+      if (ZIVTest(&subscript_pair)) {
         PrintDebug("Proved independence with ZIVTest.");
         return true;
       }
@@ -130,7 +135,7 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     // We have multiple induction variables so should attempt an MIV test.
     if (IsMIV(subscript_pair)) {
       PrintDebug("Found a MIV subscript pair.");
-      if (GCDMIVTest(source_node, destination_node)) {
+      if (GCDMIVTest(subscript_pair)) {
         PrintDebug("Proved independence with the GCD test.");
         auto current_loops = CollectLoops(source_node, destination_node);
 
@@ -144,6 +149,39 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     }
   }
 
+  for (auto it = first_coupled; it < std::end(sets_of_subscripts); ++it) {
+    auto coupled_instructions = *it;
+    std::vector<SubscriptPair> coupled_subscripts{};
+
+    for (const auto& elem : coupled_instructions) {
+      auto source_subscript = std::get<0>(elem);
+      auto destination_subscript = std::get<1>(elem);
+
+      SENode* source_node = scalar_evolution_.SimplifyExpression(
+          scalar_evolution_.AnalyzeInstruction(source_subscript));
+      SENode* destination_node = scalar_evolution_.SimplifyExpression(
+          scalar_evolution_.AnalyzeInstruction(destination_subscript));
+
+      coupled_subscripts.push_back({source_node, destination_node});
+    }
+
+    auto supported = true;
+
+    for (const auto& subscript : coupled_subscripts) {
+      auto loops = CollectLoops(std::get<0>(subscript), std::get<1>(subscript));
+
+      auto is_subscript_supported =
+          std::all_of(std::begin(loops), std::end(loops),
+                      [this](const ir::Loop* l) { return IsSupportedLoop(l); });
+
+      supported = supported && is_subscript_supported;
+    }
+
+    if (DeltaTest(coupled_subscripts, distance_vector)) {
+      return true;
+    }
+  }
+
   // We were unable to prove independence so must gather all of the direction
   // information we found.
   PrintDebug(
@@ -154,7 +192,11 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
   return false;
 }
 
-bool LoopDependenceAnalysis::ZIVTest(SENode* source, SENode* destination) {
+bool LoopDependenceAnalysis::ZIVTest(
+    std::pair<SENode*, SENode*>* subscript_pair) {
+  auto source = std::get<0>(*subscript_pair);
+  auto destination = std::get<1>(*subscript_pair);
+
   PrintDebug("Performing ZIVTest");
   // If source == destination, dependence with direction = and distance 0.
   if (source == destination) {
@@ -303,6 +345,12 @@ bool LoopDependenceAnalysis::StrongSIVTest(SENode* source, SENode* destination,
       GetConstantTerm(subscript_loop, source->AsSERecurrentNode());
   SENode* destination_constant_term =
       GetConstantTerm(subscript_loop, destination->AsSERecurrentNode());
+  if (!source_constant_term || !destination_constant_term) {
+    PrintDebug(
+        "StrongSIVTest could not collect the constant terms of either source "
+        "or destination so will exit.");
+    return false;
+  }
   SENode* constant_term_delta =
       scalar_evolution_.SimplifyExpression(scalar_evolution_.CreateSubtraction(
           destination_constant_term, source_constant_term));
@@ -955,7 +1003,11 @@ int64_t CalculateGCDFromCoefficients(
 
 // Perform the GCD test if both, the source and the destination nodes, are in
 // the form a0*i0 + a1*i1 + ... an*in + c.
-bool LoopDependenceAnalysis::GCDMIVTest(SENode* source, SENode* destination) {
+bool LoopDependenceAnalysis::GCDMIVTest(
+    const std::pair<SENode*, SENode*>& subscript_pair) {
+  auto source = std::get<0>(subscript_pair);
+  auto destination = std::get<1>(subscript_pair);
+
   // Bail out if source/destination is in an unexpected form.
   if (!IsInCorrectFormForGCD(source) || !IsInCorrectFormForGCD(destination)) {
     return false;
@@ -970,6 +1022,7 @@ bool LoopDependenceAnalysis::GCDMIVTest(SENode* source, SENode* destination) {
     return false;
   }
 
+  // Calculate the GCD of all coefficients.
   auto source_constants = GetAllTopLevelConstants(source);
   int64_t source_constant =
       CalculateConstantTerm(source_recurrences, source_constants);
@@ -1015,22 +1068,22 @@ LoopDependenceAnalysis::PartitionSubscripts(
           [loop,
            this](const std::pair<ir::Instruction*, ir::Instruction*>& elem)
               -> bool {
-                auto source_recurrences =
-                    scalar_evolution_.AnalyzeInstruction(std::get<0>(elem))
-                        ->CollectRecurrentNodes();
-                auto destination_recurrences =
-                    scalar_evolution_.AnalyzeInstruction(std::get<1>(elem))
-                        ->CollectRecurrentNodes();
+            auto source_recurrences =
+                scalar_evolution_.AnalyzeInstruction(std::get<0>(elem))
+                    ->CollectRecurrentNodes();
+            auto destination_recurrences =
+                scalar_evolution_.AnalyzeInstruction(std::get<1>(elem))
+                    ->CollectRecurrentNodes();
 
-                source_recurrences.insert(source_recurrences.end(),
-                                          destination_recurrences.begin(),
-                                          destination_recurrences.end());
+            source_recurrences.insert(source_recurrences.end(),
+                                      destination_recurrences.begin(),
+                                      destination_recurrences.end());
 
-                auto loops_in_pair = CollectLoops(source_recurrences);
-                auto end_it = loops_in_pair.end();
+            auto loops_in_pair = CollectLoops(source_recurrences);
+            auto end_it = loops_in_pair.end();
 
-                return std::find(loops_in_pair.begin(), end_it, loop) != end_it;
-              });
+            return std::find(loops_in_pair.begin(), end_it, loop) != end_it;
+          });
 
       auto has_loop = it != current_partition.end();
 
@@ -1056,6 +1109,514 @@ LoopDependenceAnalysis::PartitionSubscripts(
       partitions.end());
 
   return partitions;
+}
+
+bool IsConstant(const SENode* node) {
+  return node->AsSEConstantNode() != nullptr;
+}
+
+std::shared_ptr<Constraint> LoopDependenceAnalysis::IntersectConstraints(
+    std::shared_ptr<Constraint> constraint_0,
+    std::shared_ptr<Constraint> constraint_1, const SENode* lower_bound,
+    const SENode* upper_bound) {
+  if (constraint_0->AsDependenceNone()) {
+    return constraint_1;
+  } else if (constraint_1->AsDependenceNone()) {
+    return constraint_0;
+  }
+
+  // Both constraints are distances. Either the same distance or independent.
+  if (constraint_0->AsDependenceDistance() &&
+      constraint_1->AsDependenceDistance()) {
+    auto dist_0 = constraint_0->AsDependenceDistance();
+    auto dist_1 = constraint_1->AsDependenceDistance();
+
+    if (*dist_0->GetDistance() == *dist_1->GetDistance()) {
+      return constraint_0;
+    } else {
+      return std::make_shared<DependenceEmpty>();
+    }
+  }
+
+  // Both constraints are points. Either the same point or independent.
+  if (constraint_0->AsDependencePoint() && constraint_1->AsDependencePoint()) {
+    auto point_0 = constraint_0->AsDependencePoint();
+    auto point_1 = constraint_1->AsDependencePoint();
+
+    if (*point_0->GetSource() == *point_1->GetSource() &&
+        *point_0->GetDestination() == *point_1->GetDestination()) {
+      return constraint_0;
+    } else {
+      return std::make_shared<DependenceEmpty>();
+    }
+  }
+
+  // Both constraints are lines/distances.
+  if ((constraint_0->AsDependenceDistance() ||
+       constraint_0->AsDependenceLine()) &&
+      (constraint_1->AsDependenceDistance() ||
+       constraint_1->AsDependenceLine())) {
+    auto is_distance_0 = constraint_0->AsDependenceDistance() != nullptr;
+    auto is_distance_1 = constraint_1->AsDependenceDistance() != nullptr;
+
+    auto a0 = is_distance_0 ? scalar_evolution_.CreateConstant(1)
+                            : constraint_0->AsDependenceLine()->GetA();
+    auto b0 = is_distance_0 ? scalar_evolution_.CreateConstant(-1)
+                            : constraint_0->AsDependenceLine()->GetB();
+    auto c0 =
+        is_distance_0
+            ? scalar_evolution_.SimplifyExpression(
+                  scalar_evolution_.CreateNegation(
+                      constraint_0->AsDependenceDistance()->GetDistance()))
+            : constraint_0->AsDependenceLine()->GetC();
+
+    auto a1 = is_distance_1 ? scalar_evolution_.CreateConstant(1)
+                            : constraint_1->AsDependenceLine()->GetA();
+    auto b1 = is_distance_1 ? scalar_evolution_.CreateConstant(-1)
+                            : constraint_1->AsDependenceLine()->GetB();
+    auto c1 =
+        is_distance_1
+            ? scalar_evolution_.SimplifyExpression(
+                  scalar_evolution_.CreateNegation(
+                      constraint_1->AsDependenceDistance()->GetDistance()))
+            : constraint_1->AsDependenceLine()->GetC();
+
+    if (IsConstant(a0) && IsConstant(b0) && IsConstant(c0) && IsConstant(a1) &&
+        IsConstant(b1) && IsConstant(c1)) {
+      auto constant_a0 = a0->AsSEConstantNode()->FoldToSingleValue();
+      auto constant_b0 = b0->AsSEConstantNode()->FoldToSingleValue();
+      auto constant_c0 = c0->AsSEConstantNode()->FoldToSingleValue();
+
+      auto constant_a1 = a1->AsSEConstantNode()->FoldToSingleValue();
+      auto constant_b1 = b1->AsSEConstantNode()->FoldToSingleValue();
+      auto constant_c1 = c1->AsSEConstantNode()->FoldToSingleValue();
+
+      // TODO: can this report false independence due to floating point
+      // errors?
+      // a & b can't both be zero, otherwise it wouldn't be line.
+      // Therefore, won't have 0/0/0.0 or nan.
+      if (static_cast<double>(constant_a0) / static_cast<double>(constant_b0) ==
+          static_cast<double>(constant_a1) / static_cast<double>(constant_b1)) {
+        // Slopes are equal, either parallel lines or the same line.
+
+        if (constant_b0 == 0 && constant_b1 == 0) {
+          if (static_cast<double>(constant_c0) /
+                  static_cast<double>(constant_a0) ==
+              static_cast<double>(constant_c1) /
+                  static_cast<double>(constant_a1)) {
+            return constraint_0;
+          }
+
+          return std::make_shared<DependenceEmpty>();
+        } else if ((static_cast<double>(constant_c0) /
+                        static_cast<double>(constant_b0) ==
+                    static_cast<double>(constant_c1) /
+                        static_cast<double>(constant_b1))) {
+          // Same line.
+          return constraint_0;
+        } else {
+          // Parallel lines can't intersect, report independence.
+          return std::make_shared<DependenceEmpty>();
+        }
+
+      } else {
+        // Lines are not parallel, therefore, they must intersect.
+
+        // Calculate intersection.
+        if (IsConstant(upper_bound) && IsConstant(lower_bound)) {
+          auto constant_lower_bound =
+              lower_bound->AsSEConstantNode()->FoldToSingleValue();
+          auto constant_upper_bound =
+              upper_bound->AsSEConstantNode()->FoldToSingleValue();
+
+          auto up = constant_b1 * constant_c0 - constant_b0 * constant_c1;
+          // Both b or both a can't be 0, so down is never 0
+          // otherwise would have entered the parallel line section.
+          auto down = constant_b1 * constant_a0 - constant_b0 * constant_a1;
+
+          auto x_coord = up / down;
+
+          int64_t y_coord = 0;
+          int64_t arg1 = 0;
+          int64_t const_b_to_use = 0;
+
+          if (constant_b1 != 0) {
+            arg1 = constant_c1 - constant_a1 * x_coord;
+            y_coord = arg1 / constant_b1;
+            const_b_to_use = constant_b1;
+          } else if (constant_b0 != 0) {
+            arg1 = constant_c0 - constant_a0 * x_coord;
+            y_coord = arg1 / constant_b0;
+            const_b_to_use = constant_b0;
+          }
+
+          if (up % down == 0 &&
+              arg1 % const_b_to_use == 0 &&  // Coordinates are integers.
+              constant_lower_bound <=
+                  x_coord &&  // x_coord is within loop bounds.
+              x_coord <= constant_upper_bound &&
+              constant_lower_bound <=
+                  y_coord &&  // y_coord is within loop bounds.
+              y_coord <= constant_upper_bound) {
+            // Lines intersect at integer coordinates.
+            return std::make_shared<DependencePoint>(
+                scalar_evolution_.CreateConstant(x_coord),
+                scalar_evolution_.CreateConstant(y_coord),
+                constraint_0->GetLoop());
+
+          } else {
+            return std::make_shared<DependenceEmpty>();
+          }
+
+        } else {
+          // Not constants, bail out.
+          return std::make_shared<DependenceNone>();
+        }
+      }
+
+    } else {
+      // Not constants, bail out.
+      return std::make_shared<DependenceNone>();
+    }
+  }
+
+  // One constraint is a line/distance and the other is a point.
+  if ((constraint_0->AsDependencePoint() &&
+       (constraint_1->AsDependenceLine() ||
+        constraint_1->AsDependenceDistance())) ||
+      (constraint_1->AsDependencePoint() &&
+       (constraint_0->AsDependenceLine() ||
+        constraint_0->AsDependenceDistance()))) {
+    auto point_0 = constraint_0->AsDependencePoint() != nullptr;
+
+    auto point = point_0 ? constraint_0->AsDependencePoint()
+                         : constraint_1->AsDependencePoint();
+
+    auto line_or_distance = point_0 ? constraint_1 : constraint_0;
+
+    auto is_distance = line_or_distance->AsDependenceDistance() != nullptr;
+
+    auto a = is_distance ? scalar_evolution_.CreateConstant(1)
+                         : line_or_distance->AsDependenceLine()->GetA();
+    auto b = is_distance ? scalar_evolution_.CreateConstant(-1)
+                         : line_or_distance->AsDependenceLine()->GetB();
+    auto c =
+        is_distance
+            ? scalar_evolution_.SimplifyExpression(
+                  scalar_evolution_.CreateNegation(
+                      line_or_distance->AsDependenceDistance()->GetDistance()))
+            : line_or_distance->AsDependenceLine()->GetC();
+
+    auto x = point->GetSource();
+    auto y = point->GetDestination();
+
+    if (IsConstant(a) && IsConstant(b) && IsConstant(c) && IsConstant(x) &&
+        IsConstant(y)) {
+      auto constant_a = a->AsSEConstantNode()->FoldToSingleValue();
+      auto constant_b = b->AsSEConstantNode()->FoldToSingleValue();
+      auto constant_c = c->AsSEConstantNode()->FoldToSingleValue();
+
+      auto constant_x = x->AsSEConstantNode()->FoldToSingleValue();
+      auto constant_y = y->AsSEConstantNode()->FoldToSingleValue();
+
+      auto left_hand_side = constant_a * constant_x + constant_b * constant_y;
+
+      if (left_hand_side == constant_c) {
+        // Point is on line, return point
+        return point_0 ? constraint_0 : constraint_1;
+      } else {
+        // Point not on line, report independence (empty constraint).
+        return std::make_shared<DependenceEmpty>();
+      }
+
+    } else {
+      // Not constants, bail out.
+      return std::make_shared<DependenceNone>();
+    }
+  }
+
+  return nullptr;
+}
+
+// Propagate constraints function as described in section 5 of Practical
+// Dependence Testing, Goff, Kennedy, Tseng, 1991.
+SubscriptPair LoopDependenceAnalysis::PropagateConstraints(
+    SubscriptPair& subscript_pair,
+    const std::list<std::shared_ptr<Constraint>>& constraints) {
+  SENode* new_first = subscript_pair.first;
+  SENode* new_second = subscript_pair.second;
+
+  for (auto& constraint : constraints) {
+    // In the paper this is a[k]. We're extracting the coefficient ('a') of a
+    // recurrent expression with respect to the loop 'k'.
+    SENode* coefficient_of_recurrent =
+        scalar_evolution_.GetCoefficientFromRecurrentTerm(
+            new_first, constraint->GetLoop());
+
+    // In the paper this is a'[k].
+    SENode* coefficient_of_recurrent_prime =
+        scalar_evolution_.GetCoefficientFromRecurrentTerm(
+            new_second, constraint->GetLoop());
+
+    if (constraint->GetType() == Constraint::Distance) {
+      DependenceDistance* as_distance = constraint->AsDependenceDistance();
+
+      // In the paper this is a[k]*d
+      SENode* rhs = scalar_evolution_.CreateMultiplyNode(
+          coefficient_of_recurrent, as_distance->GetDistance());
+
+      // In the paper this is a[k] <- 0
+      SENode* zeroed_coefficient =
+          scalar_evolution_.BuildGraphWithoutRecurrentTerm(
+              new_first, constraint->GetLoop());
+
+      // In the paper this is e <- e - a[k]*d.
+      new_first = scalar_evolution_.CreateSubtraction(zeroed_coefficient, rhs);
+      new_first = scalar_evolution_.SimplifyExpression(new_first);
+
+      // In the paper this is a'[k] - a[k].
+      SENode* new_child = scalar_evolution_.SimplifyExpression(
+          scalar_evolution_.CreateSubtraction(coefficient_of_recurrent_prime,
+                                              coefficient_of_recurrent));
+
+      // In the paper this is a'[k]'i[k].
+      SERecurrentNode* prime_recurrent =
+          scalar_evolution_.GetRecurrentTerm(new_second, constraint->GetLoop());
+
+      if (!prime_recurrent) continue;
+
+      // As we hash the nodes we need to create a new node when we update a
+      // child.
+      SENode* new_recurrent = scalar_evolution_.CreateRecurrentExpression(
+          constraint->GetLoop(), prime_recurrent->GetOffset(), new_child);
+      // In the paper this is a'[k] <- a'[k] - a[k].
+      new_second = scalar_evolution_.UpdateChildNode(
+          new_second, prime_recurrent, new_recurrent);
+    }
+  }
+
+  new_second = scalar_evolution_.SimplifyExpression(new_second);
+  return std::make_pair(new_first, new_second);
+}
+
+bool LoopDependenceAnalysis::DeltaTest(
+    std::vector<SubscriptPair>& coupled_subscripts, DistanceVector* dv_entry) {
+  std::list<std::shared_ptr<Constraint>> constraints(loops_.size());
+
+  std::vector<bool> loop_appeared(loops_.size());
+
+  std::generate(std::begin(constraints), std::end(constraints),
+                []() { return std::make_shared<DependenceNone>(); });
+
+  // Separate SIV and MIV subscripts
+  auto first_MIV = std::partition(
+      std::begin(coupled_subscripts), std::end(coupled_subscripts),
+      [this](const SubscriptPair& p) { return IsSIV(p); });
+
+  std::vector<SubscriptPair> siv_subscripts{};
+  std::vector<SubscriptPair> miv_subscripts{};
+
+  for (auto it = std::begin(coupled_subscripts); it < first_MIV; ++it) {
+    siv_subscripts.push_back(*it);
+  }
+
+  for (auto it = first_MIV; it < std::end(coupled_subscripts); ++it) {
+    miv_subscripts.push_back(*it);
+  }
+
+  // Delta Test
+  while (!siv_subscripts.empty()) {
+    std::vector<bool> results(siv_subscripts.size());
+
+    std::vector<DistanceVector> current_distances(
+        siv_subscripts.size(), DistanceVector(loops_.size()));
+
+    // Apply SIV test to all SIV subscripts, report independence if any of them
+    // is independent
+    std::transform(std::begin(siv_subscripts), std::end(siv_subscripts),
+                   std::begin(current_distances), std::begin(results),
+                   [this](SubscriptPair& p, DistanceVector& d) {
+                     return SIVTest(&p, &d);
+                   });
+
+    if (std::accumulate(std::begin(results), std::end(results), false,
+                        std::logical_or<bool>{})) {
+      return true;
+    }
+
+    // Derive new constraint vector.
+    std::list<std::pair<std::shared_ptr<Constraint>, size_t>>
+        all_new_constrants{};
+
+    for (size_t i = 0; i < siv_subscripts.size(); ++i) {
+      auto loop = GetLoopForSubscriptPair(&siv_subscripts[i]);
+
+      auto loop_id =
+          std::distance(std::begin(loops_),
+                        std::find(std::begin(loops_), std::end(loops_), loop));
+
+      loop_appeared[loop_id] = true;
+      auto distance_entry = current_distances[i].entries[loop_id];
+
+      if (distance_entry.dependence_information ==
+          DistanceEntry::DependenceInformation::DISTANCE) {
+        // Construct a DependenceDistance.
+        auto node = scalar_evolution_.CreateConstant(distance_entry.distance);
+
+        all_new_constrants.push_back(
+            {std::make_shared<DependenceDistance>(node, loop), loop_id});
+      } else {
+        // Construct a DependenceLine.
+        const auto& subscript_pair = siv_subscripts[i];
+        SENode* source_node = std::get<0>(subscript_pair);
+        SENode* destination_node = std::get<1>(subscript_pair);
+
+        int64_t source_induction_count = CountInductionVariables(source_node);
+        int64_t destination_induction_count =
+            CountInductionVariables(destination_node);
+
+        SENode* a = nullptr;
+        SENode* b = nullptr;
+        SENode* c = nullptr;
+
+        if (destination_induction_count != 0) {
+          a = destination_node->AsSERecurrentNode()->GetCoefficient();
+          c = scalar_evolution_.CreateNegation(
+              destination_node->AsSERecurrentNode()->GetOffset());
+        } else {
+          a = scalar_evolution_.CreateConstant(0);
+          c = scalar_evolution_.CreateNegation(destination_node);
+        }
+
+        if (source_induction_count != 0) {
+          b = scalar_evolution_.CreateNegation(
+              source_node->AsSERecurrentNode()->GetCoefficient());
+          c = scalar_evolution_.CreateAddNode(
+              c, source_node->AsSERecurrentNode()->GetOffset());
+        } else {
+          b = scalar_evolution_.CreateConstant(0);
+          c = scalar_evolution_.CreateAddNode(c, source_node);
+        }
+
+        a = scalar_evolution_.SimplifyExpression(a);
+        b = scalar_evolution_.SimplifyExpression(b);
+        c = scalar_evolution_.SimplifyExpression(c);
+
+        all_new_constrants.push_back(
+            {std::make_shared<DependenceLine>(a, b, c, loop), loop_id});
+      }
+    }
+
+    // Calculate the intersection between the new and existing constraints.
+    std::list<std::shared_ptr<Constraint>> intersection = constraints;
+    for (const auto& constraint_to_intersect : all_new_constrants) {
+      auto loop_id = std::get<1>(constraint_to_intersect);
+      auto loop = loops_[loop_id];
+      auto inters = std::begin(intersection);
+      std::advance(inters, loop_id);
+      *inters =
+          IntersectConstraints(*inters, std::get<0>(constraint_to_intersect),
+                               GetLowerBound(loop), GetUpperBound(loop));
+    }
+
+    // Report independence if an empty constraint (DependenceEmpty) is found.
+    auto first_empty =
+        std::find_if(std::begin(intersection), std::end(intersection),
+                     [](std::shared_ptr<Constraint> constraint) {
+                       return constraint->AsDependenceEmpty() != nullptr;
+                     });
+    if (first_empty != std::end(intersection)) {
+      return true;
+    }
+    std::vector<SubscriptPair> new_siv_subscripts{};
+    std::vector<SubscriptPair> new_miv_subscripts{};
+
+    auto equal =
+        std::equal(std::begin(constraints), std::end(constraints),
+                   std::begin(intersection),
+                   [](std::shared_ptr<Constraint> a,
+                      std::shared_ptr<Constraint> b) { return *a == *b; });
+
+    // If any constraints have changed, propagate them into the rest of the
+    // subscripts possibly creating new ZIV/SIV subscripts.
+    if (!equal) {
+      std::vector<SubscriptPair> new_subscripts(miv_subscripts.size());
+
+      // Propagate constraints into MIV subscripts
+      std::transform(std::begin(miv_subscripts), std::end(miv_subscripts),
+                     std::begin(new_subscripts),
+                     [this, &intersection](SubscriptPair& subscript_pair) {
+                       return PropagateConstraints(subscript_pair,
+                                                   intersection);
+                     });
+
+      // If a ZIV subscript is returned, apply test, otherwise, update untested
+      // subscripts.
+      for (auto& subscript : new_subscripts) {
+        if (IsZIV(subscript) && ZIVTest(&subscript)) {
+          return true;
+        } else if (IsSIV(subscript)) {
+          new_siv_subscripts.push_back(subscript);
+        } else {
+          new_miv_subscripts.push_back(subscript);
+        }
+      }
+    }
+
+    // Set new constraints and subscripts to test.
+    std::swap(siv_subscripts, new_siv_subscripts);
+    std::swap(miv_subscripts, new_miv_subscripts);
+    std::swap(constraints, intersection);
+  }
+
+  // Create the dependence vector from the constraints.
+  for (size_t i = 0; i < loops_.size(); ++i) {
+    // Don't touch entries for loops that weren't tested.
+    if (loop_appeared[i]) {
+      auto iter = std::begin(constraints);
+      std::advance(iter, i);
+      auto current_constraint = *iter;
+      auto& current_distance_entry = (*dv_entry).entries[i];
+
+      if (auto dependence_distance =
+              current_constraint->AsDependenceDistance()) {
+        if (auto constant_node =
+                dependence_distance->GetDistance()->AsSEConstantNode()) {
+          current_distance_entry.dependence_information =
+              DistanceEntry::DependenceInformation::DISTANCE;
+
+          current_distance_entry.distance = constant_node->FoldToSingleValue();
+          if (current_distance_entry.distance == 0) {
+            current_distance_entry.direction = DistanceEntry::Directions::EQ;
+          } else if (current_distance_entry.distance < 0) {
+            current_distance_entry.direction = DistanceEntry::Directions::GT;
+          } else {
+            current_distance_entry.direction = DistanceEntry::Directions::LT;
+          }
+        }
+      } else if (auto dependence_point =
+                     current_constraint->AsDependencePoint()) {
+        auto source = dependence_point->GetSource();
+        auto destination = dependence_point->GetDestination();
+
+        if (source->AsSEConstantNode() && destination->AsSEConstantNode()) {
+          current_distance_entry = DistanceEntry(
+              source->AsSEConstantNode()->FoldToSingleValue(),
+              destination->AsSEConstantNode()->FoldToSingleValue());
+        }
+      }
+    }
+  }
+
+  // Test any remaining MIV subscripts and report independence if found.
+  std::vector<bool> results(miv_subscripts.size());
+
+  std::transform(std::begin(miv_subscripts), std::end(miv_subscripts),
+                 std::begin(results),
+                 [this](const SubscriptPair& p) { return GCDMIVTest(p); });
+
+  return std::accumulate(std::begin(results), std::end(results), false,
+                         std::logical_or<bool>{});
 }
 
 }  // namespace opt
