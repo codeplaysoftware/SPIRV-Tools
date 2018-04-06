@@ -75,9 +75,9 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     SENode* destination_node = scalar_evolution_.SimplifyExpression(
         scalar_evolution_.AnalyzeInstruction(destination_subscript));
 
-    // auto subscript = GetSubscriptForInstruction(source_subscript);
     auto subscript_pair = std::make_pair(source_node, destination_node);
 
+    // Check the loops are in a form we support.
     const ir::Loop* loop = GetLoopForSubscriptPair(&subscript_pair);
     if (loop) {
       if (!IsSupportedLoop(loop)) {
@@ -129,11 +129,18 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
 
     // We have multiple induction variables so should attempt an MIV test.
     if (IsMIV(subscript_pair)) {
-      // Currently not handled
-      PrintDebug(
-          "Found a MIV subscript pair. MIV is currently unhandled.\n"
-          "Assuming dependence in all directions for this subscript pair.");
-      continue;
+      PrintDebug("Found a MIV subscript pair.");
+      if (GCDMIVTest(source_node, destination_node)) {
+        PrintDebug("Proved independence with the GCD test.");
+        auto current_loops = CollectLoops(source_node, destination_node);
+
+        for (auto current_loop : current_loops) {
+          auto distance_entry =
+              GetDistanceEntryForLoop(current_loop, distance_vector);
+          distance_entry->direction = DistanceEntry::Directions::NONE;
+        }
+        return true;
+      }
     }
   }
 
@@ -817,6 +824,170 @@ bool LoopDependenceAnalysis::WeakCrossingSIVTest(
   return false;
 }
 
+// Calculate the greatest common divisor of a & b using Stein's algorithm.
+// https://en.wikipedia.org/wiki/Binary_GCD_algorithm
+int64_t GreatestCommonDivisor(int64_t a, int64_t b) {
+  // Simple cases
+  if (a == b) {
+    return a;
+  } else if (a == 0) {
+    return b;
+  } else if (b == 0) {
+    return a;
+  }
+
+  // Both even
+  if (a % 2 == 0 && b % 2 == 0) {
+    return 2 * GreatestCommonDivisor(a / 2, b / 2);
+  }
+
+  // Even a, odd b
+  if (a % 2 == 0 && b % 2 == 1) {
+    return GreatestCommonDivisor(a / 2, b);
+  }
+
+  // Odd a, even b
+  if (a % 2 == 1 && b % 2 == 0) {
+    return GreatestCommonDivisor(a, b / 2);
+  }
+
+  // Both odd, reduce the larger argument
+  if (a > b) {
+    return GreatestCommonDivisor((a - b) / 2, b);
+  } else {
+    return GreatestCommonDivisor((b - a) / 2, a);
+  }
+}
+
+// Check if node is affine, ie in the form: a0*i0 + a1*i1 + ... an*in + c
+// and contains only the following types of nodes: SERecurrentNode, SEAddNode
+// and SEConstantNode
+bool IsInCorrectFormForGCD(SENode* node) {
+  bool children_ok = true;
+
+  if (auto add_node = node->AsSEAddNode()) {
+    for (auto child : add_node->GetChildren()) {
+      children_ok = children_ok && IsInCorrectFormForGCD(child);
+    }
+  }
+
+  bool this_ok = node->AsSERecurrentNode() || node->AsSEAddNode() ||
+                 node->AsSEConstantNode();
+
+  return children_ok && this_ok;
+}
+
+// If |node| is an SERecurrentNode then returns |node| or if |node| is an
+// SEAddNode returns a vector of SERecurrentNode that are its children.
+std::vector<SERecurrentNode*> GetAllTopLevelRecurrences(SENode* node) {
+  auto nodes = std::vector<SERecurrentNode*>{};
+  if (auto recurrent_node = node->AsSERecurrentNode()) {
+    nodes.push_back(recurrent_node);
+  }
+
+  if (auto add_node = node->AsSEAddNode()) {
+    for (auto child : add_node->GetChildren()) {
+      auto child_nodes = GetAllTopLevelRecurrences(child);
+      nodes.insert(nodes.end(), child_nodes.begin(), child_nodes.end());
+    }
+  }
+
+  return nodes;
+}
+
+// If |node| is an SEConstantNode then returns |node| or if |node| is an
+// SEAddNode returns a vector of SEConstantNode that are its children.
+std::vector<SEConstantNode*> GetAllTopLevelConstants(SENode* node) {
+  auto nodes = std::vector<SEConstantNode*>{};
+  if (auto recurrent_node = node->AsSEConstantNode()) {
+    nodes.push_back(recurrent_node);
+  }
+
+  if (auto add_node = node->AsSEAddNode()) {
+    for (auto child : add_node->GetChildren()) {
+      auto child_nodes = GetAllTopLevelConstants(child);
+      nodes.insert(nodes.end(), child_nodes.begin(), child_nodes.end());
+    }
+  }
+
+  return nodes;
+}
+
+bool AreOffsetsAndCoefficientsConstant(
+    const std::vector<SERecurrentNode*>& nodes) {
+  for (auto node : nodes) {
+    if (!node->GetOffset()->AsSEConstantNode() ||
+        !node->GetOffset()->AsSEConstantNode()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Fold all SEConstantNode that appear in |recurrences| and |constants| into a
+// single integer value.
+int64_t CalculateConstantTerm(const std::vector<SERecurrentNode*>& recurrences,
+                              const std::vector<SEConstantNode*>& constants) {
+  int64_t constant_term = 0;
+  for (auto recurrence : recurrences) {
+    constant_term +=
+        recurrence->GetOffset()->AsSEConstantNode()->FoldToSingleValue();
+  }
+
+  for (auto constant : constants) {
+    constant_term += constant->FoldToSingleValue();
+  }
+
+  return constant_term;
+}
+
+int64_t CalculateGCDFromCoefficients(
+    const std::vector<SERecurrentNode*>& recurrences, int64_t running_gcd) {
+  for (SERecurrentNode* recurrence : recurrences) {
+    auto coefficient = recurrence->GetCoefficient()->AsSEConstantNode();
+
+    running_gcd = GreatestCommonDivisor(
+        running_gcd, std::abs(coefficient->FoldToSingleValue()));
+  }
+
+  return running_gcd;
+}
+
+// Perform the GCD test if both, the source and the destination nodes, are in
+// the form a0*i0 + a1*i1 + ... an*in + c.
+bool LoopDependenceAnalysis::GCDMIVTest(SENode* source, SENode* destination) {
+  // Bail out if source/destination is in an unexpected form.
+  if (!IsInCorrectFormForGCD(source) || !IsInCorrectFormForGCD(destination)) {
+    return false;
+  }
+
+  auto source_recurrences = GetAllTopLevelRecurrences(source);
+  auto dest_recurrences = GetAllTopLevelRecurrences(destination);
+
+  // Bail out if all offsets and coefficients aren't constant.
+  if (!AreOffsetsAndCoefficientsConstant(source_recurrences) ||
+      !AreOffsetsAndCoefficientsConstant(dest_recurrences)) {
+    return false;
+  }
+
+  auto source_constants = GetAllTopLevelConstants(source);
+  int64_t source_constant =
+      CalculateConstantTerm(source_recurrences, source_constants);
+
+  auto dest_constants = GetAllTopLevelConstants(destination);
+  int64_t destination_constant =
+      CalculateConstantTerm(dest_recurrences, dest_constants);
+
+  int64_t delta = std::abs(source_constant - destination_constant);
+
+  int64_t running_gcd = 0;
+
+  running_gcd = CalculateGCDFromCoefficients(source_recurrences, running_gcd);
+  running_gcd = CalculateGCDFromCoefficients(dest_recurrences, running_gcd);
+
+  return delta % running_gcd != 0;
+}
+
 std::vector<std::set<std::pair<ir::Instruction*, ir::Instruction*>>>
 LoopDependenceAnalysis::PartitionSubscripts(
     const std::vector<ir::Instruction*>& source_subscripts,
@@ -826,36 +997,40 @@ LoopDependenceAnalysis::PartitionSubscripts(
 
   auto num_subscripts = source_subscripts.size();
 
-  // Create initial partitions
+  // Create initial partitions with one subscript pair per partition.
   for (size_t i = 0; i < num_subscripts; ++i) {
     partitions.push_back({{source_subscripts[i], destination_subscripts[i]}});
   }
 
+  // Iterate over the loops to create all partitions
   for (auto loop : loops_) {
     int64_t k = -1;
 
     for (size_t j = 0; j < partitions.size(); ++j) {
       auto& current_partition = partitions[j];
 
+      // Does |loop| appear in |current_partition|
       auto it = std::find_if(
           current_partition.begin(), current_partition.end(),
           [loop,
            this](const std::pair<ir::Instruction*, ir::Instruction*>& elem)
               -> bool {
-            auto rec_0 =
-                scalar_evolution_.AnalyzeInstruction(std::get<0>(elem))
-                    ->CollectRecurrentNodes();
-            auto rec_1 =
-                scalar_evolution_.AnalyzeInstruction(std::get<1>(elem))
-                    ->CollectRecurrentNodes();
+                auto source_recurrences =
+                    scalar_evolution_.AnalyzeInstruction(std::get<0>(elem))
+                        ->CollectRecurrentNodes();
+                auto destination_recurrences =
+                    scalar_evolution_.AnalyzeInstruction(std::get<1>(elem))
+                        ->CollectRecurrentNodes();
 
-            rec_0.insert(rec_0.end(), rec_1.begin(), rec_1.end());
+                source_recurrences.insert(source_recurrences.end(),
+                                          destination_recurrences.begin(),
+                                          destination_recurrences.end());
 
-            auto loops_in_pair = CollectLoops(rec_0);
-            auto end_it = loops_in_pair.end();
+                auto loops_in_pair = CollectLoops(source_recurrences);
+                auto end_it = loops_in_pair.end();
 
-            return std::find(loops_in_pair.begin(), end_it, loop) != end_it;
-          });
+                return std::find(loops_in_pair.begin(), end_it, loop) != end_it;
+              });
 
       auto has_loop = it != current_partition.end();
 
@@ -863,7 +1038,7 @@ LoopDependenceAnalysis::PartitionSubscripts(
         if (k == -1) {
           k = j;
         } else {
-          // Add partitions[j] to partitions[k] and discard partitions[j]
+          // Add |partitions[j]| to |partitions[k]| and discard |partitions[j]|
           partitions[static_cast<size_t>(k)].insert(current_partition.begin(),
                                                     current_partition.end());
           current_partition.clear();
@@ -872,7 +1047,7 @@ LoopDependenceAnalysis::PartitionSubscripts(
     }
   }
 
-  // Remove empty (discarded) partitions
+  // Remove discarded (empty) partitions
   partitions.erase(
       std::remove_if(
           partitions.begin(), partitions.end(),

@@ -226,10 +226,8 @@ const ir::Loop* LoopDependenceAnalysis::GetLoopForSubscriptPair(
   return *loops.begin();
 }
 
-DistanceEntry* LoopDependenceAnalysis::GetDistanceEntryForSubscriptPair(
-    std::pair<SENode*, SENode*>* subscript_pair,
-    DistanceVector* distance_vector) {
-  const ir::Loop* loop = GetLoopForSubscriptPair(subscript_pair);
+DistanceEntry* LoopDependenceAnalysis::GetDistanceEntryForLoop(
+    const ir::Loop* loop, DistanceVector* distance_vector) {
   if (!loop) {
     return nullptr;
   }
@@ -243,6 +241,14 @@ DistanceEntry* LoopDependenceAnalysis::GetDistanceEntryForSubscriptPair(
   }
 
   return distance_entry;
+}
+
+DistanceEntry* LoopDependenceAnalysis::GetDistanceEntryForSubscriptPair(
+    std::pair<SENode*, SENode*>* subscript_pair,
+    DistanceVector* distance_vector) {
+  const ir::Loop* loop = GetLoopForSubscriptPair(subscript_pair);
+
+  return GetDistanceEntryForLoop(loop, distance_vector);
 }
 
 SENode* LoopDependenceAnalysis::GetTripCount(const ir::Loop* loop) {
@@ -354,29 +360,31 @@ int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* node) {
   return static_cast<int64_t>(loops.size());
 }
 
-int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* source,
-                                                        SENode* destination) {
+std::set<const ir::Loop*> LoopDependenceAnalysis::CollectLoops(
+    SENode* source, SENode* destination) {
   if (!source || !destination) {
-    return -1;
+    return {};
   }
 
   std::vector<SERecurrentNode*> source_nodes = source->CollectRecurrentNodes();
   std::vector<SERecurrentNode*> destination_nodes =
       destination->CollectRecurrentNodes();
 
-  // We don't handle loops with more than one induction variable. Therefore we
-  // can identify the number of induction variables by collecting all of the
-  // loops the collected recurrent nodes belong to.
-  std::unordered_set<const ir::Loop*> loops{};
-  for (auto source_nodes_it = source_nodes.begin();
-       source_nodes_it != source_nodes.end(); ++source_nodes_it) {
-    loops.insert((*source_nodes_it)->GetLoop());
+  std::set<const ir::Loop*> loops = CollectLoops(source_nodes);
+  std::set<const ir::Loop*> destination_loops = CollectLoops(destination_nodes);
+
+  loops.insert(std::begin(destination_loops), std::end(destination_loops));
+
+  return loops;
+}
+
+int64_t LoopDependenceAnalysis::CountInductionVariables(SENode* source,
+                                                        SENode* destination) {
+  if (!source || !destination) {
+    return -1;
   }
-  for (auto destination_nodes_it = destination_nodes.begin();
-       destination_nodes_it != destination_nodes.end();
-       ++destination_nodes_it) {
-    loops.insert((*destination_nodes_it)->GetLoop());
-  }
+
+  std::set<const ir::Loop*> loops = CollectLoops(source, destination);
 
   return static_cast<int64_t>(loops.size());
 }
