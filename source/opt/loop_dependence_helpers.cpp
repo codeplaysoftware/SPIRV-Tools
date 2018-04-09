@@ -498,7 +498,7 @@ void LoopDependenceAnalysis::PrintDebug(std::string debug_msg) {
 }
 
 bool Constraint::operator==(const Constraint& other) const {
-  // TODO: just represent distance as a line?
+  // A distance of |d| is equivalent to a line |x - y = -d|
   if ((GetType() == ConstraintType::Distance &&
        other.GetType() == ConstraintType::Line) ||
       (GetType() == ConstraintType::Line &&
