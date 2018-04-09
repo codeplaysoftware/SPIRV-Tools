@@ -114,7 +114,8 @@ class ComputeRegisterLiveness {
         reg_pressure_->GetOrInsert(bb->id());
     ComputePhiUses(*bb, &live_inout->live_out_);
 
-    bb->ForEachSuccessorLabel([&live_inout, bb, this](uint32_t sid) {
+    const ir::BasicBlock* cbb = bb;
+    cbb->ForEachSuccessorLabel([&live_inout, bb, this](uint32_t sid) {
       // Skip back edges.
       if (dom_tree_.Dominates(sid, bb->id())) {
         return;
