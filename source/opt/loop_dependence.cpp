@@ -1115,6 +1115,24 @@ bool IsConstant(const SENode* node) {
   return node->AsSEConstantNode() != nullptr;
 }
 
+// Compare 2 fractions while first normalizing them, e.g. 2/4 and 4/8 will both
+// be simplified to 1/2 and then determined to be equal.
+bool NormalizeAndCompareFractions(int64_t numerator_0, int64_t denominator_0,
+                                  int64_t numerator_1, int64_t denominator_1) {
+  auto gcd_0 =
+      GreatestCommonDivisor(std::abs(numerator_0), std::abs(denominator_0));
+  auto gcd_1 =
+      GreatestCommonDivisor(std::abs(numerator_1), std::abs(denominator_1));
+
+  auto normalized_numerator_0 = numerator_0 / gcd_0;
+  auto normalized_denominator_0 = denominator_0 / gcd_0;
+  auto normalized_numerator_1 = numerator_1 / gcd_1;
+  auto normalized_denominator_1 = denominator_1 / gcd_1;
+
+  return normalized_numerator_0 == normalized_numerator_1 &&
+         normalized_denominator_0 == normalized_denominator_1;
+}
+
 std::shared_ptr<Constraint> LoopDependenceAnalysis::IntersectConstraints(
     std::shared_ptr<Constraint> constraint_0,
     std::shared_ptr<Constraint> constraint_1, const SENode* lower_bound,
@@ -1191,27 +1209,20 @@ std::shared_ptr<Constraint> LoopDependenceAnalysis::IntersectConstraints(
       auto constant_b1 = b1->AsSEConstantNode()->FoldToSingleValue();
       auto constant_c1 = c1->AsSEConstantNode()->FoldToSingleValue();
 
-      // TODO: can this report false independence due to floating point
-      // errors?
       // a & b can't both be zero, otherwise it wouldn't be line.
-      // Therefore, won't have 0/0/0.0 or nan.
-      if (static_cast<double>(constant_a0) / static_cast<double>(constant_b0) ==
-          static_cast<double>(constant_a1) / static_cast<double>(constant_b1)) {
+      if (NormalizeAndCompareFractions(constant_a0, constant_b0, constant_a1,
+                                       constant_b1)) {
         // Slopes are equal, either parallel lines or the same line.
 
         if (constant_b0 == 0 && constant_b1 == 0) {
-          if (static_cast<double>(constant_c0) /
-                  static_cast<double>(constant_a0) ==
-              static_cast<double>(constant_c1) /
-                  static_cast<double>(constant_a1)) {
+          if (NormalizeAndCompareFractions(constant_c0, constant_a0,
+                                           constant_c1, constant_a1)) {
             return constraint_0;
           }
 
           return std::make_shared<DependenceEmpty>();
-        } else if ((static_cast<double>(constant_c0) /
-                        static_cast<double>(constant_b0) ==
-                    static_cast<double>(constant_c1) /
-                        static_cast<double>(constant_b1))) {
+        } else if (NormalizeAndCompareFractions(constant_c0, constant_b0,
+                                                constant_c1, constant_b1)) {
           // Same line.
           return constraint_0;
         } else {
