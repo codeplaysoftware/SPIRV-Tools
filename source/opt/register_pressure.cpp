@@ -228,10 +228,14 @@ class ComputeRegisterLiveness {
         if (insn.opcode() == SpvOpPhi) {
           break;
         }
+        if (!CreatesRegisterUsage(&insn)) {
+          continue;
+        }
 
         insn.ForEachInId(
             [live_inout, &die_in_block, &reg_count, this](uint32_t* id) {
-              if (live_inout->live_out_.count(def_use_manager_.GetDef(*id))) {
+              ir::Instruction* op_insn = def_use_manager_.GetDef(*id);
+              if (live_inout->live_out_.count(op_insn)) {
                 // already taken into account.
                 return;
               }

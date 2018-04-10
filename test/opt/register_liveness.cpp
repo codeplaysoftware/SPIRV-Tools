@@ -447,6 +447,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         176,  // %176 = OpVariable %175 Output
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 8u);
   }
   {
     SCOPED_TRACE("Block 17");
@@ -478,6 +480,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         191,  // %191 = OpPhi %7 %12 %5 %31 %18
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 11u);
   }
   {
     SCOPED_TRACE("Block 18");
@@ -509,6 +513,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         176,  // %176 = OpVariable %175 Output
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 14u);
   }
   {
     SCOPED_TRACE("Block 19");
