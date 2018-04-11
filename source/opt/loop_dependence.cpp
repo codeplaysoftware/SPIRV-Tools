@@ -75,9 +75,9 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     SENode* destination_node = scalar_evolution_.SimplifyExpression(
         scalar_evolution_.AnalyzeInstruction(destination_subscript));
 
+    // Check the loops are in a form we support.
     auto subscript_pair = std::make_pair(source_node, destination_node);
 
-    // Check the loops are in a form we support.
     const ir::Loop* loop = GetLoopForSubscriptPair(&subscript_pair);
     if (loop) {
       if (!IsSupportedLoop(loop)) {
@@ -1015,22 +1015,22 @@ PartitionedSubscripts LoopDependenceAnalysis::PartitionSubscripts(
           [loop,
            this](const std::pair<ir::Instruction*, ir::Instruction*>& elem)
               -> bool {
-                auto source_recurrences =
-                    scalar_evolution_.AnalyzeInstruction(std::get<0>(elem))
-                        ->CollectRecurrentNodes();
-                auto destination_recurrences =
-                    scalar_evolution_.AnalyzeInstruction(std::get<1>(elem))
-                        ->CollectRecurrentNodes();
+            auto source_recurrences =
+                scalar_evolution_.AnalyzeInstruction(std::get<0>(elem))
+                    ->CollectRecurrentNodes();
+            auto destination_recurrences =
+                scalar_evolution_.AnalyzeInstruction(std::get<1>(elem))
+                    ->CollectRecurrentNodes();
 
-                source_recurrences.insert(source_recurrences.end(),
-                                          destination_recurrences.begin(),
-                                          destination_recurrences.end());
+            source_recurrences.insert(source_recurrences.end(),
+                                      destination_recurrences.begin(),
+                                      destination_recurrences.end());
 
-                auto loops_in_pair = CollectLoops(source_recurrences);
-                auto end_it = loops_in_pair.end();
+            auto loops_in_pair = CollectLoops(source_recurrences);
+            auto end_it = loops_in_pair.end();
 
-                return std::find(loops_in_pair.begin(), end_it, loop) != end_it;
-              });
+            return std::find(loops_in_pair.begin(), end_it, loop) != end_it;
+          });
 
       auto has_loop = it != current_partition.end();
 
@@ -1047,7 +1047,7 @@ PartitionedSubscripts LoopDependenceAnalysis::PartitionSubscripts(
     }
   }
 
-  // Remove discarded (empty) partitions
+  // Remove empty (discarded) partitions
   partitions.erase(
       std::remove_if(
           partitions.begin(), partitions.end(),

@@ -87,6 +87,7 @@ class DistanceEntry {
         distance(0),
         peel_first(false),
         peel_last(false) {}
+
   bool operator==(const DistanceEntry& rhs) const {
     return direction == rhs.direction && peel_first == rhs.peel_first &&
            peel_last == rhs.peel_last && distance == rhs.distance;
@@ -121,7 +122,7 @@ class DistanceVector {
     }
     return true;
   }
-  bool operator!=(const DistanceVector& rhs) { return !(*this == rhs); }
+  bool operator!=(const DistanceVector& rhs) const { return !(*this == rhs); }
 
  private:
   std::vector<DistanceEntry> entries;
@@ -238,7 +239,7 @@ class LoopDependenceAnalysis {
 
   // Subscript partitioning as described in Figure 1 of 'Practical Dependence
   // Testing' by Gina Goff, Ken Kennedy, and Chau-Wen Tseng from PLDI '91.
-  // Partitions the subscripts into separable subscripts and minimally coupled
+  // Partitions the subscripts into independent subscripts and minimally coupled
   // sets of subscripts.
   // Returns the partitioning of subscript pairs. Sets of size 1 indicates an
   // independent subscript-pair and others indicate coupled sets.

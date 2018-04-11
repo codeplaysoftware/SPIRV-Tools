@@ -16,6 +16,7 @@
 // Doesn't test OpenCL.std vector size 2, 3, 4, 8 or 16 rules (not supported
 // by standard SPIR-V).
 
+#include <cstring>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -52,6 +53,7 @@ using ValidateVulkanCombineBuiltInExecutionModelDataTypeResult =
 struct EntryPoint {
   std::string name;
   std::string execution_model;
+  std::string execution_modes;
   std::string body;
 };
 
@@ -79,6 +81,10 @@ std::string CodeGenerator::Build() const {
   for (const EntryPoint& entry_point : entry_points_) {
     ss << "OpEntryPoint " << entry_point.execution_model << " %"
        << entry_point.name << " \"" << entry_point.name << "\"\n";
+  }
+
+  for (const EntryPoint& entry_point : entry_points_) {
+    ss << entry_point.execution_modes << "\n";
   }
 
   ss << before_types_;
@@ -216,6 +222,18 @@ TEST_P(ValidateVulkanCombineBuiltInExecutionModelDataTypeResult, InMain) {
   EntryPoint entry_point;
   entry_point.name = "main";
   entry_point.execution_model = execution_model;
+
+  std::ostringstream execution_modes;
+  if (0 == std::strcmp(execution_model, "Fragment")) {
+    execution_modes << "OpExecutionMode %" << entry_point.name
+                    << " OriginUpperLeft\n";
+  }
+  if (0 == std::strcmp(built_in, "FragDepth")) {
+    execution_modes << "OpExecutionMode %" << entry_point.name
+                    << " DepthReplacing\n";
+  }
+  entry_point.execution_modes = execution_modes.str();
+
   entry_point.body = R"(
 %ptr = OpAccessChain %data_ptr %built_in_var %u32_0
 )";
@@ -257,6 +275,18 @@ TEST_P(ValidateVulkanCombineBuiltInExecutionModelDataTypeResult, InFunction) {
   EntryPoint entry_point;
   entry_point.name = "main";
   entry_point.execution_model = execution_model;
+
+  std::ostringstream execution_modes;
+  if (0 == std::strcmp(execution_model, "Fragment")) {
+    execution_modes << "OpExecutionMode %" << entry_point.name
+                    << " OriginUpperLeft\n";
+  }
+  if (0 == std::strcmp(built_in, "FragDepth")) {
+    execution_modes << "OpExecutionMode %" << entry_point.name
+                    << " DepthReplacing\n";
+  }
+  entry_point.execution_modes = execution_modes.str();
+
   entry_point.body = R"(
 %val2 = OpFunctionCall %void %foo
 )";
@@ -268,6 +298,57 @@ TEST_P(ValidateVulkanCombineBuiltInExecutionModelDataTypeResult, InFunction) {
 OpReturn
 OpFunctionEnd
 )";
+  generator.entry_points_.push_back(std::move(entry_point));
+
+  CompileSuccessfully(generator.Build(), SPV_ENV_VULKAN_1_0);
+  ASSERT_EQ(test_result.validation_result,
+            ValidateInstructions(SPV_ENV_VULKAN_1_0));
+  if (test_result.error_str) {
+    EXPECT_THAT(getDiagnosticString(), HasSubstr(test_result.error_str));
+  }
+  if (test_result.error_str2) {
+    EXPECT_THAT(getDiagnosticString(), HasSubstr(test_result.error_str2));
+  }
+}
+
+TEST_P(ValidateVulkanCombineBuiltInExecutionModelDataTypeResult, Variable) {
+  const char* const built_in = std::get<0>(GetParam());
+  const char* const execution_model = std::get<1>(GetParam());
+  const char* const storage_class = std::get<2>(GetParam());
+  const char* const data_type = std::get<3>(GetParam());
+  const TestResult& test_result = std::get<4>(GetParam());
+
+  CodeGenerator generator = GetDefaultShaderCodeGenerator();
+  generator.before_types_ = "OpDecorate %built_in_var BuiltIn ";
+  generator.before_types_ += built_in;
+  generator.before_types_ += "\n";
+
+  std::ostringstream after_types;
+  after_types << "%built_in_ptr = OpTypePointer " << storage_class << " "
+              << data_type << "\n";
+  after_types << "%built_in_var = OpVariable %built_in_ptr " << storage_class
+              << "\n";
+  generator.after_types_ = after_types.str();
+
+  EntryPoint entry_point;
+  entry_point.name = "main";
+  entry_point.execution_model = execution_model;
+  // Any kind of reference would do.
+  entry_point.body = R"(
+%val = OpBitcast %u64 %built_in_var
+)";
+
+  std::ostringstream execution_modes;
+  if (0 == std::strcmp(execution_model, "Fragment")) {
+    execution_modes << "OpExecutionMode %" << entry_point.name
+                    << " OriginUpperLeft\n";
+  }
+  if (0 == std::strcmp(built_in, "FragDepth")) {
+    execution_modes << "OpExecutionMode %" << entry_point.name
+                    << " DepthReplacing\n";
+  }
+  entry_point.execution_modes = execution_modes.str();
+
   generator.entry_points_.push_back(std::move(entry_point));
 
   CompileSuccessfully(generator.Build(), SPV_ENV_VULKAN_1_0);
@@ -926,15 +1007,16 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     PrimitiveIdInputSuccess,
     ValidateVulkanCombineBuiltInExecutionModelDataTypeResult,
-    Combine(Values("PrimitiveId"), Values("Fragment", "Geometry"),
+    Combine(Values("PrimitiveId"),
+            Values("Fragment", "TessellationControl", "TessellationEvaluation",
+                   "Geometry"),
             Values("Input"), Values("%u32"), Values(TestResult())), );
 
 INSTANTIATE_TEST_CASE_P(
     PrimitiveIdOutputSuccess,
     ValidateVulkanCombineBuiltInExecutionModelDataTypeResult,
-    Combine(Values("PrimitiveId"),
-            Values("Geometry", "TessellationControl", "TessellationEvaluation"),
-            Values("Output"), Values("%u32"), Values(TestResult())), );
+    Combine(Values("PrimitiveId"), Values("Geometry"), Values("Output"),
+            Values("%u32"), Values(TestResult())), );
 
 INSTANTIATE_TEST_CASE_P(
     PrimitiveIdInvalidExecutionModel,
@@ -947,7 +1029,7 @@ INSTANTIATE_TEST_CASE_P(
                 "TessellationEvaluation or Geometry execution models"))), );
 
 INSTANTIATE_TEST_CASE_P(
-    PrimitiveIdNotInput,
+    PrimitiveIdFragmentNotInput,
     ValidateVulkanCombineBuiltInExecutionModelDataTypeResult,
     Combine(
         Values("PrimitiveId"), Values("Fragment"), Values("Output"),
@@ -957,14 +1039,14 @@ INSTANTIATE_TEST_CASE_P(
                           "which is called with execution model Fragment"))), );
 
 INSTANTIATE_TEST_CASE_P(
-    PrimitiveIdGeometryNotOutput,
+    PrimitiveIdGeometryNotInput,
     ValidateVulkanCombineBuiltInExecutionModelDataTypeResult,
     Combine(Values("PrimitiveId"),
             Values("TessellationControl", "TessellationEvaluation"),
-            Values("Input"), Values("%u32"),
+            Values("Output"), Values("%u32"),
             Values(TestResult(
                 SPV_ERROR_INVALID_DATA,
-                "Input storage class if execution model is Tessellation",
+                "Output storage class if execution model is Tessellation",
                 "which is called with execution model Tessellation"))), );
 
 INSTANTIATE_TEST_CASE_P(
@@ -1427,6 +1509,7 @@ OpDecorate %workgroup_size BuiltIn WorkgroupSize
   EntryPoint entry_point;
   entry_point.name = "main";
   entry_point.execution_model = "Fragment";
+  entry_point.execution_modes = "OpExecutionMode %main OriginUpperLeft";
   entry_point.body = R"(
 %copy = OpCopyObject %u32vec3 %workgroup_size
 )";
@@ -1607,6 +1690,80 @@ OpStore %output_pos %pos
   ASSERT_EQ(SPV_SUCCESS, ValidateInstructions(SPV_ENV_VULKAN_1_0));
 }
 
+TEST_F(ValidateBuiltIns, TwoBuiltInsFirstFails) {
+  CodeGenerator generator = GetDefaultShaderCodeGenerator();
+
+  generator.before_types_ = R"(
+OpMemberDecorate %input_type 0 BuiltIn FragCoord
+OpMemberDecorate %output_type 0 BuiltIn Position
+)";
+
+  generator.after_types_ = R"(
+%input_type = OpTypeStruct %f32vec4
+%input_ptr = OpTypePointer Input %input_type
+%input = OpVariable %input_ptr Input
+%input_f32vec4_ptr = OpTypePointer Input %f32vec4
+%output_type = OpTypeStruct %f32vec4
+%output_ptr = OpTypePointer Output %output_type
+%output = OpVariable %output_ptr Output
+%output_f32vec4_ptr = OpTypePointer Output %f32vec4
+)";
+
+  EntryPoint entry_point;
+  entry_point.name = "main";
+  entry_point.execution_model = "Geometry";
+  entry_point.body = R"(
+%input_pos = OpAccessChain %input_f32vec4_ptr %input %u32_0
+%output_pos = OpAccessChain %output_f32vec4_ptr %output %u32_0
+%pos = OpLoad %f32vec4 %input_pos
+OpStore %output_pos %pos
+)";
+  generator.entry_points_.push_back(std::move(entry_point));
+
+  CompileSuccessfully(generator.Build(), SPV_ENV_VULKAN_1_0);
+  ASSERT_EQ(SPV_ERROR_INVALID_DATA, ValidateInstructions(SPV_ENV_VULKAN_1_0));
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("Vulkan spec allows BuiltIn FragCoord to be used only "
+                        "with Fragment execution model"));
+}
+
+TEST_F(ValidateBuiltIns, TwoBuiltInsSecondFails) {
+  CodeGenerator generator = GetDefaultShaderCodeGenerator();
+
+  generator.before_types_ = R"(
+OpMemberDecorate %input_type 0 BuiltIn Position
+OpMemberDecorate %output_type 0 BuiltIn FragCoord
+)";
+
+  generator.after_types_ = R"(
+%input_type = OpTypeStruct %f32vec4
+%input_ptr = OpTypePointer Input %input_type
+%input = OpVariable %input_ptr Input
+%input_f32vec4_ptr = OpTypePointer Input %f32vec4
+%output_type = OpTypeStruct %f32vec4
+%output_ptr = OpTypePointer Output %output_type
+%output = OpVariable %output_ptr Output
+%output_f32vec4_ptr = OpTypePointer Output %f32vec4
+)";
+
+  EntryPoint entry_point;
+  entry_point.name = "main";
+  entry_point.execution_model = "Geometry";
+  entry_point.body = R"(
+%input_pos = OpAccessChain %input_f32vec4_ptr %input %u32_0
+%output_pos = OpAccessChain %output_f32vec4_ptr %output %u32_0
+%pos = OpLoad %f32vec4 %input_pos
+OpStore %output_pos %pos
+)";
+  generator.entry_points_.push_back(std::move(entry_point));
+
+  CompileSuccessfully(generator.Build(), SPV_ENV_VULKAN_1_0);
+  ASSERT_EQ(SPV_ERROR_INVALID_DATA, ValidateInstructions(SPV_ENV_VULKAN_1_0));
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("Vulkan spec allows BuiltIn FragCoord to be only used "
+                        "for variables with Input storage class"));
+}
+
 TEST_F(ValidateBuiltIns, VertexPositionVariableSuccess) {
   CodeGenerator generator = GetDefaultShaderCodeGenerator();
   generator.before_types_ = R"(
@@ -1653,6 +1810,7 @@ OpMemberDecorate %output_type 0 BuiltIn Position
 
   entry_point.name = "fmain";
   entry_point.execution_model = "Fragment";
+  entry_point.execution_modes = "OpExecutionMode %fmain OriginUpperLeft";
   entry_point.body = R"(
 %val2 = OpFunctionCall %void %foo
 )";
@@ -1675,6 +1833,92 @@ OpFunctionEnd
                         "TessellationEvaluation or Geometry execution models"));
   EXPECT_THAT(getDiagnosticString(),
               HasSubstr("called with execution model Fragment"));
+}
+
+TEST_F(ValidateBuiltIns, FragmentFragDepthNoDepthReplacing) {
+  CodeGenerator generator = GetDefaultShaderCodeGenerator();
+  generator.before_types_ = R"(
+OpMemberDecorate %output_type 0 BuiltIn FragDepth
+)";
+
+  generator.after_types_ = R"(
+%output_type = OpTypeStruct %f32
+%output_ptr = OpTypePointer Output %output_type
+%output = OpVariable %output_ptr Output
+%output_f32_ptr = OpTypePointer Output %f32
+)";
+
+  EntryPoint entry_point;
+  entry_point.name = "main";
+  entry_point.execution_model = "Fragment";
+  entry_point.execution_modes = "OpExecutionMode %main OriginUpperLeft";
+  entry_point.body = R"(
+%val2 = OpFunctionCall %void %foo
+)";
+  generator.entry_points_.push_back(std::move(entry_point));
+
+  generator.add_at_the_end_ = R"(
+%foo = OpFunction %void None %func
+%foo_entry = OpLabel
+%frag_depth = OpAccessChain %output_f32_ptr %output %u32_0
+OpStore %frag_depth %f32_1
+OpReturn
+OpFunctionEnd
+)";
+
+  CompileSuccessfully(generator.Build(), SPV_ENV_VULKAN_1_0);
+  ASSERT_EQ(SPV_ERROR_INVALID_DATA, ValidateInstructions(SPV_ENV_VULKAN_1_0));
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("Vulkan spec requires DepthReplacing execution mode to "
+                        "be declared when using BuiltIn FragDepth"));
+}
+
+TEST_F(ValidateBuiltIns, FragmentFragDepthOneMainHasDepthReplacingOtherHasnt) {
+  CodeGenerator generator = GetDefaultShaderCodeGenerator();
+  generator.before_types_ = R"(
+OpMemberDecorate %output_type 0 BuiltIn FragDepth
+)";
+
+  generator.after_types_ = R"(
+%output_type = OpTypeStruct %f32
+%output_ptr = OpTypePointer Output %output_type
+%output = OpVariable %output_ptr Output
+%output_f32_ptr = OpTypePointer Output %f32
+)";
+
+  EntryPoint entry_point;
+  entry_point.name = "main_d_r";
+  entry_point.execution_model = "Fragment";
+  entry_point.execution_modes =
+      "OpExecutionMode %main_d_r OriginUpperLeft\n"
+      "OpExecutionMode %main_d_r DepthReplacing";
+  entry_point.body = R"(
+%val2 = OpFunctionCall %void %foo
+)";
+  generator.entry_points_.push_back(std::move(entry_point));
+
+  entry_point.name = "main_no_d_r";
+  entry_point.execution_model = "Fragment";
+  entry_point.execution_modes = "OpExecutionMode %main_no_d_r OriginUpperLeft";
+  entry_point.body = R"(
+%val3 = OpFunctionCall %void %foo
+)";
+  generator.entry_points_.push_back(std::move(entry_point));
+
+  generator.add_at_the_end_ = R"(
+%foo = OpFunction %void None %func
+%foo_entry = OpLabel
+%frag_depth = OpAccessChain %output_f32_ptr %output %u32_0
+OpStore %frag_depth %f32_1
+OpReturn
+OpFunctionEnd
+)";
+
+  CompileSuccessfully(generator.Build(), SPV_ENV_VULKAN_1_0);
+  ASSERT_EQ(SPV_ERROR_INVALID_DATA, ValidateInstructions(SPV_ENV_VULKAN_1_0));
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("Vulkan spec requires DepthReplacing execution mode to "
+                        "be declared when using BuiltIn FragDepth"));
 }
 
 }  // anonymous namespace

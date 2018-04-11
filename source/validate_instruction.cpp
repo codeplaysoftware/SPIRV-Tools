@@ -29,6 +29,7 @@
 #include "extensions.h"
 #include "opcode.h"
 #include "operand.h"
+#include "spirv_constant.h"
 #include "spirv_definition.h"
 #include "spirv_target_env.h"
 #include "spirv_validator_options.h"
@@ -163,10 +164,15 @@ ExtensionSet RequiredExtensions(const ValidationState_t& state,
   if (state.grammar().lookupOperand(type, operand, &operand_desc) ==
       SPV_SUCCESS) {
     assert(operand_desc);
+    // If this operand is incorporated into core SPIR-V before or in the current
+    // target environment, we don't require extensions anymore.
+    if (spvVersionForTargetEnv(state.grammar().target_env()) >=
+        operand_desc->minVersion)
+      return {};
     return {operand_desc->numExtensions, operand_desc->extensions};
   }
 
-  return ExtensionSet();
+  return {};
 }
 
 }  // namespace
@@ -254,7 +260,7 @@ spv_result_t VersionCheck(ValidationState_t& _,
              << spvOpcodeString(opcode) << " is reserved for future use.";
     }
 
-    if (static_cast<uint32_t>(_.grammar().target_env()) < min_version) {
+    if (spvVersionForTargetEnv(_.grammar().target_env()) < min_version) {
       return _.diag(SPV_ERROR_WRONG_VERSION)
              << spvOpcodeString(opcode) << " requires "
              << spvTargetEnvDescription(
@@ -476,18 +482,21 @@ void CheckIfKnownExtension(ValidationState_t& _,
 spv_result_t InstructionPass(ValidationState_t& _,
                              const spv_parsed_instruction_t* inst) {
   const SpvOp opcode = static_cast<SpvOp>(inst->opcode);
-  if (opcode == SpvOpExtension) CheckIfKnownExtension(_, inst);
-  if (opcode == SpvOpCapability) {
+  if (opcode == SpvOpExtension) {
+    CheckIfKnownExtension(_, inst);
+  } else if (opcode == SpvOpCapability) {
     _.RegisterCapability(
         static_cast<SpvCapability>(inst->words[inst->operands[0].offset]));
-  }
-  if (opcode == SpvOpMemoryModel) {
+  } else if (opcode == SpvOpMemoryModel) {
     _.set_addressing_model(
         static_cast<SpvAddressingModel>(inst->words[inst->operands[0].offset]));
     _.set_memory_model(
         static_cast<SpvMemoryModel>(inst->words[inst->operands[1].offset]));
-  }
-  if (opcode == SpvOpVariable) {
+  } else if (opcode == SpvOpExecutionMode) {
+    const uint32_t entry_point = inst->words[1];
+    _.RegisterExecutionModeForEntryPoint(entry_point,
+                                         SpvExecutionMode(inst->words[2]));
+  } else if (opcode == SpvOpVariable) {
     const auto storage_class =
         static_cast<SpvStorageClass>(inst->words[inst->operands[2].offset]);
     if (auto error = LimitCheckNumVars(_, inst->result_id, storage_class)) {
