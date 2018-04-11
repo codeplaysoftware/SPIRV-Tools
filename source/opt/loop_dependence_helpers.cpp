@@ -485,5 +485,61 @@ void LoopDependenceAnalysis::PrintDebug(std::string debug_msg) {
   }
 }
 
+bool Constraint::operator==(const Constraint& other) const {
+  // A distance of |d| is equivalent to a line |x - y = -d|
+  if ((GetType() == ConstraintType::Distance &&
+       other.GetType() == ConstraintType::Line) ||
+      (GetType() == ConstraintType::Line &&
+       other.GetType() == ConstraintType::Distance)) {
+    auto is_distance = AsDependenceLine() != nullptr;
+
+    auto as_distance =
+        is_distance ? AsDependenceDistance() : other.AsDependenceDistance();
+    auto distance = as_distance->GetDistance();
+
+    auto line = other.AsDependenceLine();
+
+    auto scalar_evolution = distance->GetParentAnalysis();
+
+    auto neg_distance = scalar_evolution->SimplifyExpression(
+        scalar_evolution->CreateNegation(distance));
+
+    return *scalar_evolution->CreateConstant(1) == *line->GetA() &&
+           *scalar_evolution->CreateConstant(-1) == *line->GetB() &&
+           *neg_distance == *line->GetC();
+  }
+
+  if (GetType() != other.GetType()) {
+    return false;
+  }
+
+  if (AsDependenceDistance()) {
+    return *AsDependenceDistance()->GetDistance() ==
+           *other.AsDependenceDistance()->GetDistance();
+  }
+
+  if (AsDependenceLine()) {
+    auto this_line = AsDependenceLine();
+    auto other_line = other.AsDependenceLine();
+    return *this_line->GetA() == *other_line->GetA() &&
+           *this_line->GetB() == *other_line->GetB() &&
+           *this_line->GetC() == *other_line->GetC();
+  }
+
+  if (AsDependencePoint()) {
+    auto this_point = AsDependencePoint();
+    auto other_point = other.AsDependencePoint();
+
+    return *this_point->GetSource() == *other_point->GetSource() &&
+           *this_point->GetDestination() == *other_point->GetDestination();
+  }
+
+  return true;
+}
+
+bool Constraint::operator!=(const Constraint& other) const {
+  return !(*this == other);
+}
+
 }  // namespace opt
 }  // namespace spvtools
