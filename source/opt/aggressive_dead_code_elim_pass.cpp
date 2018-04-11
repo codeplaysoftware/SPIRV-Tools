@@ -433,6 +433,15 @@ bool AggressiveDCEPass::AggressiveDCE(ir::Function* func) {
     else if (liveInst->opcode() == SpvOpFunctionParameter) {
       ProcessLoad(liveInst->result_id());
     }
+    // We treat an OpImageTexelPointer as a load of the pointer, and
+    // that value is manipulated to get the result.
+    else if (liveInst->opcode() == SpvOpImageTexelPointer) {
+      uint32_t varId;
+      (void)GetPtr(liveInst, &varId);
+      if (varId != 0) {
+        ProcessLoad(varId);
+      }
+    }
     worklist_.pop();
   }
 
@@ -703,6 +712,8 @@ void AggressiveDCEPass::InitExtensions() {
       "SPV_AMD_gpu_shader_half_float_fetch",
       "SPV_GOOGLE_decorate_string",
       "SPV_GOOGLE_hlsl_functionality1",
+      "SPV_NV_shader_subgroup_partitioned",
+      "SPV_EXT_descriptor_indexing",
   });
 }
 

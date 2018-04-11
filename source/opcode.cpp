@@ -25,6 +25,7 @@
 #include "spirv-tools/libspirv.h"
 #include "spirv_constant.h"
 #include "spirv_endian.h"
+#include "spirv_target_env.h"
 
 namespace {
 struct OpcodeDescPtrLen {
@@ -106,7 +107,7 @@ spv_result_t spvOpcodeTableNameLookup(spv_target_env env,
     // Note that the second rule assumes the extension enabling this instruction
     // is indeed requested in the SPIR-V code; checking that should be
     // validator's work.
-    if ((static_cast<uint32_t>(env) >= entry.minVersion ||
+    if ((spvVersionForTargetEnv(env) >= entry.minVersion ||
          entry.numExtensions > 0u) &&
         nameLength == strlen(entry.name) &&
         !strncmp(name, entry.name, nameLength)) {
@@ -151,7 +152,7 @@ spv_result_t spvOpcodeTableValueLookup(spv_target_env env,
     // Note that the second rule assumes the extension enabling this instruction
     // is indeed requested in the SPIR-V code; checking that should be
     // validator's work.
-    if (static_cast<uint32_t>(env) >= it->minVersion ||
+    if (spvVersionForTargetEnv(env) >= it->minVersion ||
         it->numExtensions > 0u) {
       *pEntry = it;
       return SPV_SUCCESS;

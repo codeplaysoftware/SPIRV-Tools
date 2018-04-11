@@ -81,11 +81,18 @@ class DistanceEntry {
         peel_first(false),
         peel_last(false) {}
 
-  bool operator==(const DistanceEntry& rhs) {
+  explicit DistanceEntry(Directions direction_)
+      : dependence_information(DependenceInformation::DIRECTION),
+        direction(direction_),
+        distance(0),
+        peel_first(false),
+        peel_last(false) {}
+
+  bool operator==(const DistanceEntry& rhs) const {
     return direction == rhs.direction && peel_first == rhs.peel_first &&
            peel_last == rhs.peel_last && distance == rhs.distance;
   }
-  bool operator!=(const DistanceEntry& rhs) { return !(*this == rhs); }
+  bool operator!=(const DistanceEntry& rhs) const { return !(*this == rhs); }
 };
 
 // Stores a vector of DistanceEntrys, one per loop in the analysis.
@@ -96,13 +103,15 @@ class DistanceVector {
  public:
   explicit DistanceVector(size_t size) : entries(size, DistanceEntry{}) {}
 
+  explicit DistanceVector(std::vector<DistanceEntry> entries_) : entries(entries_) {}
+
   DistanceEntry& GetEntry(size_t index) { return entries[index]; }
   const DistanceEntry& GetEntry(size_t index) const { return entries[index]; }
 
   std::vector<DistanceEntry>& GetEntries() { return entries; }
   const std::vector<DistanceEntry>& GetEntries() const { return entries; }
 
-  bool operator==(const DistanceVector& rhs) {
+  bool operator==(const DistanceVector& rhs) const {
     if (entries.size() != rhs.entries.size()) {
       return false;
     }
@@ -113,7 +122,7 @@ class DistanceVector {
     }
     return true;
   }
-  bool operator!=(const DistanceVector& rhs) { return !(*this == rhs); }
+  bool operator!=(const DistanceVector& rhs) const { return !(*this == rhs); }
 
  private:
   std::vector<DistanceEntry> entries;
@@ -202,8 +211,12 @@ class LoopDependenceAnalysis {
   SENode* GetFinalTripInductionNode(const ir::Loop* loop,
                                     SENode* induction_coefficient);
 
+  // Returns all the distinct loops that appear in |nodes|.
   std::set<const ir::Loop*> CollectLoops(
       const std::vector<SERecurrentNode*>& nodes);
+
+  // Returns all the distinct loops that appear in |source| and |destination|.
+  std::set<const ir::Loop*> CollectLoops(SENode* source, SENode* destination);
 
   // Returns true if |distance| is provably outside the loop bounds.
   // |coefficient| must be an SENode representing the coefficient of the
@@ -224,6 +237,8 @@ class LoopDependenceAnalysis {
   // Returns the ScalarEvolutionAnalysis used by this analysis.
   ScalarEvolutionAnalysis* GetScalarEvolution() { return &scalar_evolution_; }
 
+  // Subscript partitioning as described in Figure 1 of 'Practical Dependence
+  // Testing' by Gina Goff, Ken Kennedy, and Chau-Wen Tseng from PLDI '91.
   // Partitions the subscripts into independent subscripts and minimally coupled
   // sets of subscripts.
   // Returns the partitioning of subscript pairs. Sets of size 1 indicates an
@@ -244,6 +259,10 @@ class LoopDependenceAnalysis {
   DistanceEntry* GetDistanceEntryForSubscriptPair(
       std::pair<SENode*, SENode*>* subscript_pair,
       DistanceVector* distance_vector);
+
+  // Returns the DistanceEntry matching |loop|.
+  DistanceEntry* GetDistanceEntryForLoop(const ir::Loop* loop,
+                                         DistanceVector* distance_vector);
 
   // Returns true if each loop in |loops| is in a form supported by this
   // analysis.
@@ -326,6 +345,10 @@ class LoopDependenceAnalysis {
   // access defined by the access chain |instruction|.
   std::vector<ir::Instruction*> GetSubscripts(
       const ir::Instruction* instruction);
+
+  // Perform the GCD test if both, the source and the destination nodes, are in
+  // the form a0*i0 + a1*i1 + ... an*in + c.
+  bool GCDMIVTest(SENode* source, SENode* destination);
 
   // Finds the number of induction variables in |node|.
   // Returns -1 on failure.
