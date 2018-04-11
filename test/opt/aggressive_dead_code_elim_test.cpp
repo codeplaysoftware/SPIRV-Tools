@@ -4006,7 +4006,7 @@ TEST_F(AggressiveDCETest, BasicAllDeadConstants) {
        %uint = OpTypeInt 32 0
          %11 = OpConstant %uint 2
       %float = OpTypeFloat 32
-         %13 = OpConstant %float 3.14
+         %13 = OpConstant %float 3.1415
      %double = OpTypeFloat 64
          %15 = OpConstant %double 3.14159265358979
        %main = OpFunction %void None %4
@@ -4048,7 +4048,7 @@ TEST_F(AggressiveDCETest, BasicNoneDeadConstants) {
       "%uint_2 = OpConstant %uint 2",
        "%float = OpTypeFloat 32",
  "%_ptr_Output_float = OpTypePointer Output %float",
-  "%float_3_14 = OpConstant %float 3.14",
+  "%float_3_1415 = OpConstant %float 3.1415",
       "%double = OpTypeFloat 64",
  "%_ptr_Output_double = OpTypePointer Output %double",
  "%double_3_14159265358979 = OpConstant %double 3.14159265358979",
@@ -4064,7 +4064,7 @@ TEST_F(AggressiveDCETest, BasicNoneDeadConstants) {
                 "OpStore %bfv %false",
                 "OpStore %iv %int_1",
                 "OpStore %uv %uint_2",
-                "OpStore %fv %float_3_14",
+                "OpStore %fv %float_3_1415",
                 "OpStore %dv %double_3_14159265358979",
                 "OpReturn",
                 "OpFunctionEnd",
@@ -4194,7 +4194,7 @@ INSTANTIATE_TEST_CASE_P(
         {
             /* .used_consts = */
             {
-              "%used_const_float = OpConstant %float 3.14",
+              "%used_const_float = OpConstant %float 3.1415",
             },
             /* .main_insts = */
             {
@@ -4203,11 +4203,11 @@ INSTANTIATE_TEST_CASE_P(
             },
             /* .dead_consts = */
             {
-              "%dead_const_float = OpConstant %float 3.14",
+              "%dead_const_float = OpConstant %float 3.1415",
             },
             /* .checks = */
             {
-              "; CHECK: [[const:%\\w+]] = OpConstant %float 3.14",
+              "; CHECK: [[const:%\\w+]] = OpConstant %float 3.1415",
               "; CHECK-NOT: OpConstant",
               "; CHECK: OpStore {{%\\w+}} [[const]]",
             },
@@ -4306,7 +4306,7 @@ INSTANTIATE_TEST_CASE_P(
         {
             /* .used_consts = */
             {
-              "%used_float_x = OpConstant %float 3.14",
+              "%used_float_x = OpConstant %float 3.1415",
               "%used_float_y = OpConstant %float 4.13",
               "%used_v2float = OpConstantComposite %v2float %used_float_x %used_float_y",
             },
@@ -4317,13 +4317,13 @@ INSTANTIATE_TEST_CASE_P(
             },
             /* .dead_consts = */
             {
-              "%dead_float_x = OpConstant %float 3.14",
+              "%dead_float_x = OpConstant %float 3.1415",
               "%dead_float_y = OpConstant %float 4.13",
               "%dead_v2float = OpConstantComposite %v2float %dead_float_x %dead_float_y",
             },
             /* .checks = */
             {
-              "; CHECK: [[constx:%\\w+]] = OpConstant %float 3.14",
+              "; CHECK: [[constx:%\\w+]] = OpConstant %float 3.1415",
               "; CHECK: [[consty:%\\w+]] = OpConstant %float 4.13",
               "; CHECK: [[const:%\\w+]] = OpConstantComposite %v2float [[constx]] [[consty]]",
               "; CHECK-NOT: OpConstant",
@@ -4336,9 +4336,9 @@ INSTANTIATE_TEST_CASE_P(
         {
             /* .used_consts = */
             {
-              "%used_float_x = OpConstant %float 3.14",
-              "%used_float_y = OpConstant %float 4.13",
-              "%used_float_z = OpConstant %float 4.31",
+              "%used_float_x = OpConstant %float 3.1415",
+              "%used_float_y = OpConstant %float 4.25",
+              "%used_float_z = OpConstant %float 4.75",
               "%used_v3float = OpConstantComposite %v3float %used_float_x %used_float_y %used_float_z",
             },
             /* .main_insts = */
@@ -4352,9 +4352,9 @@ INSTANTIATE_TEST_CASE_P(
             },
             /* .checks = */
             {
-              "; CHECK: [[constx:%\\w+]] = OpConstant %float 3.14",
-              "; CHECK: [[consty:%\\w+]] = OpConstant %float 4.13",
-              "; CHECK: [[constz:%\\w+]] = OpConstant %float 4.31",
+              "; CHECK: [[constx:%\\w+]] = OpConstant %float 3.1415",
+              "; CHECK: [[consty:%\\w+]] = OpConstant %float 4.25",
+              "; CHECK: [[constz:%\\w+]] = OpConstant %float 4.75",
               "; CHECK: [[const:%\\w+]] = OpConstantComposite %v3float [[constx]] [[consty]]",
               "; CHECK-NOT: OpConstant",
               "; CHECK: OpStore {{%\\w+}} [[const]]",
@@ -5361,6 +5361,47 @@ OpBranch %15
 %16 = OpLabel
 OpBranch %22
 %22 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+
+  SetAssembleOptions(SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(text, text, true, true);
+}
+
+TEST_F(AggressiveDCETest, AtomicAdd) {
+  const std::string text = R"(OpCapability SampledBuffer
+OpCapability StorageImageExtendedFormats
+OpCapability ImageBuffer
+OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %2 "min" %gl_GlobalInvocationID
+OpExecutionMode %2 LocalSize 64 1 1
+OpSource HLSL 600
+OpDecorate %gl_GlobalInvocationID BuiltIn GlobalInvocationId
+OpDecorate %4 DescriptorSet 4
+OpDecorate %4 Binding 70
+%uint = OpTypeInt 32 0
+%6 = OpTypeImage %uint Buffer 0 0 0 2 R32ui
+%_ptr_UniformConstant_6 = OpTypePointer UniformConstant %6
+%_ptr_Private_6 = OpTypePointer Private %6
+%void = OpTypeVoid
+%10 = OpTypeFunction %void
+%uint_0 = OpConstant %uint 0
+%uint_1 = OpConstant %uint 1
+%v3uint = OpTypeVector %uint 3
+%_ptr_Input_v3uint = OpTypePointer Input %v3uint
+%_ptr_Image_uint = OpTypePointer Image %uint
+%4 = OpVariable %_ptr_UniformConstant_6 UniformConstant
+%16 = OpVariable %_ptr_Private_6 Private
+%gl_GlobalInvocationID = OpVariable %_ptr_Input_v3uint Input
+%2 = OpFunction %void None %10
+%17 = OpLabel
+%18 = OpLoad %6 %4
+OpStore %16 %18
+%19 = OpImageTexelPointer %_ptr_Image_uint %16 %uint_0 %uint_0
+%20 = OpAtomicIAdd %uint %19 %uint_1 %uint_0 %uint_1
 OpReturn
 OpFunctionEnd
 )";

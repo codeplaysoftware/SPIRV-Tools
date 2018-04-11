@@ -80,9 +80,9 @@ bool LoopDependenceAnalysis::GetDependence(const ir::Instruction* source,
     SENode* destination_node = scalar_evolution_.SimplifyExpression(
         scalar_evolution_.AnalyzeInstruction(destination_subscript));
 
+    // Check the loops are in a form we support.
     auto subscript_pair = std::make_pair(source_node, destination_node);
 
-    // Check the loops are in a form we support.
     const ir::Loop* loop = GetLoopForSubscriptPair(&subscript_pair);
     if (loop) {
       if (!IsSupportedLoop(loop)) {
@@ -476,8 +476,8 @@ bool LoopDependenceAnalysis::SymbolicStrongSIVTest(
   std::pair<SENode*, SENode*> subscript_pair =
       std::make_pair(source, destination);
   const ir::Loop* subscript_loop = GetLoopForSubscriptPair(&subscript_pair);
-  if (IsProvablyOutwithLoopBounds(subscript_loop, source_destination_delta,
-                                  coefficient)) {
+  if (IsProvablyOutsideOfLoopBounds(subscript_loop, source_destination_delta,
+                                    coefficient)) {
     PrintDebug(
         "SymbolicStrongSIVTest proved independence through loop bounds.");
     distance_entry->dependence_information =
@@ -1041,12 +1041,12 @@ bool LoopDependenceAnalysis::GCDMIVTest(
   return delta % running_gcd != 0;
 }
 
-std::vector<std::set<std::pair<ir::Instruction*, ir::Instruction*>>>
-LoopDependenceAnalysis::PartitionSubscripts(
+using PartitionedSubscripts =
+    std::vector<std::set<std::pair<ir::Instruction*, ir::Instruction*>>>;
+PartitionedSubscripts LoopDependenceAnalysis::PartitionSubscripts(
     const std::vector<ir::Instruction*>& source_subscripts,
     const std::vector<ir::Instruction*>& destination_subscripts) {
-  std::vector<std::set<std::pair<ir::Instruction*, ir::Instruction*>>>
-      partitions{};
+  PartitionedSubscripts partitions{};
 
   auto num_subscripts = source_subscripts.size();
 
@@ -1100,7 +1100,7 @@ LoopDependenceAnalysis::PartitionSubscripts(
     }
   }
 
-  // Remove discarded (empty) partitions
+  // Remove empty (discarded) partitions
   partitions.erase(
       std::remove_if(
           partitions.begin(), partitions.end(),
@@ -1467,7 +1467,7 @@ bool LoopDependenceAnalysis::DeltaTest(
                         std::find(std::begin(loops_), std::end(loops_), loop));
 
       loop_appeared[loop_id] = true;
-      auto distance_entry = current_distances[i].entries[loop_id];
+      auto distance_entry = current_distances[i].GetEntries()[loop_id];
 
       if (distance_entry.dependence_information ==
           DistanceEntry::DependenceInformation::DISTANCE) {
@@ -1587,7 +1587,7 @@ bool LoopDependenceAnalysis::DeltaTest(
       auto iter = std::begin(constraints);
       std::advance(iter, i);
       auto current_constraint = *iter;
-      auto& current_distance_entry = (*dv_entry).entries[i];
+      auto& current_distance_entry = (*dv_entry).GetEntries()[i];
 
       if (auto dependence_distance =
               current_constraint->AsDependenceDistance()) {
