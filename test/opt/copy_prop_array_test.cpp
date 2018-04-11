@@ -22,8 +22,8 @@
 namespace {
 
 using namespace spvtools;
-using ir::IRContext;
 using ir::Instruction;
+using ir::IRContext;
 using opt::PassManager;
 
 using CopyPropArrayPassTest = PassTest<::testing::Test>;
@@ -96,6 +96,86 @@ OpDecorate %MyCBuffer Binding 0
 %35 = OpCompositeConstruct %_arr_v4float_uint_8_0 %27 %28 %29 %30 %31 %32 %33 %34
 OpStore %23 %35
 %36 = OpAccessChain %_ptr_Function_v4float %23 %24
+%37 = OpLoad %v4float %36
+OpStore %out_var_SV_Target %37
+OpReturn
+OpFunctionEnd
+)";
+
+  SetAssembleOptions(SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER |
+                        SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES);
+  SinglePassRunAndMatch<opt::CopyPropagateArrays>(before, false);
+}
+
+TEST_F(CopyPropArrayPassTest, BasicPropagateArrayWithName) {
+  const std::string before =
+      R"(
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %main "main" %in_var_INDEX %out_var_SV_Target
+OpExecutionMode %main OriginUpperLeft
+OpSource HLSL 600
+OpName %type_MyCBuffer "type.MyCBuffer"
+OpMemberName %type_MyCBuffer 0 "Data"
+OpName %MyCBuffer "MyCBuffer"
+OpName %main "main"
+OpName %local "local"
+OpName %in_var_INDEX "in.var.INDEX"
+OpName %out_var_SV_Target "out.var.SV_Target"
+OpDecorate %_arr_v4float_uint_8 ArrayStride 16
+OpMemberDecorate %type_MyCBuffer 0 Offset 0
+OpDecorate %type_MyCBuffer Block
+OpDecorate %in_var_INDEX Flat
+OpDecorate %in_var_INDEX Location 0
+OpDecorate %out_var_SV_Target Location 0
+OpDecorate %MyCBuffer DescriptorSet 0
+OpDecorate %MyCBuffer Binding 0
+%float = OpTypeFloat 32
+%v4float = OpTypeVector %float 4
+%uint = OpTypeInt 32 0
+%uint_8 = OpConstant %uint 8
+%_arr_v4float_uint_8 = OpTypeArray %v4float %uint_8
+%type_MyCBuffer = OpTypeStruct %_arr_v4float_uint_8
+%_ptr_Uniform_type_MyCBuffer = OpTypePointer Uniform %type_MyCBuffer
+%void = OpTypeVoid
+%13 = OpTypeFunction %void
+%int = OpTypeInt 32 1
+%_ptr_Input_int = OpTypePointer Input %int
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+%_arr_v4float_uint_8_0 = OpTypeArray %v4float %uint_8
+%_ptr_Function__arr_v4float_uint_8_0 = OpTypePointer Function %_arr_v4float_uint_8_0
+%int_0 = OpConstant %int 0
+%_ptr_Uniform__arr_v4float_uint_8 = OpTypePointer Uniform %_arr_v4float_uint_8
+%_ptr_Function_v4float = OpTypePointer Function %v4float
+%MyCBuffer = OpVariable %_ptr_Uniform_type_MyCBuffer Uniform
+%in_var_INDEX = OpVariable %_ptr_Input_int Input
+%out_var_SV_Target = OpVariable %_ptr_Output_v4float Output
+; CHECK: OpFunction
+; CHECK: OpLabel
+; CHECK: OpVariable
+; CHECK: OpAccessChain
+; CHECK: [[new_address:%\w+]] = OpAccessChain %_ptr_Uniform__arr_v4float_uint_8 %MyCBuffer %int_0
+; CHECK: [[element_ptr:%\w+]] = OpAccessChain %_ptr_Uniform_v4float [[new_address]] %24
+; CHECK: [[load:%\w+]] = OpLoad %v4float [[element_ptr]]
+; CHECK: OpStore %out_var_SV_Target [[load]]
+%main = OpFunction %void None %13
+%22 = OpLabel
+%local = OpVariable %_ptr_Function__arr_v4float_uint_8_0 Function
+%24 = OpLoad %int %in_var_INDEX
+%25 = OpAccessChain %_ptr_Uniform__arr_v4float_uint_8 %MyCBuffer %int_0
+%26 = OpLoad %_arr_v4float_uint_8 %25
+%27 = OpCompositeExtract %v4float %26 0
+%28 = OpCompositeExtract %v4float %26 1
+%29 = OpCompositeExtract %v4float %26 2
+%30 = OpCompositeExtract %v4float %26 3
+%31 = OpCompositeExtract %v4float %26 4
+%32 = OpCompositeExtract %v4float %26 5
+%33 = OpCompositeExtract %v4float %26 6
+%34 = OpCompositeExtract %v4float %26 7
+%35 = OpCompositeConstruct %_arr_v4float_uint_8_0 %27 %28 %29 %30 %31 %32 %33 %34
+OpStore %local %35
+%36 = OpAccessChain %_ptr_Function_v4float %local %24
 %37 = OpLoad %v4float %36
 OpStore %out_var_SV_Target %37
 OpReturn
@@ -1025,4 +1105,80 @@ OpFunctionEnd
   EXPECT_EQ(opt::Pass::Status::SuccessWithoutChange, std::get<1>(result));
 }
 
+TEST_F(CopyPropArrayPassTest, AtomicAdd) {
+  const std::string before = R"(OpCapability SampledBuffer
+OpCapability StorageImageExtendedFormats
+OpCapability ImageBuffer
+OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %2 "min" %gl_GlobalInvocationID
+OpExecutionMode %2 LocalSize 64 1 1
+OpSource HLSL 600
+OpDecorate %gl_GlobalInvocationID BuiltIn GlobalInvocationId
+OpDecorate %4 DescriptorSet 4
+OpDecorate %4 Binding 70
+%uint = OpTypeInt 32 0
+%6 = OpTypeImage %uint Buffer 0 0 0 2 R32ui
+%_ptr_UniformConstant_6 = OpTypePointer UniformConstant %6
+%_ptr_Function_6 = OpTypePointer Function %6
+%void = OpTypeVoid
+%10 = OpTypeFunction %void
+%uint_0 = OpConstant %uint 0
+%uint_1 = OpConstant %uint 1
+%v3uint = OpTypeVector %uint 3
+%_ptr_Input_v3uint = OpTypePointer Input %v3uint
+%_ptr_Image_uint = OpTypePointer Image %uint
+%4 = OpVariable %_ptr_UniformConstant_6 UniformConstant
+%gl_GlobalInvocationID = OpVariable %_ptr_Input_v3uint Input
+%2 = OpFunction %void None %10
+%17 = OpLabel
+%16 = OpVariable %_ptr_Function_6 Function
+%18 = OpLoad %6 %4
+OpStore %16 %18
+%19 = OpImageTexelPointer %_ptr_Image_uint %16 %uint_0 %uint_0
+%20 = OpAtomicIAdd %uint %19 %uint_1 %uint_0 %uint_1
+OpReturn
+OpFunctionEnd
+)";
+
+  const std::string after = R"(OpCapability SampledBuffer
+OpCapability StorageImageExtendedFormats
+OpCapability ImageBuffer
+OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %2 "min" %gl_GlobalInvocationID
+OpExecutionMode %2 LocalSize 64 1 1
+OpSource HLSL 600
+OpDecorate %gl_GlobalInvocationID BuiltIn GlobalInvocationId
+OpDecorate %4 DescriptorSet 4
+OpDecorate %4 Binding 70
+%uint = OpTypeInt 32 0
+%6 = OpTypeImage %uint Buffer 0 0 0 2 R32ui
+%_ptr_UniformConstant_6 = OpTypePointer UniformConstant %6
+%_ptr_Function_6 = OpTypePointer Function %6
+%void = OpTypeVoid
+%10 = OpTypeFunction %void
+%uint_0 = OpConstant %uint 0
+%uint_1 = OpConstant %uint 1
+%v3uint = OpTypeVector %uint 3
+%_ptr_Input_v3uint = OpTypePointer Input %v3uint
+%_ptr_Image_uint = OpTypePointer Image %uint
+%4 = OpVariable %_ptr_UniformConstant_6 UniformConstant
+%gl_GlobalInvocationID = OpVariable %_ptr_Input_v3uint Input
+%2 = OpFunction %void None %10
+%17 = OpLabel
+%16 = OpVariable %_ptr_Function_6 Function
+%18 = OpLoad %6 %4
+OpStore %16 %18
+%19 = OpImageTexelPointer %_ptr_Image_uint %4 %uint_0 %uint_0
+%20 = OpAtomicIAdd %uint %19 %uint_1 %uint_0 %uint_1
+OpReturn
+OpFunctionEnd
+)";
+
+  SetAssembleOptions(SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  SinglePassRunAndCheck<opt::CopyPropagateArrays>(before, after, true, true);
+}
 }  // namespace
