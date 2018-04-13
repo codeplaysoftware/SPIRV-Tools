@@ -50,6 +50,7 @@ class RegisterLiveness {
 
   struct RegionRegisterLiveness {
     using LiveSet = std::unordered_set<ir::Instruction*>;
+    using RegClassSetTy = std::vector<std::pair<RegisterClass, size_t>>;
 
     // SSA register live when entering the basic block.
     LiveSet live_in_;
@@ -59,7 +60,14 @@ class RegisterLiveness {
     // Maximum number of required registers.
     size_t used_registers_;
     // Break down of the number of required registers per class of register.
-    std::vector<std::pair<RegisterClass, size_t>> registers_classes_;
+    RegClassSetTy registers_classes_;
+
+    void Clear() {
+      live_out_.clear();
+      live_in_.clear();
+      used_registers_ = 0;
+      registers_classes_.clear();
+    }
 
     void AddRegisterClass(const RegisterClass& reg_class) {
       auto it = std::find_if(

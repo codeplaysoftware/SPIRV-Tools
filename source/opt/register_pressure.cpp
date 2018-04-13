@@ -27,6 +27,8 @@ namespace spvtools {
 namespace opt {
 
 namespace {
+// Predicate for the FilterIterator to only consider instructions that are not
+// phi instructions defined in the basic block |bb|.
 class ExcludePhiDefinedInBlock {
  public:
   ExcludePhiDefinedInBlock(ir::IRContext* context, const ir::BasicBlock* bb)
@@ -261,8 +263,7 @@ void RegisterLiveness::Analyze(ir::Function* f) {
 
 void RegisterLiveness::ComputeLoopRegisterPressure(
     const ir::Loop& loop, RegionRegisterLiveness* loop_reg_pressure) const {
-  loop_reg_pressure->live_out_.clear();
-  loop_reg_pressure->registers_classes_.clear();
+  loop_reg_pressure->Clear();
 
   const RegionRegisterLiveness* header_live_inout = Get(loop.GetHeaderBlock());
   loop_reg_pressure->live_in_ = header_live_inout->live_in_;
@@ -312,8 +313,7 @@ void RegisterLiveness::ComputeLoopRegisterPressure(
 void RegisterLiveness::SimluateFusion(
     const ir::Loop& l1, const ir::Loop& l2,
     RegionRegisterLiveness* sim_result) const {
-  sim_result->live_out_.clear();
-  sim_result->registers_classes_.clear();
+  sim_result->Clear();
 
   // Compute the live-in state:
   //   sim_result.live_in = l1.live_in U l2.live_in
@@ -429,9 +429,133 @@ void RegisterLiveness::SimluateFusion(
 }
 
 void RegisterLiveness::SimluateFission(
-    const ir::Loop&, const std::unordered_set<ir::Instruction*>&,
-    const std::unordered_set<ir::Instruction*>&, RegionRegisterLiveness*,
-    RegionRegisterLiveness*) const {}
+    const ir::Loop& loop,
+    const std::unordered_set<ir::Instruction*>& moved_inst,
+    const std::unordered_set<ir::Instruction*>& copied_inst,
+    RegionRegisterLiveness* l1_sim_result,
+    RegionRegisterLiveness* l2_sim_result) const {
+  l1_sim_result->Clear();
+  l2_sim_result->Clear();
+
+  // Filter predicates: consider instructions that only belong to the first and
+  // second loop.
+  auto belong_to_loop1 = [&moved_inst, &copied_inst](ir::Instruction* insn) {
+    return moved_inst.count(insn) || copied_inst.count(insn);
+  };
+  auto belong_to_loop2 = [&moved_inst](ir::Instruction* insn) {
+    return !moved_inst.count(insn);
+  };
+
+  const RegionRegisterLiveness* header_live_inout = Get(loop.GetHeaderBlock());
+  // l1 live-in
+  {
+    auto live_loop = ir::MakeFilterIteratorRange(
+        header_live_inout->live_in_.begin(), header_live_inout->live_in_.end(),
+        belong_to_loop1);
+    l1_sim_result->live_in_.insert(live_loop.begin(), live_loop.end());
+  }
+  // l2 live-in
+  {
+    auto live_loop = ir::MakeFilterIteratorRange(
+        header_live_inout->live_in_.begin(), header_live_inout->live_in_.end(),
+        belong_to_loop2);
+    l2_sim_result->live_in_.insert(live_loop.begin(), live_loop.end());
+  }
+
+  std::unordered_set<uint32_t> exit_blocks;
+  loop.GetExitBlocks(&exit_blocks);
+
+  for (uint32_t bb_id : exit_blocks) {
+    const RegionRegisterLiveness* live_inout = Get(bb_id);
+    // l1 live-in
+    {
+      auto live_loop = ir::MakeFilterIteratorRange(live_inout->live_in_.begin(),
+                                                   live_inout->live_in_.end(),
+                                                   belong_to_loop1);
+      l1_sim_result->live_in_.insert(live_loop.begin(), live_loop.end());
+    }
+    // l2 live-in
+    {
+      auto live_loop = ir::MakeFilterIteratorRange(live_inout->live_in_.begin(),
+                                                   live_inout->live_in_.end(),
+                                                   belong_to_loop2);
+      l2_sim_result->live_in_.insert(live_loop.begin(), live_loop.end());
+    }
+  }
+
+  for (uint32_t bb_id : loop.GetBlocks()) {
+    ir::BasicBlock* bb = context_->cfg()->block(bb_id);
+
+    const RegisterLiveness::RegionRegisterLiveness* live_inout = Get(bb_id);
+    assert(live_inout != nullptr && "Basic block not processed");
+    auto l1_block_live_out = ir::MakeFilterIteratorRange(
+        live_inout->live_out_.begin(), live_inout->live_out_.end(),
+        belong_to_loop1);
+    auto l2_block_live_out = ir::MakeFilterIteratorRange(
+        live_inout->live_out_.begin(), live_inout->live_out_.end(),
+        belong_to_loop2);
+
+    size_t l1_reg_count =
+        std::distance(l1_block_live_out.begin(), l1_block_live_out.end());
+    size_t l2_reg_count =
+        std::distance(l2_block_live_out.begin(), l2_block_live_out.end());
+    for (ir::Instruction* insn : live_inout->live_out_) {
+      if (belong_to_loop1(insn)) {
+        l1_sim_result->AddRegisterClass(insn);
+      }
+      if (belong_to_loop2(insn)) {
+        l2_sim_result->AddRegisterClass(insn);
+      }
+    }
+    l1_sim_result->used_registers_ = l1_reg_count;
+    l2_sim_result->used_registers_ = l2_reg_count;
+
+    std::unordered_set<uint32_t> die_in_block;
+    for (ir::Instruction& insn : ir::make_range(bb->rbegin(), bb->rend())) {
+      if (insn.opcode() == SpvOpPhi) {
+        break;
+      }
+      if (!CreatesRegisterUsage(&insn)) {
+        continue;
+      }
+
+      bool does_belong_to_loop1 = belong_to_loop1(&insn);
+      bool does_belong_to_loop2 = belong_to_loop2(&insn);
+      insn.ForEachInId([live_inout, &die_in_block, &l1_reg_count, &l2_reg_count,
+                        does_belong_to_loop1, does_belong_to_loop2,
+                        this](uint32_t* id) {
+        ir::Instruction* op_insn = context_->get_def_use_mgr()->GetDef(*id);
+        if (live_inout->live_out_.count(op_insn)) {
+          // already taken into account.
+          return;
+        }
+        if (!die_in_block.count(*id)) {
+          if (does_belong_to_loop1) {
+            l1_reg_count++;
+          }
+          if (does_belong_to_loop2) {
+            l2_reg_count++;
+          }
+          die_in_block.insert(*id);
+        }
+      });
+      if (insn.HasResultId() && die_in_block.count(insn.result_id())) {
+        if (does_belong_to_loop1) {
+          l1_sim_result->AddRegisterClass(&insn);
+          l1_reg_count--;
+        }
+        if (does_belong_to_loop2) {
+          l2_sim_result->AddRegisterClass(&insn);
+          l2_reg_count--;
+        }
+      }
+      l1_sim_result->used_registers_ =
+          std::max(l1_sim_result->used_registers_, l1_reg_count);
+      l2_sim_result->used_registers_ =
+          std::max(l2_sim_result->used_registers_, l2_reg_count);
+    }
+  }
+}
 
 }  // namespace opt
 }  // namespace spvtools
