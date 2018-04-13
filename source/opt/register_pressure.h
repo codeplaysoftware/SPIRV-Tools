@@ -20,9 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "cfg.h"
-#include "def_use_manager.h"
-#include "dominator_tree.h"
 #include "function.h"
 #include "types.h"
 
@@ -77,6 +74,8 @@ class RegisterLiveness {
                                         static_cast<size_t>(1));
       }
     }
+
+    void AddRegisterClass(ir::Instruction* insn);
   };
 
   RegisterLiveness(ir::IRContext* context, ir::Function* f)
@@ -98,7 +97,9 @@ class RegisterLiveness {
 
   ir::IRContext* GetContext() const { return context_; }
 
-  RegionRegisterLiveness* Get(const ir::BasicBlock* bb) { return Get(bb->id()); }
+  RegionRegisterLiveness* Get(const ir::BasicBlock* bb) {
+    return Get(bb->id());
+  }
 
   RegionRegisterLiveness* Get(uint32_t bb_id) {
     RegionRegisterLivenessMap::iterator it = block_pressure_.find(bb_id);
@@ -113,9 +114,9 @@ class RegisterLiveness {
   }
 
   // Compute the register pressure for the |loop| and store the result into
-  // |reg_pressure|. The live-in set corresponds to the live-in set of the header
-  // block, the live-out set of the loop corresponds to the union of the live-in
-  // sets of each exit basic block.
+  // |reg_pressure|. The live-in set corresponds to the live-in set of the
+  // header block, the live-out set of the loop corresponds to the union of the
+  // live-in sets of each exit basic block.
   void ComputeLoopRegisterPressure(const ir::Loop& loop,
                                    RegionRegisterLiveness* reg_pressure) const;
 

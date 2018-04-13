@@ -421,8 +421,6 @@ TEST_F(PassClassTest, RegisterLiveness) {
   opt::LivenessAnalysis* liveness_analysis = context->GetLivenessAnalysis();
   const opt::RegisterLiveness* register_liveness = liveness_analysis->Get(f);
 
-  
-
   {
     SCOPED_TRACE("Block 5");
     auto live_sets = register_liveness->Get(5);

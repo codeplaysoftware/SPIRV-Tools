@@ -24,9 +24,9 @@
 #include "feature_manager.h"
 #include "loop_descriptor.h"
 #include "module.h"
+#include "register_pressure.h"
 #include "scalar_analysis.h"
 #include "type_manager.h"
-#include "register_pressure.h"
 
 #include <algorithm>
 #include <iostream>
