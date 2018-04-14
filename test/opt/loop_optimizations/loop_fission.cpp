@@ -45,16 +45,25 @@ void main(void) {
         B[i] = A[i];
     }
 }
+
+Result should be equivalent to:
+
+void main(void) {
+    float A[10];
+    float B[10];
+    for (int i = 0; i < 10; i++) {
+        A[i] = B[i];
+    }
+
+    for (int i = 0; i < 10; i++) {
+        B[i] = A[i];
+    }
+}
 */
-TEST_F(FissionClassTest, SimpleDataDependency) {
+TEST_F(FissionClassTest, SimpleFission) {
   // clang-format off
   // With opt::LocalMultiStoreElimPass
-  const std::string text = R"(
-; SPIR-V
-; Version: 1.3
-; Generator: Khronos SPIR-V Tools Assembler; 0
-; Bound: 35
-; Schema: 0
+  const std::string source = R"(
                OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
@@ -110,173 +119,264 @@ TEST_F(FissionClassTest, SimpleDataDependency) {
                OpFunctionEnd
     )";
 
+const std::string expected = R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %2 "main"
+OpExecutionMode %2 OriginUpperLeft
+OpSource GLSL 430
+OpName %2 "main"
+OpName %3 "i"
+OpName %4 "A"
+OpName %5 "B"
+%6 = OpTypeVoid
+%7 = OpTypeFunction %6
+%8 = OpTypeInt 32 1
+%9 = OpTypePointer Function %8
+%10 = OpConstant %8 0
+%11 = OpConstant %8 10
+%12 = OpTypeBool
+%13 = OpTypeFloat 32
+%14 = OpTypeInt 32 0
+%15 = OpConstant %14 10
+%16 = OpTypeArray %13 %15
+%17 = OpTypePointer Function %16
+%18 = OpTypePointer Function %13
+%19 = OpConstant %8 1
+%2 = OpFunction %6 None %7
+%20 = OpLabel
+%3 = OpVariable %9 Function
+%4 = OpVariable %17 Function
+%5 = OpVariable %17 Function
+OpBranch %35
+%35 = OpLabel
+%36 = OpPhi %8 %10 %20 %47 %46
+OpLoopMerge %48 %46 None
+OpBranch %37
+%37 = OpLabel
+%38 = OpSLessThan %12 %36 %11
+OpBranchConditional %38 %39 %48
+%39 = OpLabel
+%40 = OpAccessChain %18 %5 %36
+%41 = OpLoad %13 %40
+%42 = OpAccessChain %18 %4 %36
+OpStore %42 %41
+OpBranch %46
+%46 = OpLabel
+%47 = OpIAdd %8 %36 %19
+OpBranch %35
+%48 = OpLabel
+OpBranch %21
+%21 = OpLabel
+%22 = OpPhi %8 %10 %48 %23 %24
+OpLoopMerge %25 %24 None
+OpBranch %26
+%26 = OpLabel
+%27 = OpSLessThan %12 %22 %11
+OpBranchConditional %27 %28 %25
+%28 = OpLabel
+%32 = OpAccessChain %18 %4 %22
+%33 = OpLoad %13 %32
+%34 = OpAccessChain %18 %5 %22
+OpStore %34 %33
+OpBranch %24
+%24 = OpLabel
+%23 = OpIAdd %8 %22 %19
+OpBranch %21
+%25 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
   // clang-format on
   std::unique_ptr<ir::IRContext> context =
-      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, source,
                   SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
   ir::Module* module = context->module();
-  EXPECT_NE(nullptr, module) << "Assembling failed for ushader:\n"
-                             << text << std::endl;
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << source << std::endl;
   const ir::Function* f = spvtest::GetFunction(module, 2);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
   EXPECT_EQ(ld.NumLoops(), 1u);
 
   SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
-
-  std::cout << std::get<0>(
-      SinglePassRunAndDisassemble<opt::LoopFissionPass>(text, false, true));
+  SinglePassRunAndCheck<opt::LoopFissionPass>(source, expected, true);
 }
 
-TEST_F(FissionClassTest, SimpleDataDependency2) {
-  // clang-format off
-  // With opt::LocalMultiStoreElimPass
-  const std::string text = R"(
-; SPIR-V
-; Version: 1.3
-; Generator: Khronos SPIR-V Tools Assembler; 0
-; Bound: 37
-; Schema: 0
-               OpCapability Shader
-          %1 = OpExtInstImport "GLSL.std.450"
-               OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %2 "main"
-               OpExecutionMode %2 OriginUpperLeft
-               OpSource GLSL 430
-               OpName %2 "main"
-               OpName %3 "i"
-               OpName %4 "A"
-               OpName %5 "B"
-          %6 = OpTypeVoid
-          %7 = OpTypeFunction %6
-          %8 = OpTypeInt 32 1
-          %9 = OpTypePointer Function %8
-         %10 = OpConstant %8 0
-         %11 = OpConstant %8 10
-         %12 = OpTypeBool
-         %13 = OpTypeFloat 32
-         %14 = OpTypeInt 32 0
-         %15 = OpConstant %14 10
-         %16 = OpTypeArray %13 %15
-         %17 = OpTypePointer Function %16
-         %18 = OpTypePointer Function %13
-         %19 = OpConstant %8 3
-         %20 = OpConstant %8 1
-          %2 = OpFunction %6 None %7
-         %21 = OpLabel
-          %3 = OpVariable %9 Function
-          %4 = OpVariable %17 Function
-          %5 = OpVariable %17 Function
-               OpBranch %22
-         %22 = OpLabel
-         %23 = OpPhi %8 %10 %21 %24 %25
-               OpLoopMerge %26 %25 None
-               OpBranch %27
-         %27 = OpLabel
-         %28 = OpSLessThan %12 %23 %11
-               OpBranchConditional %28 %29 %26
-         %29 = OpLabel
-         %30 = OpAccessChain %18 %5 %23
-         %31 = OpLoad %13 %30
-         %32 = OpAccessChain %18 %4 %23
-               OpStore %32 %31
-         %33 = OpIAdd %8 %23 %19
-         %34 = OpAccessChain %18 %4 %33
-         %35 = OpLoad %13 %34
-         %36 = OpAccessChain %18 %5 %23
-               OpStore %36 %35
-               OpBranch %25
-         %25 = OpLabel
-         %24 = OpIAdd %8 %23 %20
-               OpBranch %22
-         %26 = OpLabel
-               OpReturn
-               OpFunctionEnd
-  )";
-  // clang-format on
-  std::unique_ptr<ir::IRContext> context =
-      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
-                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
-  ir::Module* module = context->module();
-  EXPECT_NE(nullptr, module) << "Assembling failed for ushader:\n"
-                             << text << std::endl;
-  const ir::Function* f = spvtest::GetFunction(module, 2);
-  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+/*
+Generated from the following GLSL
 
-  EXPECT_EQ(ld.NumLoops(), 1u);
+#version 430
 
-  SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
-
-  std::cout << std::get<0>(
-      SinglePassRunAndDisassemble<opt::LoopFissionPass>(text, false, true));
+void main(void) {
+    float A[10];
+    float B[10];
+    for (int i = 0; i < 10; i++) {
+        A[i] = B[i];
+        B[i] = A[i+1];
+    }
 }
 
-TEST_F(FissionClassTest, SimpleDataDependency3) {
+This loop should not be split, as the i+1 dependence would be broken by
+splitting the loop.
+*/
+
+TEST_F(FissionClassTest, FissionInterdependency) {
   // clang-format off
   // With opt::LocalMultiStoreElimPass
-  const std::string text = R"(
-               OpCapability Shader
-          %1 = OpExtInstImport "GLSL.std.450"
-               OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %2 "main"
-               OpExecutionMode %2 OriginUpperLeft
-               OpSource GLSL 430
-               OpName %2 "main"
-               OpName %3 "i"
-               OpName %4 "A"
-               OpName %5 "B"
-          %6 = OpTypeVoid
-          %7 = OpTypeFunction %6
-          %8 = OpTypeInt 32 1
-          %9 = OpTypePointer Function %8
-         %10 = OpConstant %8 0
-         %11 = OpConstant %8 10
-         %12 = OpTypeBool
-         %13 = OpTypeFloat 32
-         %14 = OpTypeInt 32 0
-         %15 = OpConstant %14 10
-         %16 = OpTypeArray %13 %15
-         %17 = OpTypePointer Function %16
-         %18 = OpTypePointer Function %13
-         %19 = OpConstant %8 1
-          %2 = OpFunction %6 None %7
-         %20 = OpLabel
-          %3 = OpVariable %9 Function
-          %4 = OpVariable %17 Function
-          %5 = OpVariable %17 Function
-               OpBranch %21
-         %21 = OpLabel
-         %22 = OpPhi %8 %10 %20 %23 %24
-               OpLoopMerge %25 %24 None
-               OpBranch %26
-         %26 = OpLabel
-         %27 = OpSLessThan %12 %22 %11
-               OpBranchConditional %27 %28 %25
-         %28 = OpLabel
-         %29 = OpAccessChain %18 %5 %22
-         %30 = OpLoad %13 %29
-         %31 = OpAccessChain %18 %4 %22
-               OpStore %31 %30
-         %32 = OpIAdd %8 %22 %19
-         %33 = OpAccessChain %18 %4 %22
-         %34 = OpLoad %13 %33
-         %35 = OpAccessChain %18 %5 %32
-               OpStore %35 %34
-               OpBranch %24
-         %24 = OpLabel
-         %23 = OpIAdd %8 %22 %19
-               OpBranch %21
-         %25 = OpLabel
-               OpReturn
-               OpFunctionEnd
-  )";
+  const std::string source = R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %2 "main"
+OpExecutionMode %2 OriginUpperLeft
+OpSource GLSL 430
+OpName %2 "main"
+OpName %3 "i"
+OpName %4 "A"
+OpName %5 "B"
+%6 = OpTypeVoid
+%7 = OpTypeFunction %6
+%8 = OpTypeInt 32 1
+%9 = OpTypePointer Function %8
+%10 = OpConstant %8 0
+%11 = OpConstant %8 10
+%12 = OpTypeBool
+%13 = OpTypeFloat 32
+%14 = OpTypeInt 32 0
+%15 = OpConstant %14 10
+%16 = OpTypeArray %13 %15
+%17 = OpTypePointer Function %16
+%18 = OpTypePointer Function %13
+%19 = OpConstant %8 1
+%2 = OpFunction %6 None %7
+%20 = OpLabel
+%3 = OpVariable %9 Function
+%4 = OpVariable %17 Function
+%5 = OpVariable %17 Function
+OpBranch %21
+%21 = OpLabel
+%22 = OpPhi %8 %10 %20 %23 %24
+OpLoopMerge %25 %24 None
+OpBranch %26
+%26 = OpLabel
+%27 = OpSLessThan %12 %22 %11
+OpBranchConditional %27 %28 %25
+%28 = OpLabel
+%29 = OpAccessChain %18 %5 %22
+%30 = OpLoad %13 %29
+%31 = OpAccessChain %18 %4 %22
+OpStore %31 %30
+%32 = OpIAdd %8 %22 %19
+%33 = OpAccessChain %18 %4 %32
+%34 = OpLoad %13 %33
+%35 = OpAccessChain %18 %5 %22
+OpStore %35 %34
+OpBranch %24
+%24 = OpLabel
+%23 = OpIAdd %8 %22 %19
+OpBranch %21
+%25 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
   // clang-format on
   std::unique_ptr<ir::IRContext> context =
-      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text,
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, source,
                   SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
   ir::Module* module = context->module();
   EXPECT_NE(nullptr, module) << "Assembling failed for ushader:\n"
-                             << text << std::endl;
+                             << source << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 2);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  EXPECT_EQ(ld.NumLoops(), 1u);
+
+  SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
+  SinglePassRunAndCheck<opt::LoopFissionPass>(source, source, true);
+}
+
+/*
+Generated from the following GLSL
+
+#version 430
+
+void main(void) {
+    float A[10];
+    float B[10];
+    for (int i = 0; i < 10; i++) {
+        A[i] = B[i];
+        B[i+1] = A[i];
+    }
+}
+
+
+This should be split as the load B[i] is dependent on the store B[i+1]
+*/
+TEST_F(FissionClassTest, FissionInterdependency2) {
+  // clang-format off
+  // With opt::LocalMultiStoreElimPass
+const std::string source = R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %2 "main"
+OpExecutionMode %2 OriginUpperLeft
+OpSource GLSL 430
+OpName %2 "main"
+OpName %3 "i"
+OpName %4 "A"
+OpName %5 "B"
+%6 = OpTypeVoid
+%7 = OpTypeFunction %6
+%8 = OpTypeInt 32 1
+%9 = OpTypePointer Function %8
+%10 = OpConstant %8 0
+%11 = OpConstant %8 10
+%12 = OpTypeBool
+%13 = OpTypeFloat 32
+%14 = OpTypeInt 32 0
+%15 = OpConstant %14 10
+%16 = OpTypeArray %13 %15
+%17 = OpTypePointer Function %16
+%18 = OpTypePointer Function %13
+%19 = OpConstant %8 1
+%2 = OpFunction %6 None %7
+%20 = OpLabel
+%3 = OpVariable %9 Function
+%4 = OpVariable %17 Function
+%5 = OpVariable %17 Function
+OpBranch %21
+%21 = OpLabel
+%22 = OpPhi %8 %10 %20 %23 %24
+OpLoopMerge %25 %24 None
+OpBranch %26
+%26 = OpLabel
+%27 = OpSLessThan %12 %22 %11
+OpBranchConditional %27 %28 %25
+%28 = OpLabel
+%29 = OpAccessChain %18 %5 %22
+%30 = OpLoad %13 %29
+%31 = OpAccessChain %18 %4 %22
+OpStore %31 %30
+%32 = OpIAdd %8 %22 %19
+%33 = OpAccessChain %18 %4 %22
+%34 = OpLoad %13 %33
+%35 = OpAccessChain %18 %5 %32
+OpStore %35 %34
+OpBranch %24
+%24 = OpLabel
+%23 = OpIAdd %8 %22 %19
+OpBranch %21
+%25 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+  // clang-format on
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, source,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for ushader:\n"
+                             << source << std::endl;
   const ir::Function* f = spvtest::GetFunction(module, 2);
   ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
@@ -284,8 +384,8 @@ TEST_F(FissionClassTest, SimpleDataDependency3) {
 
   SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
 
-  std::cout << std::get<0>(
-      SinglePassRunAndDisassemble<opt::LoopFissionPass>(text, false, true));
+  SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
+  SinglePassRunAndCheck<opt::LoopFissionPass>(source, source, true);
 }
 
 TEST_F(FissionClassTest, SimpleDataDependency4) {
