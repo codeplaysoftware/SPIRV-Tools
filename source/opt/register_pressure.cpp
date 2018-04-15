@@ -310,7 +310,7 @@ void RegisterLiveness::ComputeLoopRegisterPressure(
   }
 }
 
-void RegisterLiveness::SimluateFusion(
+void RegisterLiveness::SimulateFusion(
     const ir::Loop& l1, const ir::Loop& l2,
     RegionRegisterLiveness* sim_result) const {
   sim_result->Clear();
@@ -428,7 +428,7 @@ void RegisterLiveness::SimluateFusion(
   }
 }
 
-void RegisterLiveness::SimluateFission(
+void RegisterLiveness::SimulateFission(
     const ir::Loop& loop,
     const std::unordered_set<ir::Instruction*>& moved_inst,
     const std::unordered_set<ir::Instruction*>& copied_inst,

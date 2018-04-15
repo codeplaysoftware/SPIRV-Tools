@@ -130,7 +130,7 @@ class RegisterLiveness {
 
   // Estimate the register pressure for the |l1| and |l2| as if they were making
   // one unique loop. The result is stored into |simulation_resut|.
-  void SimluateFusion(const ir::Loop& l1, const ir::Loop& l2,
+  void SimulateFusion(const ir::Loop& l1, const ir::Loop& l2,
                       RegionRegisterLiveness* simulation_resut) const;
 
   // Estimate the register pressure of |loop| after it has been fissioned
@@ -141,7 +141,7 @@ class RegisterLiveness {
   // The set |loop1_sim_resut| store the simulation result of the loop with the
   // moved instructions. The set |loop2_sim_resut| store the simulation result
   // of the loop with the removed instructions.
-  void SimluateFission(
+  void SimulateFission(
       const ir::Loop& loop,
       const std::unordered_set<ir::Instruction*>& moved_instructions,
       const std::unordered_set<ir::Instruction*>& copied_instructions,

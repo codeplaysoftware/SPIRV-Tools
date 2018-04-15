@@ -59,8 +59,6 @@ class Loop {
   Loop(IRContext* context, opt::DominatorAnalysis* analysis, BasicBlock* header,
        BasicBlock* continue_target, BasicBlock* merge_target);
 
-  ~Loop() {}
-
   // Iterators over the immediate sub-loops.
   inline iterator begin() { return nested_loops_.begin(); }
   inline iterator end() { return nested_loops_.end(); }

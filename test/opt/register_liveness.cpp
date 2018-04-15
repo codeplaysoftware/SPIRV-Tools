@@ -420,6 +420,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
   ir::Function* f = &*module->begin();
   opt::LivenessAnalysis* liveness_analysis = context->GetLivenessAnalysis();
   const opt::RegisterLiveness* register_liveness = liveness_analysis->Get(f);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
 
   {
     SCOPED_TRACE("Block 5");
@@ -560,6 +561,11 @@ TEST_F(PassClassTest, RegisterLiveness) {
         191,  // %191 = OpPhi %7 %12 %5 %31 %18
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    {
+      opt::RegisterLiveness::RegionRegisterLiveness simulation_resut;
+      register_liveness->SimulateFusion(*ld[17], *ld[39], &simulation_resut);
+    }
   }
   {
     SCOPED_TRACE("Block 40");
@@ -1109,4 +1115,85 @@ TEST_F(PassClassTest, RegisterLiveness) {
   }
 }
 
+TEST_F(PassClassTest, FissionSimulation) {
+  const std::string source = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %2 "main"
+               OpExecutionMode %2 OriginUpperLeft
+               OpSource GLSL 430
+               OpName %2 "main"
+               OpName %3 "i"
+               OpName %4 "A"
+               OpName %5 "B"
+          %6 = OpTypeVoid
+          %7 = OpTypeFunction %6
+          %8 = OpTypeInt 32 1
+          %9 = OpTypePointer Function %8
+         %10 = OpConstant %8 0
+         %11 = OpConstant %8 10
+         %12 = OpTypeBool
+         %13 = OpTypeFloat 32
+         %14 = OpTypeInt 32 0
+         %15 = OpConstant %14 10
+         %16 = OpTypeArray %13 %15
+         %17 = OpTypePointer Function %16
+         %18 = OpTypePointer Function %13
+         %19 = OpConstant %8 1
+          %2 = OpFunction %6 None %7
+         %20 = OpLabel
+          %3 = OpVariable %9 Function
+          %4 = OpVariable %17 Function
+          %5 = OpVariable %17 Function
+               OpBranch %21
+         %21 = OpLabel
+         %22 = OpPhi %8 %10 %20 %23 %24
+               OpLoopMerge %25 %24 None
+               OpBranch %26
+         %26 = OpLabel
+         %27 = OpSLessThan %12 %22 %11
+               OpBranchConditional %27 %28 %25
+         %28 = OpLabel
+         %29 = OpAccessChain %18 %5 %22
+         %30 = OpLoad %13 %29
+         %31 = OpAccessChain %18 %4 %22
+               OpStore %31 %30
+         %32 = OpAccessChain %18 %4 %22
+         %33 = OpLoad %13 %32
+         %34 = OpAccessChain %18 %5 %22
+               OpStore %34 %33
+               OpBranch %24
+         %24 = OpLabel
+         %23 = OpIAdd %8 %22 %19
+               OpBranch %21
+         %25 = OpLabel
+               OpReturn
+               OpFunctionEnd
+    )";
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, source,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << source << std::endl;
+  ir::Function* f = &*module->begin();
+  opt::LivenessAnalysis* liveness_analysis = context->GetLivenessAnalysis();
+  const opt::RegisterLiveness* register_liveness = liveness_analysis->Get(f);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+  opt::analysis::DefUseManager& def_use_mgr = *context->get_def_use_mgr();
+
+  {
+    opt::RegisterLiveness::RegionRegisterLiveness l1_sim_resut;
+    opt::RegisterLiveness::RegionRegisterLiveness l2_sim_resut;
+    std::unordered_set<ir::Instruction*> moved_instructions{
+        def_use_mgr.GetDef(29), def_use_mgr.GetDef(30), def_use_mgr.GetDef(31)};
+    std::unordered_set<ir::Instruction*> copied_instructions{
+        def_use_mgr.GetDef(22), def_use_mgr.GetDef(27), def_use_mgr.GetDef(23)};
+
+    register_liveness->SimulateFission(*ld[21], moved_instructions,
+                                       copied_instructions, &l1_sim_resut,
+                                       &l2_sim_resut);
+  }
+}
 }  // namespace
