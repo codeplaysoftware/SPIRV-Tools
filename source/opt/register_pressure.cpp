@@ -206,17 +206,17 @@ class ComputeRegisterLiveness {
 
       std::unordered_set<uint32_t> die_in_block;
       for (ir::Instruction& insn : ir::make_range(bb.rbegin(), bb.rend())) {
+        // If it is a phi instruction, the register pressure will not change
+        // anymore.
         if (insn.opcode() == SpvOpPhi) {
           break;
-        }
-        if (!CreatesRegisterUsage(&insn)) {
-          continue;
         }
 
         insn.ForEachInId(
             [live_inout, &die_in_block, &reg_count, this](uint32_t* id) {
               ir::Instruction* op_insn = def_use_manager_.GetDef(*id);
-              if (live_inout->live_out_.count(op_insn)) {
+              if (!CreatesRegisterUsage(op_insn) ||
+                  live_inout->live_out_.count(op_insn)) {
                 // already taken into account.
                 return;
               }
@@ -226,11 +226,11 @@ class ComputeRegisterLiveness {
                 die_in_block.insert(*id);
               }
             });
-        if (insn.HasResultId() && die_in_block.count(insn.result_id())) {
-          reg_count--;
-        }
         live_inout->used_registers_ =
             std::max(live_inout->used_registers_, reg_count);
+        if (CreatesRegisterUsage(&insn)) {
+          reg_count--;
+        }
       }
     }
   }
@@ -467,23 +467,28 @@ void RegisterLiveness::SimulateFission(
   std::unordered_set<uint32_t> exit_blocks;
   loop.GetExitBlocks(&exit_blocks);
 
+  // l2 live-out.
   for (uint32_t bb_id : exit_blocks) {
     const RegionRegisterLiveness* live_inout = Get(bb_id);
-    // l1 live-in
-    {
-      auto live_loop = ir::MakeFilterIteratorRange(live_inout->live_in_.begin(),
-                                                   live_inout->live_in_.end(),
-                                                   belong_to_loop1);
-      l1_sim_result->live_out_.insert(live_loop.begin(), live_loop.end());
-    }
-    // l2 live-in
-    {
-      auto live_loop = ir::MakeFilterIteratorRange(live_inout->live_in_.begin(),
-                                                   live_inout->live_in_.end(),
-                                                   belong_to_loop2);
-      l2_sim_result->live_out_.insert(live_loop.begin(), live_loop.end());
-    }
+    l2_sim_result->live_out_.insert(live_inout->live_in_.begin(),
+                                    live_inout->live_in_.end());
   }
+  // l1 live-out.
+  {
+    auto live_out = ir::MakeFilterIteratorRange(
+        l2_sim_result->live_out_.begin(), l2_sim_result->live_out_.end(),
+        belong_to_loop1);
+    l1_sim_result->live_out_.insert(live_out.begin(), live_out.end());
+  }
+  {
+    auto live_out = ir::MakeFilterIteratorRange(l2_sim_result->live_in_.begin(),
+                                                l2_sim_result->live_in_.end(),
+                                                belong_to_loop1);
+    l1_sim_result->live_out_.insert(live_out.begin(), live_out.end());
+  }
+  // Lives out of l1 are live out of l2 so are live in of l2 as well.
+  l2_sim_result->live_in_.insert(l1_sim_result->live_out_.begin(),
+                                 l1_sim_result->live_out_.end());
 
   for (uint32_t bb_id : loop.GetBlocks()) {
     ir::BasicBlock* bb = context_->cfg()->block(bb_id);
@@ -527,7 +532,8 @@ void RegisterLiveness::SimulateFission(
                         does_belong_to_loop1, does_belong_to_loop2,
                         this](uint32_t* id) {
         ir::Instruction* op_insn = context_->get_def_use_mgr()->GetDef(*id);
-        if (live_inout->live_out_.count(op_insn)) {
+        if (!CreatesRegisterUsage(op_insn) &&
+            live_inout->live_out_.count(op_insn)) {
           // already taken into account.
           return;
         }
@@ -541,7 +547,11 @@ void RegisterLiveness::SimulateFission(
           die_in_block.insert(*id);
         }
       });
-      if (insn.HasResultId() && die_in_block.count(insn.result_id())) {
+      l1_sim_result->used_registers_ =
+          std::max(l1_sim_result->used_registers_, l1_reg_count);
+      l2_sim_result->used_registers_ =
+          std::max(l2_sim_result->used_registers_, l2_reg_count);
+      if (CreatesRegisterUsage(&insn)) {
         if (does_belong_to_loop1) {
           l1_sim_result->AddRegisterClass(&insn);
           l1_reg_count--;
@@ -551,10 +561,6 @@ void RegisterLiveness::SimulateFission(
           l2_reg_count--;
         }
       }
-      l1_sim_result->used_registers_ =
-          std::max(l1_sim_result->used_registers_, l1_reg_count);
-      l2_sim_result->used_registers_ =
-          std::max(l2_sim_result->used_registers_, l2_reg_count);
     }
   }
 }

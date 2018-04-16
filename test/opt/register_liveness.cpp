@@ -513,7 +513,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_out_, live_out);
 
-    EXPECT_EQ(live_sets->used_registers_, 14u);
+    EXPECT_EQ(live_sets->used_registers_, 12u);
   }
   {
     SCOPED_TRACE("Block 19");
@@ -673,7 +673,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_out_, live_out);
 
-    EXPECT_EQ(live_sets->used_registers_, 15u);
+    EXPECT_EQ(live_sets->used_registers_, 13u);
   }
   {
     SCOPED_TRACE("Block 41");
@@ -741,7 +741,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_out_, live_out);
 
-    EXPECT_EQ(live_sets->used_registers_, 13u);
+    EXPECT_EQ(live_sets->used_registers_, 11u);
   }
   {
     SCOPED_TRACE("Block 79");
@@ -767,7 +767,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_out_, live_out);
 
-    EXPECT_EQ(live_sets->used_registers_, 11u);
+    EXPECT_EQ(live_sets->used_registers_, 9u);
   }
   {
     SCOPED_TRACE("Block 108");
@@ -793,7 +793,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_out_, live_out);
 
-    EXPECT_EQ(live_sets->used_registers_, 7u);
+    EXPECT_EQ(live_sets->used_registers_, 8u);
   }
   {
     SCOPED_TRACE("Block 109");
@@ -857,7 +857,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_out_, live_out);
 
-    EXPECT_EQ(live_sets->used_registers_, 12u);
+    EXPECT_EQ(live_sets->used_registers_, 10u);
   }
   {
     SCOPED_TRACE("Block 119");
@@ -921,7 +921,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_out_, live_out);
 
-    EXPECT_EQ(live_sets->used_registers_, 12u);
+    EXPECT_EQ(live_sets->used_registers_, 10u);
   }
   {
     SCOPED_TRACE("Block 133");
@@ -948,7 +948,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_out_, live_out);
 
-    EXPECT_EQ(live_sets->used_registers_, 9u);
+    EXPECT_EQ(live_sets->used_registers_, 8u);
   }
   {
     SCOPED_TRACE("Block 110");
@@ -1041,7 +1041,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_out_, live_out);
 
-    EXPECT_EQ(live_sets->used_registers_, 10u);
+    EXPECT_EQ(live_sets->used_registers_, 8u);
   }
   {
     SCOPED_TRACE("Block 163");
@@ -1064,7 +1064,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_out_, live_out);
 
-    EXPECT_EQ(live_sets->used_registers_, 7u);
+    EXPECT_EQ(live_sets->used_registers_, 6u);
   }
   {
     SCOPED_TRACE("Block 154");
@@ -1079,7 +1079,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     std::unordered_set<uint32_t> live_out{};
     CompareSets(live_sets->live_out_, live_out);
 
-    EXPECT_EQ(live_sets->used_registers_, 2u);
+    EXPECT_EQ(live_sets->used_registers_, 4u);
   }
 
   {
@@ -1113,7 +1113,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(loop_reg_pressure.live_out_, live_out);
 
-    EXPECT_EQ(loop_reg_pressure.used_registers_, 15u);
+    EXPECT_EQ(loop_reg_pressure.used_registers_, 13u);
   }
 
   {
@@ -1121,7 +1121,6 @@ TEST_F(PassClassTest, RegisterLiveness) {
     opt::RegisterLiveness::RegionRegisterLiveness simulation_resut;
     register_liveness->SimulateFusion(*ld[17], *ld[39], &simulation_resut);
 
-    // Generate(*context->cfg()->block(17), &simulation_resut);
     std::unordered_set<uint32_t> live_in{
         11,   // %11 = OpVariable %10 Input
         12,   // %12 = OpLoad %7 %11
@@ -1151,7 +1150,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(simulation_resut.live_out_, live_out);
 
-    EXPECT_EQ(simulation_resut.used_registers_, 19u);
+    EXPECT_EQ(simulation_resut.used_registers_, 17u);
   }
 }
 
@@ -1237,41 +1236,41 @@ TEST_F(PassClassTest, FissionSimulation) {
                                        &l2_sim_resut);
     {
       SCOPED_TRACE("L1 simulation");
-      auto live_sets = register_liveness->Get(21);
       std::unordered_set<uint32_t> live_in{
           3,   // %3 = OpVariable %9 Function
           4,   // %4 = OpVariable %17 Function
           5,   // %5 = OpVariable %17 Function
           22,  // %22 = OpPhi %8 %10 %20 %23 %24
       };
-      CompareSets(live_sets->live_in_, live_in);
+      CompareSets(l1_sim_resut.live_in_, live_in);
 
       std::unordered_set<uint32_t> live_out{
           3,   // %3 = OpVariable %9 Function
+          4,   // %4 = OpVariable %17 Function
+          5,   // %5 = OpVariable %17 Function
           22,  // %22 = OpPhi %8 %10 %20 %23 %24
       };
-      CompareSets(live_sets->live_out_, live_out);
+      CompareSets(l1_sim_resut.live_out_, live_out);
 
-      EXPECT_EQ(live_sets->used_registers_, 4u);
+      EXPECT_EQ(l1_sim_resut.used_registers_, 4u);
     }
     {
       SCOPED_TRACE("L2 simulation");
-      auto live_sets = register_liveness->Get(21);
       std::unordered_set<uint32_t> live_in{
           3,   // %3 = OpVariable %9 Function
           4,   // %4 = OpVariable %17 Function
           5,   // %5 = OpVariable %17 Function
           22,  // %22 = OpPhi %8 %10 %20 %23 %24
       };
-      CompareSets(live_sets->live_in_, live_in);
+      CompareSets(l2_sim_resut.live_in_, live_in);
 
       std::unordered_set<uint32_t> live_out{
           3,   // %3 = OpVariable %9 Function
           22,  // %22 = OpPhi %8 %10 %20 %23 %24
       };
-      CompareSets(live_sets->live_out_, live_out);
+      CompareSets(l2_sim_resut.live_out_, live_out);
 
-      EXPECT_EQ(live_sets->used_registers_, 4u);
+      EXPECT_EQ(l2_sim_resut.used_registers_, 4u);
     }
   }
 }
