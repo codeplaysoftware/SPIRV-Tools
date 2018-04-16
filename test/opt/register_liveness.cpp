@@ -552,11 +552,6 @@ TEST_F(PassClassTest, RegisterLiveness) {
     CompareSets(live_sets->live_out_, live_inout);
 
     EXPECT_EQ(live_sets->used_registers_, 11u);
-
-    {
-      opt::RegisterLiveness::RegionRegisterLiveness simulation_resut;
-      register_liveness->SimulateFusion(*ld[17], *ld[39], &simulation_resut);
-    }
   }
   {
     SCOPED_TRACE("Block 40");
@@ -1086,6 +1081,78 @@ TEST_F(PassClassTest, RegisterLiveness) {
 
     EXPECT_EQ(live_sets->used_registers_, 2u);
   }
+
+  {
+    SCOPED_TRACE("Compute loop pressure");
+    opt::RegisterLiveness::RegionRegisterLiveness loop_reg_pressure;
+    register_liveness->ComputeLoopRegisterPressure(*ld[39], &loop_reg_pressure);
+    // Generate(*context->cfg()->block(39), &loop_reg_pressure);
+    std::unordered_set<uint32_t> live_in{
+        11,   // %11 = OpVariable %10 Input
+        12,   // %12 = OpLoad %7 %11
+        25,   // %25 = OpLoad %13 %24
+        55,   // %55 = OpVariable %54 Input
+        84,   // %84 = OpVariable %8 Function
+        124,  // %124 = OpVariable %63 Input
+        176,  // %176 = OpVariable %175 Output
+        185,  // %185 = OpPhi %13 %16 %19 %75 %51
+        188,  // %188 = OpPhi %6 %37 %19 %73 %51
+        191,  // %191 = OpPhi %7 %12 %5 %31 %18
+    };
+    CompareSets(loop_reg_pressure.live_in_, live_in);
+
+    std::unordered_set<uint32_t> live_out{
+        12,   // %12 = OpLoad %7 %11
+        25,   // %25 = OpLoad %13 %24
+        55,   // %55 = OpVariable %54 Input
+        84,   // %84 = OpVariable %8 Function
+        124,  // %124 = OpVariable %63 Input
+        176,  // %176 = OpVariable %175 Output
+        188,  // %188 = OpPhi %6 %37 %19 %73 %51
+        191,  // %191 = OpPhi %7 %12 %5 %31 %18
+    };
+    CompareSets(loop_reg_pressure.live_out_, live_out);
+
+    EXPECT_EQ(loop_reg_pressure.used_registers_, 15u);
+  }
+
+  {
+    SCOPED_TRACE("Loop Fusion simulation");
+    opt::RegisterLiveness::RegionRegisterLiveness simulation_resut;
+    register_liveness->SimulateFusion(*ld[17], *ld[39], &simulation_resut);
+
+    // Generate(*context->cfg()->block(17), &simulation_resut);
+    std::unordered_set<uint32_t> live_in{
+        11,   // %11 = OpVariable %10 Input
+        12,   // %12 = OpLoad %7 %11
+        24,   // %24 = OpVariable %23 Input
+        25,   // %25 = OpLoad %13 %24
+        28,   // %28 = OpVariable %10 Input
+        55,   // %55 = OpVariable %54 Input
+        84,   // %84 = OpVariable %8 Function
+        124,  // %124 = OpVariable %63 Input
+        176,  // %176 = OpVariable %175 Output
+        184,  // %184 = OpPhi %13 %16 %5 %34 %18
+        185,  // %185 = OpPhi %13 %16 %19 %75 %51
+        188,  // %188 = OpPhi %6 %37 %19 %73 %51
+        191,  // %191 = OpPhi %7 %12 %5 %31 %18
+    };
+    CompareSets(simulation_resut.live_in_, live_in);
+
+    std::unordered_set<uint32_t> live_out{
+        12,   // %12 = OpLoad %7 %11
+        25,   // %25 = OpLoad %13 %24
+        55,   // %55 = OpVariable %54 Input
+        84,   // %84 = OpVariable %8 Function
+        124,  // %124 = OpVariable %63 Input
+        176,  // %176 = OpVariable %175 Output
+        188,  // %188 = OpPhi %6 %37 %19 %73 %51
+        191,  // %191 = OpPhi %7 %12 %5 %31 %18
+    };
+    CompareSets(simulation_resut.live_out_, live_out);
+
+    EXPECT_EQ(simulation_resut.used_registers_, 19u);
+  }
 }
 
 TEST_F(PassClassTest, FissionSimulation) {
@@ -1141,6 +1208,7 @@ TEST_F(PassClassTest, FissionSimulation) {
          %23 = OpIAdd %8 %22 %19
                OpBranch %21
          %25 = OpLabel
+               OpStore %3 %22
                OpReturn
                OpFunctionEnd
     )";
@@ -1167,6 +1235,44 @@ TEST_F(PassClassTest, FissionSimulation) {
     register_liveness->SimulateFission(*ld[21], moved_instructions,
                                        copied_instructions, &l1_sim_resut,
                                        &l2_sim_resut);
+    {
+      SCOPED_TRACE("L1 simulation");
+      auto live_sets = register_liveness->Get(21);
+      std::unordered_set<uint32_t> live_in{
+          3,   // %3 = OpVariable %9 Function
+          4,   // %4 = OpVariable %17 Function
+          5,   // %5 = OpVariable %17 Function
+          22,  // %22 = OpPhi %8 %10 %20 %23 %24
+      };
+      CompareSets(live_sets->live_in_, live_in);
+
+      std::unordered_set<uint32_t> live_out{
+          3,   // %3 = OpVariable %9 Function
+          22,  // %22 = OpPhi %8 %10 %20 %23 %24
+      };
+      CompareSets(live_sets->live_out_, live_out);
+
+      EXPECT_EQ(live_sets->used_registers_, 4u);
+    }
+    {
+      SCOPED_TRACE("L2 simulation");
+      auto live_sets = register_liveness->Get(21);
+      std::unordered_set<uint32_t> live_in{
+          3,   // %3 = OpVariable %9 Function
+          4,   // %4 = OpVariable %17 Function
+          5,   // %5 = OpVariable %17 Function
+          22,  // %22 = OpPhi %8 %10 %20 %23 %24
+      };
+      CompareSets(live_sets->live_in_, live_in);
+
+      std::unordered_set<uint32_t> live_out{
+          3,   // %3 = OpVariable %9 Function
+          22,  // %22 = OpPhi %8 %10 %20 %23 %24
+      };
+      CompareSets(live_sets->live_out_, live_out);
+
+      EXPECT_EQ(live_sets->used_registers_, 4u);
+    }
   }
 }
 }  // namespace

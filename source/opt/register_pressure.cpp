@@ -439,8 +439,10 @@ void RegisterLiveness::SimulateFission(
 
   // Filter predicates: consider instructions that only belong to the first and
   // second loop.
-  auto belong_to_loop1 = [&moved_inst, &copied_inst](ir::Instruction* insn) {
-    return moved_inst.count(insn) || copied_inst.count(insn);
+  auto belong_to_loop1 = [&moved_inst, &copied_inst,
+                          &loop](ir::Instruction* insn) {
+    return moved_inst.count(insn) || copied_inst.count(insn) ||
+           !loop.IsInsideLoop(insn);
   };
   auto belong_to_loop2 = [&moved_inst](ir::Instruction* insn) {
     return !moved_inst.count(insn);
@@ -472,14 +474,14 @@ void RegisterLiveness::SimulateFission(
       auto live_loop = ir::MakeFilterIteratorRange(live_inout->live_in_.begin(),
                                                    live_inout->live_in_.end(),
                                                    belong_to_loop1);
-      l1_sim_result->live_in_.insert(live_loop.begin(), live_loop.end());
+      l1_sim_result->live_out_.insert(live_loop.begin(), live_loop.end());
     }
     // l2 live-in
     {
       auto live_loop = ir::MakeFilterIteratorRange(live_inout->live_in_.begin(),
                                                    live_inout->live_in_.end(),
                                                    belong_to_loop2);
-      l2_sim_result->live_in_.insert(live_loop.begin(), live_loop.end());
+      l2_sim_result->live_out_.insert(live_loop.begin(), live_loop.end());
     }
   }
 
