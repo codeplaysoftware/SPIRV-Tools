@@ -60,6 +60,8 @@ build:
 build_script:
   - mkdir build && cd build
   - cmake -GNinja -DSPIRV_BUILD_COMPRESSION=ON -DCMAKE_BUILD_TYPE=%CONFIGURATION% -DCMAKE_INSTALL_PREFIX=install -DRE2_BUILD_TESTING=OFF ..
+  - ninja "test\opt\test_register_liveness.exe"
+  - ctest --output-on-failure -R register
   - ninja install
 
 test_script:

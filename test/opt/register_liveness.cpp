@@ -1231,6 +1231,14 @@ TEST_F(PassClassTest, FissionSimulation) {
     std::unordered_set<ir::Instruction*> copied_instructions{
         def_use_mgr.GetDef(22), def_use_mgr.GetDef(27), def_use_mgr.GetDef(23)};
 
+    for (ir::Instruction* in : moved_instructions) {
+      std::cout << *in << "\n";
+    }
+    std::cout << "\n";
+    for (ir::Instruction* in : copied_instructions) {
+      std::cout << *in << "\n";
+    }
+
     register_liveness->SimulateFission(*ld[21], moved_instructions,
                                        copied_instructions, &l1_sim_resut,
                                        &l2_sim_resut);
