@@ -48,7 +48,9 @@ class LoopFissionUtils {
 
 bool LoopFissionUtils::MovableInstruction(const ir::Instruction& inst) const {
   return inst.opcode() == SpvOp::SpvOpLoad ||
-         inst.opcode() == SpvOp::SpvOpStore || inst.IsOpcodeCodeMotionSafe();
+         inst.opcode() == SpvOp::SpvOpStore ||
+         inst.opcode() == SpvOp::SpvOpSelectionMerge ||
+         inst.opcode() == SpvOp::SpvOpPhi || inst.IsOpcodeCodeMotionSafe();
 }
 
 void LoopFissionUtils::TraverseUseDef(ir::Instruction* inst,
@@ -100,7 +102,7 @@ void LoopFissionUtils::TraverseUseDef(ir::Instruction* inst,
   };
 
   // We start the traversal of the use def graph by invoking the above
-  // lambda with the loop_ instruction which has not already been found in a
+  // lambda with the loop instruction which has not already been found in a
   // traversal.
   traverser_functor(inst);
 }
@@ -108,13 +110,26 @@ void LoopFissionUtils::TraverseUseDef(ir::Instruction* inst,
 void LoopFissionUtils::BuildRelatedSets() {
   std::vector<std::set<ir::Instruction*>> sets{};
 
-  // We want to ignore all the instructions stemming from the loop_ condition
+  // We want to ignore all the instructions stemming from the loop condition
   // instruction.
   ir::BasicBlock* condition_block = loop_->FindConditionBlock();
   ir::Instruction* condition = &*condition_block->tail();
 
   std::set<ir::Instruction*> tmp_set{};
   TraverseUseDef(condition, &tmp_set, true);
+
+  for (uint32_t block_id : loop_->GetBlocks()) {
+    ir::BasicBlock* block = context_->cfg()->block(block_id);
+
+    for (ir::Instruction& inst : *block) {
+      // Ignore all instructions related to control flow.
+      if (inst.opcode() == SpvOp::SpvOpSelectionMerge ||
+          inst.opcode() == SpvOp::SpvOpBranchConditional) {
+        TraverseUseDef(&inst, &tmp_set, true);
+        continue;
+      }
+    }
+  }
 
   for (uint32_t block_id : loop_->GetBlocks()) {
     ir::BasicBlock* block = context_->cfg()->block(block_id);
