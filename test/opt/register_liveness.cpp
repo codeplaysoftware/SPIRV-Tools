@@ -530,11 +530,13 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_in_, live_inout);
     CompareSets(live_sets->live_out_, live_inout);
+
+    EXPECT_EQ(live_sets->used_registers_, 8u);
   }
   {
     SCOPED_TRACE("Block 39");
     auto live_sets = register_liveness->Get(39);
-    std::unordered_set<uint32_t> live_in{
+    std::unordered_set<uint32_t> live_inout{
         11,   // %11 = OpVariable %10 Input
         12,   // %12 = OpLoad %7 %11
         25,   // %25 = OpLoad %13 %24
@@ -546,21 +548,10 @@ TEST_F(PassClassTest, RegisterLiveness) {
         188,  // %188 = OpPhi %6 %37 %19 %73 %51
         191,  // %191 = OpPhi %7 %12 %5 %31 %18
     };
-    CompareSets(live_sets->live_in_, live_in);
+    CompareSets(live_sets->live_in_, live_inout);
+    CompareSets(live_sets->live_out_, live_inout);
 
-    std::unordered_set<uint32_t> live_out{
-        11,   // %11 = OpVariable %10 Input
-        12,   // %12 = OpLoad %7 %11
-        25,   // %25 = OpLoad %13 %24
-        55,   // %55 = OpVariable %54 Input
-        84,   // %84 = OpVariable %8 Function
-        124,  // %124 = OpVariable %63 Input
-        176,  // %176 = OpVariable %175 Output
-        185,  // %185 = OpPhi %13 %16 %19 %75 %51
-        188,  // %188 = OpPhi %6 %37 %19 %73 %51
-        191,  // %191 = OpPhi %7 %12 %5 %31 %18
-    };
-    CompareSets(live_sets->live_out_, live_out);
+    EXPECT_EQ(live_sets->used_registers_, 11u);
 
     {
       opt::RegisterLiveness::RegionRegisterLiveness simulation_resut;
@@ -570,7 +561,7 @@ TEST_F(PassClassTest, RegisterLiveness) {
   {
     SCOPED_TRACE("Block 40");
     auto live_sets = register_liveness->Get(40);
-    std::unordered_set<uint32_t> live_in{
+    std::unordered_set<uint32_t> live_inout{
         11,   // %11 = OpVariable %10 Input
         12,   // %12 = OpLoad %7 %11
         25,   // %25 = OpLoad %13 %24
@@ -582,21 +573,10 @@ TEST_F(PassClassTest, RegisterLiveness) {
         188,  // %188 = OpPhi %6 %37 %19 %73 %51
         191,  // %191 = OpPhi %7 %12 %5 %31 %18
     };
-    CompareSets(live_sets->live_in_, live_in);
+    CompareSets(live_sets->live_in_, live_inout);
+    CompareSets(live_sets->live_out_, live_inout);
 
-    std::unordered_set<uint32_t> live_out{
-        11,   // %11 = OpVariable %10 Input
-        12,   // %12 = OpLoad %7 %11
-        25,   // %25 = OpLoad %13 %24
-        55,   // %55 = OpVariable %54 Input
-        84,   // %84 = OpVariable %8 Function
-        124,  // %124 = OpVariable %63 Input
-        176,  // %176 = OpVariable %175 Output
-        185,  // %185 = OpPhi %13 %16 %19 %75 %51
-        188,  // %188 = OpPhi %6 %37 %19 %73 %51
-        191,  // %191 = OpPhi %7 %12 %5 %31 %18
-    };
-    CompareSets(live_sets->live_out_, live_out);
+    EXPECT_EQ(live_sets->used_registers_, 11u);
   }
   {
     SCOPED_TRACE("Block 50");
@@ -629,6 +609,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         191,  // %191 = OpPhi %7 %12 %5 %31 %18
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 12u);
   }
   {
     SCOPED_TRACE("Block 61");
@@ -661,6 +643,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         191,  // %191 = OpPhi %7 %12 %5 %31 %18
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 12u);
   }
   {
     SCOPED_TRACE("Block 51");
@@ -693,6 +677,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         191,  // %191 = OpPhi %7 %12 %5 %31 %18
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 15u);
   }
   {
     SCOPED_TRACE("Block 41");
@@ -709,11 +695,13 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_in_, live_inout);
     CompareSets(live_sets->live_out_, live_inout);
+
+    EXPECT_EQ(live_sets->used_registers_, 8u);
   }
   {
     SCOPED_TRACE("Block 77");
     auto live_sets = register_liveness->Get(77);
-    std::unordered_set<uint32_t> live_in{
+    std::unordered_set<uint32_t> live_inout{
         12,   // %12 = OpLoad %7 %11
         25,   // %25 = OpLoad %13 %24
         55,   // %55 = OpVariable %54 Input
@@ -724,20 +712,10 @@ TEST_F(PassClassTest, RegisterLiveness) {
         188,  // %188 = OpPhi %6 %37 %19 %73 %51
         191,  // %191 = OpPhi %7 %12 %5 %31 %18
     };
-    CompareSets(live_sets->live_in_, live_in);
+    CompareSets(live_sets->live_in_, live_inout);
+    CompareSets(live_sets->live_out_, live_inout);
 
-    std::unordered_set<uint32_t> live_out{
-        12,   // %12 = OpLoad %7 %11
-        25,   // %25 = OpLoad %13 %24
-        55,   // %55 = OpVariable %54 Input
-        84,   // %84 = OpVariable %8 Function
-        124,  // %124 = OpVariable %63 Input
-        176,  // %176 = OpVariable %175 Output
-        186,  // %186 = OpPhi %13 %16 %41 %94 %78
-        188,  // %188 = OpPhi %6 %37 %19 %73 %51
-        191,  // %191 = OpPhi %7 %12 %5 %31 %18
-    };
-    CompareSets(live_sets->live_out_, live_out);
+    EXPECT_EQ(live_sets->used_registers_, 10u);
   }
   {
     SCOPED_TRACE("Block 78");
@@ -767,6 +745,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         191,  // %191 = OpPhi %7 %12 %5 %31 %18
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 13u);
   }
   {
     SCOPED_TRACE("Block 79");
@@ -791,6 +771,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         176,  // %176 = OpVariable %175 Output
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 11u);
   }
   {
     SCOPED_TRACE("Block 108");
@@ -815,6 +797,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         197,  // %197 = OpPhi %7 %106 %79 %208 %133
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 7u);
   }
   {
     SCOPED_TRACE("Block 109");
@@ -830,11 +814,13 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_in_, live_inout);
     CompareSets(live_sets->live_out_, live_inout);
+
+    EXPECT_EQ(live_sets->used_registers_, 7u);
   }
   {
     SCOPED_TRACE("Block 117");
     auto live_sets = register_liveness->Get(117);
-    std::unordered_set<uint32_t> live_in{
+    std::unordered_set<uint32_t> live_inout{
         25,   // %25 = OpLoad %13 %24
         84,   // %84 = OpVariable %8 Function
         100,  // %100 = OpFAdd %7 %191 %98
@@ -844,19 +830,10 @@ TEST_F(PassClassTest, RegisterLiveness) {
         204,  // %204 = OpPhi %13 %16 %109 %129 %118
         209,  // %209 = OpPhi %7 %197 %109 %181 %118
     };
-    CompareSets(live_sets->live_in_, live_in);
+    CompareSets(live_sets->live_in_, live_inout);
+    CompareSets(live_sets->live_out_, live_inout);
 
-    std::unordered_set<uint32_t> live_out{
-        25,   // %25 = OpLoad %13 %24
-        84,   // %84 = OpVariable %8 Function
-        100,  // %100 = OpFAdd %7 %191 %98
-        124,  // %124 = OpVariable %63 Input
-        176,  // %176 = OpVariable %175 Output
-        196,  // %196 = OpPhi %13 %16 %79 %143 %133
-        204,  // %204 = OpPhi %13 %16 %109 %129 %118
-        209,  // %209 = OpPhi %7 %197 %109 %181 %118
-    };
-    CompareSets(live_sets->live_out_, live_out);
+    EXPECT_EQ(live_sets->used_registers_, 9u);
   }
   {
     SCOPED_TRACE("Block 118");
@@ -884,6 +861,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         196,  // %196 = OpPhi %13 %16 %79 %143 %133
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 12u);
   }
   {
     SCOPED_TRACE("Block 119");
@@ -899,11 +878,13 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_in_, live_inout);
     CompareSets(live_sets->live_out_, live_inout);
+
+    EXPECT_EQ(live_sets->used_registers_, 7u);
   }
   {
     SCOPED_TRACE("Block 131");
     auto live_sets = register_liveness->Get(131);
-    std::unordered_set<uint32_t> live_in{
+    std::unordered_set<uint32_t> live_inout{
         25,   // %25 = OpLoad %13 %24
         84,   // %84 = OpVariable %8 Function
         100,  // %100 = OpFAdd %7 %191 %98
@@ -913,19 +894,10 @@ TEST_F(PassClassTest, RegisterLiveness) {
         205,  // %205 = OpPhi %13 %16 %119 %141 %132
         208,  // %208 = OpPhi %7 %209 %119 %183 %132
     };
-    CompareSets(live_sets->live_in_, live_in);
+    CompareSets(live_sets->live_in_, live_inout);
+    CompareSets(live_sets->live_out_, live_inout);
 
-    std::unordered_set<uint32_t> live_out{
-        25,   // %25 = OpLoad %13 %24
-        84,   // %84 = OpVariable %8 Function
-        100,  // %100 = OpFAdd %7 %191 %98
-        124,  // %124 = OpVariable %63 Input
-        176,  // %176 = OpVariable %175 Output
-        196,  // %196 = OpPhi %13 %16 %79 %143 %133
-        205,  // %205 = OpPhi %13 %16 %119 %141 %132
-        208,  // %208 = OpPhi %7 %209 %119 %183 %132
-    };
-    CompareSets(live_sets->live_out_, live_out);
+    EXPECT_EQ(live_sets->used_registers_, 9u);
   }
   {
     SCOPED_TRACE("Block 132");
@@ -953,6 +925,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         196,  // %196 = OpPhi %13 %16 %79 %143 %133
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 12u);
   }
   {
     SCOPED_TRACE("Block 133");
@@ -978,6 +952,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         208,  // %208 = OpPhi %7 %209 %119 %183 %132
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 9u);
   }
   {
     SCOPED_TRACE("Block 110");
@@ -998,27 +974,23 @@ TEST_F(PassClassTest, RegisterLiveness) {
         176,  // %176 = OpVariable %175 Output
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 7u);
   }
   {
     SCOPED_TRACE("Block 152");
     auto live_sets = register_liveness->Get(152);
-    std::unordered_set<uint32_t> live_in{
+    std::unordered_set<uint32_t> live_inout{
         84,   // %84 = OpVariable %8 Function
         124,  // %124 = OpVariable %63 Input
         176,  // %176 = OpVariable %175 Output
         199,  // %199 = OpPhi %13 %16 %110 %174 %163
         200,  // %200 = OpPhi %7 %150 %110 %203 %163
     };
-    CompareSets(live_sets->live_in_, live_in);
+    CompareSets(live_sets->live_in_, live_inout);
+    CompareSets(live_sets->live_out_, live_inout);
 
-    std::unordered_set<uint32_t> live_out{
-        84,   // %84 = OpVariable %8 Function
-        124,  // %124 = OpVariable %63 Input
-        176,  // %176 = OpVariable %175 Output
-        199,  // %199 = OpPhi %13 %16 %110 %174 %163
-        200,  // %200 = OpPhi %7 %150 %110 %203 %163
-    };
-    CompareSets(live_sets->live_out_, live_out);
+    EXPECT_EQ(live_sets->used_registers_, 6u);
   }
   {
     SCOPED_TRACE("Block 153");
@@ -1032,11 +1004,13 @@ TEST_F(PassClassTest, RegisterLiveness) {
     };
     CompareSets(live_sets->live_in_, live_inout);
     CompareSets(live_sets->live_out_, live_inout);
+
+    EXPECT_EQ(live_sets->used_registers_, 5u);
   }
   {
     SCOPED_TRACE("Block 161");
     auto live_sets = register_liveness->Get(161);
-    std::unordered_set<uint32_t> live_in{
+    std::unordered_set<uint32_t> live_inout{
         84,   // %84 = OpVariable %8 Function
         124,  // %124 = OpVariable %63 Input
         176,  // %176 = OpVariable %175 Output
@@ -1044,17 +1018,10 @@ TEST_F(PassClassTest, RegisterLiveness) {
         201,  // %201 = OpPhi %13 %16 %153 %172 %162
         203,  // %203 = OpPhi %7 %200 %153 %170 %162
     };
-    CompareSets(live_sets->live_in_, live_in);
+    CompareSets(live_sets->live_in_, live_inout);
+    CompareSets(live_sets->live_out_, live_inout);
 
-    std::unordered_set<uint32_t> live_out{
-        84,   // %84 = OpVariable %8 Function
-        124,  // %124 = OpVariable %63 Input
-        176,  // %176 = OpVariable %175 Output
-        199,  // %199 = OpPhi %13 %16 %110 %174 %163
-        201,  // %201 = OpPhi %13 %16 %153 %172 %162
-        203,  // %203 = OpPhi %7 %200 %153 %170 %162
-    };
-    CompareSets(live_sets->live_out_, live_out);
+    EXPECT_EQ(live_sets->used_registers_, 7u);
   }
   {
     SCOPED_TRACE("Block 162");
@@ -1078,6 +1045,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         199,  // %199 = OpPhi %13 %16 %110 %174 %163
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 10u);
   }
   {
     SCOPED_TRACE("Block 163");
@@ -1099,6 +1068,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
         203,  // %203 = OpPhi %7 %200 %153 %170 %162
     };
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 7u);
   }
   {
     SCOPED_TRACE("Block 154");
@@ -1112,6 +1083,8 @@ TEST_F(PassClassTest, RegisterLiveness) {
 
     std::unordered_set<uint32_t> live_out{};
     CompareSets(live_sets->live_out_, live_out);
+
+    EXPECT_EQ(live_sets->used_registers_, 2u);
   }
 }
 
