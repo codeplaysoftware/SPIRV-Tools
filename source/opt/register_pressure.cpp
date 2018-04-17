@@ -502,7 +502,7 @@ void RegisterLiveness::SimulateFission(
 
   for (uint32_t bb_id : loop.GetBlocks()) {
     ir::BasicBlock* bb = context_->cfg()->block(bb_id);
-    std::cout << "bb " << bb_id << "\n";
+
     const RegisterLiveness::RegionRegisterLiveness* live_inout = Get(bb_id);
     assert(live_inout != nullptr && "Basic block not processed");
     auto l1_block_live_out = ir::MakeFilterIteratorRange(
@@ -525,7 +525,6 @@ void RegisterLiveness::SimulateFission(
 
       bool does_belong_to_loop1 = belong_to_loop1(&insn);
       bool does_belong_to_loop2 = belong_to_loop2(&insn);
-      std::cout << "- " << insn << "\n";
       insn.ForEachInId([live_inout, &die_in_block, &l1_reg_count, &l2_reg_count,
                         does_belong_to_loop1, does_belong_to_loop2,
                         this](uint32_t* id) {
@@ -535,19 +534,15 @@ void RegisterLiveness::SimulateFission(
           // already taken into account.
           return;
         }
-        std::cout << "\t" << *op_insn;
         if (!die_in_block.count(*id)) {
           if (does_belong_to_loop1) {
             l1_reg_count++;
-            std::cout << " - l1";
           }
           if (does_belong_to_loop2) {
             l2_reg_count++;
-            std::cout << " - l2";
           }
           die_in_block.insert(*id);
         }
-        std::cout << "\n";
       });
       l1_sim_result->used_registers_ =
           std::max(l1_sim_result->used_registers_, l1_reg_count);

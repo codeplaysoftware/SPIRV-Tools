@@ -1233,14 +1233,6 @@ TEST_F(PassClassTest, FissionSimulation) {
         def_use_mgr.GetDef(22), def_use_mgr.GetDef(27),
         def_use_mgr.GetDef(27)->NextNode(), def_use_mgr.GetDef(23)};
 
-    for (ir::Instruction* in : moved_instructions) {
-      std::cout << *in << "\n";
-    }
-    std::cout << "\n";
-    for (ir::Instruction* in : copied_instructions) {
-      std::cout << *in << "\n";
-    }
-
     register_liveness->SimulateFission(*ld[21], moved_instructions,
                                        copied_instructions, &l1_sim_resut,
                                        &l2_sim_resut);
@@ -1262,7 +1254,7 @@ TEST_F(PassClassTest, FissionSimulation) {
       };
       CompareSets(l1_sim_resut.live_out_, live_out);
 
-      EXPECT_EQ(l1_sim_resut.used_registers_, 4u);
+      EXPECT_EQ(l1_sim_resut.used_registers_, 6u);
     }
     {
       SCOPED_TRACE("L2 simulation");
@@ -1280,7 +1272,7 @@ TEST_F(PassClassTest, FissionSimulation) {
       };
       CompareSets(l2_sim_resut.live_out_, live_out);
 
-      EXPECT_EQ(l2_sim_resut.used_registers_, 4u);
+      EXPECT_EQ(l2_sim_resut.used_registers_, 6u);
     }
   }
 }
