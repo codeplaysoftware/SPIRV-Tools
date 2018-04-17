@@ -522,30 +522,32 @@ void RegisterLiveness::SimulateFission(
       if (insn.opcode() == SpvOpPhi) {
         break;
       }
-      if (!CreatesRegisterUsage(&insn)) {
-        continue;
-      }
 
       bool does_belong_to_loop1 = belong_to_loop1(&insn);
       bool does_belong_to_loop2 = belong_to_loop2(&insn);
+      std::cout << "- " << insn << "\n";
       insn.ForEachInId([live_inout, &die_in_block, &l1_reg_count, &l2_reg_count,
                         does_belong_to_loop1, does_belong_to_loop2,
                         this](uint32_t* id) {
         ir::Instruction* op_insn = context_->get_def_use_mgr()->GetDef(*id);
-        if (!CreatesRegisterUsage(op_insn) &&
+        if (!CreatesRegisterUsage(op_insn) ||
             live_inout->live_out_.count(op_insn)) {
           // already taken into account.
           return;
         }
+        std::cout << "\t" << *op_insn;
         if (!die_in_block.count(*id)) {
           if (does_belong_to_loop1) {
             l1_reg_count++;
+            std::cout << " - l1";
           }
           if (does_belong_to_loop2) {
             l2_reg_count++;
+            std::cout << " - l2";
           }
           die_in_block.insert(*id);
         }
+        std::cout << "\n";
       });
       l1_sim_result->used_registers_ =
           std::max(l1_sim_result->used_registers_, l1_reg_count);

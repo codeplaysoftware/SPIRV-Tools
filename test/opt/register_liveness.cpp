@@ -1227,7 +1227,8 @@ TEST_F(PassClassTest, FissionSimulation) {
     opt::RegisterLiveness::RegionRegisterLiveness l1_sim_resut;
     opt::RegisterLiveness::RegionRegisterLiveness l2_sim_resut;
     std::unordered_set<ir::Instruction*> moved_instructions{
-        def_use_mgr.GetDef(29), def_use_mgr.GetDef(30), def_use_mgr.GetDef(31)};
+        def_use_mgr.GetDef(29), def_use_mgr.GetDef(30), def_use_mgr.GetDef(31),
+        def_use_mgr.GetDef(31)->NextNode()};
     std::unordered_set<ir::Instruction*> copied_instructions{
         def_use_mgr.GetDef(22), def_use_mgr.GetDef(27), def_use_mgr.GetDef(23)};
 
