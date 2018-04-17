@@ -490,9 +490,19 @@ void RegisterLiveness::SimulateFission(
   l2_sim_result->live_in_.insert(l1_sim_result->live_out_.begin(),
                                  l1_sim_result->live_out_.end());
 
+  for (ir::Instruction* insn : l1_sim_result->live_in_) {
+    l1_sim_result->AddRegisterClass(insn);
+  }
+  for (ir::Instruction* insn : l2_sim_result->live_in_) {
+    l2_sim_result->AddRegisterClass(insn);
+  }
+
+  l1_sim_result->used_registers_ = 0;
+  l2_sim_result->used_registers_ = 0;
+
   for (uint32_t bb_id : loop.GetBlocks()) {
     ir::BasicBlock* bb = context_->cfg()->block(bb_id);
-
+    std::cout << "bb " << bb_id << "\n";
     const RegisterLiveness::RegionRegisterLiveness* live_inout = Get(bb_id);
     assert(live_inout != nullptr && "Basic block not processed");
     auto l1_block_live_out = ir::MakeFilterIteratorRange(
@@ -506,16 +516,6 @@ void RegisterLiveness::SimulateFission(
         std::distance(l1_block_live_out.begin(), l1_block_live_out.end());
     size_t l2_reg_count =
         std::distance(l2_block_live_out.begin(), l2_block_live_out.end());
-    for (ir::Instruction* insn : live_inout->live_out_) {
-      if (belong_to_loop1(insn)) {
-        l1_sim_result->AddRegisterClass(insn);
-      }
-      if (belong_to_loop2(insn)) {
-        l2_sim_result->AddRegisterClass(insn);
-      }
-    }
-    l1_sim_result->used_registers_ = l1_reg_count;
-    l2_sim_result->used_registers_ = l2_reg_count;
 
     std::unordered_set<uint32_t> die_in_block;
     for (ir::Instruction& insn : ir::make_range(bb->rbegin(), bb->rend())) {
@@ -555,11 +555,15 @@ void RegisterLiveness::SimulateFission(
           std::max(l2_sim_result->used_registers_, l2_reg_count);
       if (CreatesRegisterUsage(&insn)) {
         if (does_belong_to_loop1) {
-          l1_sim_result->AddRegisterClass(&insn);
+          if (!l1_sim_result->live_in_.count(&insn)) {
+            l1_sim_result->AddRegisterClass(&insn);
+          }
           l1_reg_count--;
         }
         if (does_belong_to_loop2) {
-          l2_sim_result->AddRegisterClass(&insn);
+          if (!l2_sim_result->live_in_.count(&insn)) {
+            l2_sim_result->AddRegisterClass(&insn);
+          }
           l2_reg_count--;
         }
       }

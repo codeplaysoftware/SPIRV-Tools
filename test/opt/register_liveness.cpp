@@ -1230,7 +1230,8 @@ TEST_F(PassClassTest, FissionSimulation) {
         def_use_mgr.GetDef(29), def_use_mgr.GetDef(30), def_use_mgr.GetDef(31),
         def_use_mgr.GetDef(31)->NextNode()};
     std::unordered_set<ir::Instruction*> copied_instructions{
-        def_use_mgr.GetDef(22), def_use_mgr.GetDef(27), def_use_mgr.GetDef(23)};
+        def_use_mgr.GetDef(22), def_use_mgr.GetDef(27),
+        def_use_mgr.GetDef(27)->NextNode(), def_use_mgr.GetDef(23)};
 
     for (ir::Instruction* in : moved_instructions) {
       std::cout << *in << "\n";
