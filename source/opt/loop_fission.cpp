@@ -7,7 +7,7 @@ namespace opt {
 class LoopFissionUtils {
  public:
   LoopFissionUtils(ir::IRContext* context, ir::Loop* loop)
-      : context_(context), loop_(loop) {}
+      : context_(context), loop_(loop), load_used_in_condition_(false) {}
 
   void BuildRelatedSets();
 
@@ -39,11 +39,17 @@ class LoopFissionUtils {
 
   ir::Loop* loop_;
 
+  // This is set to true by TraverseUseDef when traversing the instructions
+  // related to the loop condition and any if conditions should any of those
+  // instructions be a load.
+  bool load_used_in_condition_;
+
   // Traverse the def use chain of |inst| and add the users and uses of |inst|
   // which are in the same loop to the |returned_set|.
   void TraverseUseDef(ir::Instruction* inst,
                       std::set<ir::Instruction*>* returned_set,
-                      bool ignore_phi_users = false);
+                      bool ignore_phi_users = false,
+                      bool report_loads = false);
 };
 
 bool LoopFissionUtils::MovableInstruction(const ir::Instruction& inst) const {
@@ -55,7 +61,8 @@ bool LoopFissionUtils::MovableInstruction(const ir::Instruction& inst) const {
 
 void LoopFissionUtils::TraverseUseDef(ir::Instruction* inst,
                                       std::set<ir::Instruction*>* returned_set,
-                                      bool ignore_phi_users) {
+                                      bool ignore_phi_users,
+                                      bool report_loads) {
   assert(returned_set && "Set to be returned cannot be null.");
 
   opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
@@ -66,7 +73,7 @@ void LoopFissionUtils::TraverseUseDef(ir::Instruction* inst,
   // to allow it to recurse.
   std::function<void(ir::Instruction*)> traverser_functor;
   traverser_functor = [this, def_use, &inst_set, &traverser_functor,
-                       ignore_phi_users](ir::Instruction* user) {
+                       ignore_phi_users, report_loads](ir::Instruction* user) {
     if (!user || seen_instructions_.count(user) != 0 ||
         !context_->get_instr_block(user) ||
         !loop_->IsInsideLoop(context_->get_instr_block(user))) {
@@ -76,6 +83,13 @@ void LoopFissionUtils::TraverseUseDef(ir::Instruction* inst,
     if (user->opcode() == SpvOp::SpvOpLoopMerge ||
         user->opcode() == SpvOp::SpvOpLabel)
       return;
+
+    // If the |report_loads| flag is set, set the class field
+    // load_used_in_condition_ to false. This is used to check that none of the
+    // condition checks in the loop rely on loads.
+    if (user->opcode() == SpvOp::SpvOpLoad && report_loads) {
+      load_used_in_condition_ = true;
+    }
 
     seen_instructions_.insert(user);
     if (!user->IsBranch()) {
@@ -116,7 +130,7 @@ void LoopFissionUtils::BuildRelatedSets() {
   ir::Instruction* condition = &*condition_block->tail();
 
   std::set<ir::Instruction*> tmp_set{};
-  TraverseUseDef(condition, &tmp_set, true);
+  TraverseUseDef(condition, &tmp_set, true, true);
 
   for (uint32_t block_id : loop_->GetBlocks()) {
     ir::BasicBlock* block = context_->cfg()->block(block_id);
@@ -125,7 +139,7 @@ void LoopFissionUtils::BuildRelatedSets() {
       // Ignore all instructions related to control flow.
       if (inst.opcode() == SpvOp::SpvOpSelectionMerge ||
           inst.opcode() == SpvOp::SpvOpBranchConditional) {
-        TraverseUseDef(&inst, &tmp_set, true);
+        TraverseUseDef(&inst, &tmp_set, true, true);
         continue;
       }
     }
@@ -161,6 +175,12 @@ void LoopFissionUtils::BuildRelatedSets() {
 }
 
 bool LoopFissionUtils::CanPerformSplit() {
+  // Return false if any of the condition instructions in the loop depend on a
+  // load.
+  if (load_used_in_condition_) {
+    return false;
+  }
+
   std::vector<const ir::Loop*> loops;
   ir::Loop* parent_loop = loop_;
 

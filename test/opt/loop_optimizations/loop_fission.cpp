@@ -1368,6 +1368,7 @@ TEST_F(FissionClassTest, FissionControlFlow) {
           %4 = OpVariable %10 Function
           %5 = OpVariable %20 Function
           %6 = OpVariable %20 Function
+         %31 = OpLoad %9 %3
                OpStore %4 %11
                OpBranch %23
          %23 = OpLabel
@@ -1378,7 +1379,6 @@ TEST_F(FissionClassTest, FissionControlFlow) {
          %29 = OpSLessThan %13 %24 %12
                OpBranchConditional %29 %30 %27
          %30 = OpLabel
-         %31 = OpLoad %9 %3
          %32 = OpIEqual %13 %31 %15
                OpSelectionMerge %33 None
                OpBranchConditional %32 %34 %35
@@ -1439,63 +1439,62 @@ OpDecorate %3 Location 0
 %4 = OpVariable %10 Function
 %5 = OpVariable %20 Function
 %6 = OpVariable %20 Function
+%23 = OpLoad %9 %3
 OpStore %4 %11
 OpBranch %42
 %42 = OpLabel
-%43 = OpPhi %9 %11 %22 %59 %58
-OpLoopMerge %60 %58 None
+%43 = OpPhi %9 %11 %22 %58 %57
+OpLoopMerge %59 %57 None
 OpBranch %44
 %44 = OpLabel
 %45 = OpSLessThan %13 %43 %12
-OpBranchConditional %45 %46 %60
+OpBranchConditional %45 %46 %59
 %46 = OpLabel
-%47 = OpLoad %9 %3
-%48 = OpIEqual %13 %47 %15
-OpSelectionMerge %57 None
-OpBranchConditional %48 %53 %49
-%49 = OpLabel
-%50 = OpAccessChain %21 %5 %43
-%51 = OpLoad %16 %50
-%52 = OpAccessChain %21 %6 %43
-OpStore %52 %51
-OpBranch %57
-%53 = OpLabel
+%47 = OpIEqual %13 %23 %15
+OpSelectionMerge %56 None
+OpBranchConditional %47 %52 %48
+%48 = OpLabel
+OpBranch %56
+%52 = OpLabel
+%53 = OpAccessChain %21 %6 %43
+%54 = OpLoad %16 %53
+%55 = OpAccessChain %21 %5 %43
+OpStore %55 %54
+OpBranch %56
+%56 = OpLabel
 OpBranch %57
 %57 = OpLabel
-OpBranch %58
-%58 = OpLabel
-%59 = OpIAdd %9 %43 %15
-OpStore %4 %59
+%58 = OpIAdd %9 %43 %15
+OpStore %4 %58
 OpBranch %42
-%60 = OpLabel
-OpBranch %23
-%23 = OpLabel
-%24 = OpPhi %9 %11 %60 %25 %26
-OpLoopMerge %27 %26 None
-OpBranch %28
-%28 = OpLabel
-%29 = OpSLessThan %13 %24 %12
-OpBranchConditional %29 %30 %27
-%30 = OpLabel
-%31 = OpLoad %9 %3
-%32 = OpIEqual %13 %31 %15
+%59 = OpLabel
+OpBranch %24
+%24 = OpLabel
+%25 = OpPhi %9 %11 %59 %26 %27
+OpLoopMerge %28 %27 None
+OpBranch %29
+%29 = OpLabel
+%30 = OpSLessThan %13 %25 %12
+OpBranchConditional %30 %31 %28
+%31 = OpLabel
+%32 = OpIEqual %13 %23 %15
 OpSelectionMerge %33 None
 OpBranchConditional %32 %34 %35
 %34 = OpLabel
-%36 = OpAccessChain %21 %6 %24
-%37 = OpLoad %16 %36
-%38 = OpAccessChain %21 %5 %24
-OpStore %38 %37
 OpBranch %33
 %35 = OpLabel
+%39 = OpAccessChain %21 %5 %25
+%40 = OpLoad %16 %39
+%41 = OpAccessChain %21 %6 %25
+OpStore %41 %40
 OpBranch %33
 %33 = OpLabel
-OpBranch %26
-%26 = OpLabel
-%25 = OpIAdd %9 %24 %15
-OpStore %4 %25
-OpBranch %23
+OpBranch %27
 %27 = OpLabel
+%26 = OpIAdd %9 %25 %15
+OpStore %4 %26
+OpBranch %24
+%28 = OpLabel
 OpReturn
 OpFunctionEnd
 )";
@@ -1573,6 +1572,7 @@ TEST_F(FissionClassTest, FissionControlFlow2) {
           %4 = OpVariable %10 Function
           %5 = OpVariable %20 Function
           %6 = OpVariable %20 Function
+         %33 = OpLoad %9 %3
                OpBranch %25
          %25 = OpLabel
          %26 = OpPhi %9 %11 %24 %27 %28
@@ -1582,7 +1582,6 @@ TEST_F(FissionClassTest, FissionControlFlow2) {
          %31 = OpSLessThan %13 %26 %12
                OpBranchConditional %31 %32 %29
          %32 = OpLabel
-         %33 = OpLoad %9 %3
          %34 = OpIEqual %13 %33 %15
                OpSelectionMerge %35 None
                OpBranchConditional %34 %36 %37
@@ -1593,8 +1592,7 @@ TEST_F(FissionClassTest, FissionControlFlow2) {
                OpStore %40 %39
                OpBranch %35
          %37 = OpLabel
-         %41 = OpLoad %9 %3
-         %42 = OpIEqual %13 %41 %22
+         %42 = OpIEqual %13 %33 %22
                OpSelectionMerge %43 None
                OpBranchConditional %42 %44 %45
          %44 = OpLabel
@@ -1658,83 +1656,80 @@ OpDecorate %3 Location 0
 %4 = OpVariable %10 Function
 %5 = OpVariable %20 Function
 %6 = OpVariable %20 Function
-OpBranch %53
-%53 = OpLabel
-%54 = OpPhi %9 %11 %24 %79 %78
-OpLoopMerge %80 %78 None
-OpBranch %55
-%55 = OpLabel
-%56 = OpSLessThan %13 %54 %12
-OpBranchConditional %56 %57 %80
-%57 = OpLabel
-%58 = OpLoad %9 %3
-%59 = OpIEqual %13 %58 %15
-OpSelectionMerge %77 None
-OpBranchConditional %59 %73 %60
+%25 = OpLoad %9 %3
+OpBranch %52
+%52 = OpLabel
+%53 = OpPhi %9 %11 %24 %76 %75
+OpLoopMerge %77 %75 None
+OpBranch %54
+%54 = OpLabel
+%55 = OpSLessThan %13 %53 %12
+OpBranchConditional %55 %56 %77
+%56 = OpLabel
+%57 = OpIEqual %13 %25 %15
+OpSelectionMerge %74 None
+OpBranchConditional %57 %70 %58
+%58 = OpLabel
+%59 = OpIEqual %13 %25 %22
+OpSelectionMerge %69 None
+OpBranchConditional %59 %65 %60
 %60 = OpLabel
-%61 = OpLoad %9 %3
-%62 = OpIEqual %13 %61 %22
-OpSelectionMerge %72 None
-OpBranchConditional %62 %68 %63
-%63 = OpLabel
-%64 = OpAccessChain %21 %6 %54
-%65 = OpLoad %16 %64
-%66 = OpFMul %16 %65 %23
-%67 = OpAccessChain %21 %5 %54
-OpStore %67 %66
-OpBranch %72
-%68 = OpLabel
-OpBranch %72
-%72 = OpLabel
-OpBranch %77
-%73 = OpLabel
-OpBranch %77
+OpBranch %69
+%65 = OpLabel
+%66 = OpAccessChain %21 %5 %53
+%67 = OpLoad %16 %66
+%68 = OpAccessChain %21 %6 %53
+OpStore %68 %67
+OpBranch %69
+%69 = OpLabel
+OpBranch %74
+%70 = OpLabel
+OpBranch %74
+%74 = OpLabel
+OpBranch %75
+%75 = OpLabel
+%76 = OpIAdd %9 %53 %15
+OpBranch %52
 %77 = OpLabel
-OpBranch %78
-%78 = OpLabel
-%79 = OpIAdd %9 %54 %15
-OpBranch %53
-%80 = OpLabel
-OpBranch %25
-%25 = OpLabel
-%26 = OpPhi %9 %11 %80 %27 %28
-OpLoopMerge %29 %28 None
-OpBranch %30
-%30 = OpLabel
-%31 = OpSLessThan %13 %26 %12
-OpBranchConditional %31 %32 %29
-%32 = OpLabel
-%33 = OpLoad %9 %3
-%34 = OpIEqual %13 %33 %15
+OpBranch %26
+%26 = OpLabel
+%27 = OpPhi %9 %11 %77 %28 %29
+OpLoopMerge %30 %29 None
+OpBranch %31
+%31 = OpLabel
+%32 = OpSLessThan %13 %27 %12
+OpBranchConditional %32 %33 %30
+%33 = OpLabel
+%34 = OpIEqual %13 %25 %15
 OpSelectionMerge %35 None
 OpBranchConditional %34 %36 %37
 %36 = OpLabel
-%38 = OpAccessChain %21 %6 %26
+%38 = OpAccessChain %21 %6 %27
 %39 = OpLoad %16 %38
-%40 = OpAccessChain %21 %5 %26
+%40 = OpAccessChain %21 %5 %27
 OpStore %40 %39
 OpBranch %35
 %37 = OpLabel
-%41 = OpLoad %9 %3
-%42 = OpIEqual %13 %41 %22
-OpSelectionMerge %43 None
-OpBranchConditional %42 %44 %45
-%44 = OpLabel
-%46 = OpAccessChain %21 %5 %26
-%47 = OpLoad %16 %46
-%48 = OpAccessChain %21 %6 %26
-OpStore %48 %47
-OpBranch %43
-%45 = OpLabel
-OpBranch %43
+%41 = OpIEqual %13 %25 %22
+OpSelectionMerge %42 None
+OpBranchConditional %41 %43 %44
 %43 = OpLabel
+OpBranch %42
+%44 = OpLabel
+%48 = OpAccessChain %21 %6 %27
+%49 = OpLoad %16 %48
+%50 = OpFMul %16 %49 %23
+%51 = OpAccessChain %21 %5 %27
+OpStore %51 %50
+OpBranch %42
+%42 = OpLabel
 OpBranch %35
 %35 = OpLabel
-OpBranch %28
-%28 = OpLabel
-%27 = OpIAdd %9 %26 %15
-OpBranch %25
+OpBranch %29
 %29 = OpLabel
+%28 = OpIAdd %9 %27 %15
+OpBranch %26
+%30 = OpLabel
 OpReturn
 OpFunctionEnd
 )";
@@ -1753,8 +1748,110 @@ OpFunctionEnd
 
   SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
   SinglePassRunAndCheck<opt::LoopFissionPass>(source, expected, true);
-  std::cout << std::get<0>(
-      SinglePassRunAndDisassemble<opt::LoopFissionPass>(source, false, true));
 }
+
+
+
+
+/*
+#version 430
+layout(location=0) flat in int condition;
+void main(void) {
+    float A[10];
+    float B[10];
+    for (int i = 0; i < 10; i++) {
+      B[i] = A[i];
+      memoryBarrier();
+      A[i] = B[i];
+    }
+}
+
+This should not be split due to the memory barrier.
+*/
+TEST_F(FissionClassTest, FissionBarrier) {
+  // clang-format off
+  // With opt::LocalMultiStoreElimPass
+const std::string source = R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %2 "main" %3
+OpExecutionMode %2 OriginUpperLeft
+OpSource GLSL 430
+OpName %2 "main"
+OpName %4 "i"
+OpName %5 "B"
+OpName %6 "A"
+OpName %3 "condition"
+OpDecorate %3 Flat
+OpDecorate %3 Location 0
+%7 = OpTypeVoid
+%8 = OpTypeFunction %7
+%9 = OpTypeInt 32 1
+%10 = OpTypePointer Function %9
+%11 = OpConstant %9 0
+%12 = OpConstant %9 10
+%13 = OpTypeBool
+%14 = OpTypeFloat 32
+%15 = OpTypeInt 32 0
+%16 = OpConstant %15 10
+%17 = OpTypeArray %14 %16
+%18 = OpTypePointer Function %17
+%19 = OpTypePointer Function %14
+%20 = OpConstant %15 1
+%21 = OpConstant %15 4048
+%22 = OpConstant %9 1
+%23 = OpTypePointer Input %9
+%3 = OpVariable %23 Input
+%2 = OpFunction %7 None %8
+%24 = OpLabel
+%4 = OpVariable %10 Function
+%5 = OpVariable %18 Function
+%6 = OpVariable %18 Function
+OpStore %4 %11
+OpBranch %25
+%25 = OpLabel
+%26 = OpPhi %9 %11 %24 %27 %28
+OpLoopMerge %29 %28 None
+OpBranch %30
+%30 = OpLabel
+%31 = OpSLessThan %13 %26 %12
+OpBranchConditional %31 %32 %29
+%32 = OpLabel
+%33 = OpAccessChain %19 %6 %26
+%34 = OpLoad %14 %33
+%35 = OpAccessChain %19 %5 %26
+OpStore %35 %34
+OpMemoryBarrier %20 %21
+%36 = OpAccessChain %19 %5 %26
+%37 = OpLoad %14 %36
+%38 = OpAccessChain %19 %6 %26
+OpStore %38 %37
+OpBranch %28
+%28 = OpLabel
+%27 = OpIAdd %9 %26 %22
+OpStore %4 %27
+OpBranch %25
+%29 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+  // clang-format on
+  std::unique_ptr<ir::IRContext> context =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, source,
+                  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS);
+  ir::Module* module = context->module();
+  EXPECT_NE(nullptr, module) << "Assembling failed for shader:\n"
+                             << source << std::endl;
+  const ir::Function* f = spvtest::GetFunction(module, 2);
+  ir::LoopDescriptor& ld = *context->GetLoopDescriptor(f);
+
+  EXPECT_EQ(ld.NumLoops(), 1u);
+
+  SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
+  SinglePassRunAndCheck<opt::LoopFissionPass>(source, source, true);
+}
+
+
+
 
 }  // namespace
