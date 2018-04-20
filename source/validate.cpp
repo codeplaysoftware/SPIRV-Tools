@@ -189,6 +189,7 @@ spv_result_t ProcessInstruction(void* user_data,
   if (auto error = BarriersPass(_, inst)) return error;
   if (auto error = PrimitivesPass(_, inst)) return error;
   if (auto error = LiteralsPass(_, inst)) return error;
+  if (auto error = NonUniformPass(_, inst)) return error;
 
   return SPV_SUCCESS;
 }
@@ -297,6 +298,8 @@ spv_result_t ValidateBinaryUsingContextAndValidationState(
            << "The following forward referenced IDs have not been defined:\n"
            << id_str.substr(0, id_str.size() - 1);
   }
+
+  vstate->ComputeFunctionToEntryPointMapping();
 
   // Validate the preconditions involving adjacent instructions. e.g. SpvOpPhi
   // must only be preceeded by SpvOpLabel, SpvOpPhi, or SpvOpLine.
