@@ -1,19 +1,20 @@
 
 #include "opt/loop_fission.h"
+#include "opt/register_pressure.h"
 
 namespace spvtools {
 namespace opt {
 
-class LoopFissionUtils {
+class LoopFissionImpl {
  public:
-  LoopFissionUtils(ir::IRContext* context, ir::Loop* loop)
+  LoopFissionImpl(ir::IRContext* context, ir::Loop* loop)
       : context_(context), loop_(loop), load_used_in_condition_(false) {}
 
-  void BuildRelatedSets();
+  bool BuildRelatedSets();
 
   bool CanPerformSplit();
 
-  void SplitLoop();
+  ir::Loop* SplitLoop();
 
   // Checks if |inst| is safe to move. We can only move instructions which don't
   // have any side effects and OpLoads and OpStores.
@@ -48,21 +49,19 @@ class LoopFissionUtils {
   // which are in the same loop to the |returned_set|.
   void TraverseUseDef(ir::Instruction* inst,
                       std::set<ir::Instruction*>* returned_set,
-                      bool ignore_phi_users = false,
-                      bool report_loads = false);
+                      bool ignore_phi_users = false, bool report_loads = false);
 };
 
-bool LoopFissionUtils::MovableInstruction(const ir::Instruction& inst) const {
+bool LoopFissionImpl::MovableInstruction(const ir::Instruction& inst) const {
   return inst.opcode() == SpvOp::SpvOpLoad ||
          inst.opcode() == SpvOp::SpvOpStore ||
          inst.opcode() == SpvOp::SpvOpSelectionMerge ||
          inst.opcode() == SpvOp::SpvOpPhi || inst.IsOpcodeCodeMotionSafe();
 }
 
-void LoopFissionUtils::TraverseUseDef(ir::Instruction* inst,
-                                      std::set<ir::Instruction*>* returned_set,
-                                      bool ignore_phi_users,
-                                      bool report_loads) {
+void LoopFissionImpl::TraverseUseDef(ir::Instruction* inst,
+                                     std::set<ir::Instruction*>* returned_set,
+                                     bool ignore_phi_users, bool report_loads) {
   assert(returned_set && "Set to be returned cannot be null.");
 
   opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
@@ -121,7 +120,7 @@ void LoopFissionUtils::TraverseUseDef(ir::Instruction* inst,
   traverser_functor(inst);
 }
 
-void LoopFissionUtils::BuildRelatedSets() {
+bool LoopFissionImpl::BuildRelatedSets() {
   std::vector<std::set<ir::Instruction*>> sets{};
 
   // We want to ignore all the instructions stemming from the loop condition
@@ -165,16 +164,24 @@ void LoopFissionUtils::BuildRelatedSets() {
     }
   }
 
-  //
+  // If we have one or zero sets return false to indicate that due to
+  // insufficient instructions we couldn't split the loop into two groups and
+  // thus the loop can't be split any further.
+  if (sets.size() < 2) {
+    return false;
+  }
+
   for (size_t index = 0; index < sets.size() / 2; ++index) {
     first_loop_instructions_.insert(sets[index].begin(), sets[index].end());
   }
   for (size_t index = sets.size() / 2; index < sets.size(); ++index) {
     second_loop_instructions_.insert(sets[index].begin(), sets[index].end());
   }
+
+  return true;
 }
 
-bool LoopFissionUtils::CanPerformSplit() {
+bool LoopFissionImpl::CanPerformSplit() {
   // Return false if any of the condition instructions in the loop depend on a
   // load.
   if (load_used_in_condition_) {
@@ -251,7 +258,7 @@ bool LoopFissionUtils::CanPerformSplit() {
   return true;
 }
 
-void LoopFissionUtils::SplitLoop() {
+ir::Loop* LoopFissionImpl::SplitLoop() {
   // Clone the loop.
   LoopUtils util{context_, loop_};
   LoopUtils::LoopCloningResult clone_results;
@@ -265,6 +272,7 @@ void LoopFissionUtils::SplitLoop() {
       util.GetFunction()->FindBlock(loop_->GetOrCreatePreHeaderBlock()->id());
   util.GetFunction()->AddBasicBlocks(clone_results.cloned_bb_.begin(),
                                      clone_results.cloned_bb_.end(), ++it);
+  //  second_loop->GetOrCreatePreHeaderBlock();
 
   std::vector<ir::Instruction*> instructions_to_kill{};
   for (uint32_t id : loop_->GetBlocks()) {
@@ -299,6 +307,37 @@ void LoopFissionUtils::SplitLoop() {
   for (ir::Instruction* i : instructions_to_kill) {
     context_->KillInst(i);
   }
+
+  return second_loop;
+}
+
+LoopFissionPass::LoopFissionPass(const size_t register_threshold_to_split)
+    : split_multiple_times_(false) {
+  // Split if the number of registers in the loop exceeds
+  // |register_threshold_to_split|.
+  split_criteria_ =
+      [register_threshold_to_split](
+          const RegisterLiveness::RegionRegisterLiveness& liveness) {
+        return liveness.used_registers_ > register_threshold_to_split;
+      };
+}
+
+LoopFissionPass::LoopFissionPass() : split_multiple_times_(false) {
+  // Split by default.
+  split_criteria_ = [](const RegisterLiveness::RegionRegisterLiveness&) {
+    return true;
+  };
+}
+
+bool LoopFissionPass::ShouldSplitLoop(const ir::Loop& loop, ir::IRContext* c) {
+  LivenessAnalysis* analysis = c->GetLivenessAnalysis();
+
+  RegisterLiveness::RegionRegisterLiveness liveness{};
+
+  ir::Function* function = loop.GetHeaderBlock()->GetParent();
+  analysis->Get(function)->ComputeLoopRegisterPressure(loop, &liveness);
+
+  return split_criteria_(liveness);
 }
 
 Pass::Status LoopFissionPass::Process(ir::IRContext* c) {
@@ -311,19 +350,43 @@ Pass::Status LoopFissionPass::Process(ir::IRContext* c) {
     std::vector<ir::Loop*> inner_most_loops{};
     ir::LoopDescriptor& loop_descriptor = *c->GetLoopDescriptor(&f);
     for (ir::Loop& loop : loop_descriptor) {
-      if (!loop.HasChildren()) {
+      if (!loop.HasChildren() && ShouldSplitLoop(loop, c)) {
         inner_most_loops.push_back(&loop);
       }
     }
 
-    for (ir::Loop* loop : inner_most_loops) {
-      LoopFissionUtils utils{c, loop};
-      utils.BuildRelatedSets();
+    // List of new loops which meet the criteria to be split again.
+    std::vector<ir::Loop*> new_loops_to_split{};
 
-      if (utils.CanPerformSplit()) {
-        utils.SplitLoop();
-        changed = true;
+    while (!inner_most_loops.empty()) {
+      for (ir::Loop* loop : inner_most_loops) {
+        LoopFissionImpl impl{c, loop};
+
+        // Group the instructions in the loop into two different sets of related
+        // instructions. If we can't group the instructions into the two sets
+        // then we can't split the loop any further.
+        if (!impl.BuildRelatedSets()) {
+          continue;
+        }
+
+        if (impl.CanPerformSplit()) {
+          ir::Loop* second_loop = impl.SplitLoop();
+          changed = true;
+
+          c->InvalidateAnalysesExceptFor(ir::IRContext::kAnalysisLoopAnalysis);
+          //          c->InvalidateAnalyses(ir::IRContext::kAnalysisRegisterPressure);
+          // If the newly created loop meets the criteria to be split, split it
+          // again.
+          if (ShouldSplitLoop(*second_loop, c))
+            new_loops_to_split.push_back(second_loop);
+
+          // If the original loop (now split) still meets the criteria to be
+          // split, split it again.
+          if (ShouldSplitLoop(*loop, c)) new_loops_to_split.push_back(loop);
+        }
       }
+
+      inner_most_loops = std::move(new_loops_to_split);
     }
   }
 

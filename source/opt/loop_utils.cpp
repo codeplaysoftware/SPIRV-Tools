@@ -537,7 +537,7 @@ ir::Loop* LoopUtils::CloneAndAttachLoopToHeader(
       });
 
   def_use->ForEachUse(
-      loop_->GetPreHeaderBlock()->id(),
+      loop_->GetOrCreatePreHeaderBlock()->id(),
       [new_merge_block, this](ir::Instruction* inst, uint32_t operand) {
         if (this->loop_->IsInsideLoop(inst))
           inst->SetOperand(operand, {new_merge_block});

@@ -33,9 +33,37 @@ namespace opt {
 
 class LoopFissionPass : public Pass {
  public:
+  // Fuction used to determine if a given loop should be split. Takes register
+  // pressure region for that loop as a parameter and returns true if the loop
+  // should be split.
+  using FissionCriteriaFunction =
+      std::function<bool(const RegisterLiveness::RegionRegisterLiveness&)>;
+
+  LoopFissionPass();
+
+  // Split the loop if the number of registers used in the loop exceeds
+  // |register_threshold_to_split|.
+  LoopFissionPass(size_t register_threshold_to_split);
+
+  LoopFissionPass(FissionCriteriaFunction functor,
+                  bool split_multiple_times = true)
+      : split_criteria_(functor), split_multiple_times_(split_multiple_times) {}
+
   const char* name() const override { return "Loop Fission"; }
 
   Pass::Status Process(ir::IRContext* context) override;
+
+  // Checks if |loop| meets the register pressure criteria to be split.
+  bool ShouldSplitLoop(const ir::Loop& loop, ir::IRContext* context);
+
+ private:
+  // Functor to which will run in ShouldSplitLoop to determine if the register
+  // pressure criteria is met for splitting the loop.
+  FissionCriteriaFunction split_criteria_;
+
+  // Flag designating whether or not we should also split the result of
+  // previously split loops if they meet the register presure criteria.
+  bool split_multiple_times_;
 };
 
 }  // namespace opt

@@ -63,61 +63,60 @@ void main(void) {
 TEST_F(FissionClassTest, SimpleFission) {
   // clang-format off
   // With opt::LocalMultiStoreElimPass
-  const std::string source = R"(
-               OpCapability Shader
-          %1 = OpExtInstImport "GLSL.std.450"
-               OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %2 "main"
-               OpExecutionMode %2 OriginUpperLeft
-               OpSource GLSL 430
-               OpName %2 "main"
-               OpName %3 "i"
-               OpName %4 "A"
-               OpName %5 "B"
-          %6 = OpTypeVoid
-          %7 = OpTypeFunction %6
-          %8 = OpTypeInt 32 1
-          %9 = OpTypePointer Function %8
-         %10 = OpConstant %8 0
-         %11 = OpConstant %8 10
-         %12 = OpTypeBool
-         %13 = OpTypeFloat 32
-         %14 = OpTypeInt 32 0
-         %15 = OpConstant %14 10
-         %16 = OpTypeArray %13 %15
-         %17 = OpTypePointer Function %16
-         %18 = OpTypePointer Function %13
-         %19 = OpConstant %8 1
-          %2 = OpFunction %6 None %7
-         %20 = OpLabel
-          %3 = OpVariable %9 Function
-          %4 = OpVariable %17 Function
-          %5 = OpVariable %17 Function
-               OpBranch %21
-         %21 = OpLabel
-         %22 = OpPhi %8 %10 %20 %23 %24
-               OpLoopMerge %25 %24 None
-               OpBranch %26
-         %26 = OpLabel
-         %27 = OpSLessThan %12 %22 %11
-               OpBranchConditional %27 %28 %25
-         %28 = OpLabel
-         %29 = OpAccessChain %18 %5 %22
-         %30 = OpLoad %13 %29
-         %31 = OpAccessChain %18 %4 %22
-               OpStore %31 %30
-         %32 = OpAccessChain %18 %4 %22
-         %33 = OpLoad %13 %32
-         %34 = OpAccessChain %18 %5 %22
-               OpStore %34 %33
-               OpBranch %24
-         %24 = OpLabel
-         %23 = OpIAdd %8 %22 %19
-               OpBranch %21
-         %25 = OpLabel
-               OpReturn
-               OpFunctionEnd
-    )";
+const std::string source = R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %2 "main"
+OpExecutionMode %2 OriginUpperLeft
+OpSource GLSL 430
+OpName %2 "main"
+OpName %3 "i"
+OpName %4 "A"
+OpName %5 "B"
+%6 = OpTypeVoid
+%7 = OpTypeFunction %6
+%8 = OpTypeInt 32 1
+%9 = OpTypePointer Function %8
+%10 = OpConstant %8 0
+%11 = OpConstant %8 10
+%12 = OpTypeBool
+%13 = OpTypeFloat 32
+%14 = OpTypeInt 32 0
+%15 = OpConstant %14 10
+%16 = OpTypeArray %13 %15
+%17 = OpTypePointer Function %16
+%18 = OpTypePointer Function %13
+%19 = OpConstant %8 1
+%2 = OpFunction %6 None %7
+%20 = OpLabel
+%3 = OpVariable %9 Function
+%4 = OpVariable %17 Function
+%5 = OpVariable %17 Function
+OpBranch %21
+%21 = OpLabel
+%22 = OpPhi %8 %10 %20 %23 %24
+OpLoopMerge %25 %24 None
+OpBranch %26
+%26 = OpLabel
+%27 = OpSLessThan %12 %22 %11
+OpBranchConditional %27 %28 %25
+%28 = OpLabel
+%29 = OpAccessChain %18 %5 %22
+%30 = OpLoad %13 %29
+%31 = OpAccessChain %18 %4 %22
+OpStore %31 %30
+%32 = OpAccessChain %18 %4 %22
+%33 = OpLoad %13 %32
+%34 = OpAccessChain %18 %5 %22
+OpStore %34 %33
+OpBranch %24
+%24 = OpLabel
+%23 = OpIAdd %8 %22 %19
+OpBranch %21
+%25 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
 
 const std::string expected = R"(OpCapability Shader
 %1 = OpExtInstImport "GLSL.std.450"
@@ -201,6 +200,14 @@ OpFunctionEnd
 
   SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
   SinglePassRunAndCheck<opt::LoopFissionPass>(source, expected, true);
+
+  // Check that the loop will NOT be split when provided with a pass-through
+  // register pressure functor which just returns false.
+  SinglePassRunAndCheck<opt::LoopFissionPass>(
+      source, source, true,
+      [](const opt::RegisterLiveness::RegionRegisterLiveness&) {
+        return false;
+      });
 }
 
 /*
@@ -403,12 +410,6 @@ void main(void) {
 
 This should be split into the equivalent of:
 
-#version 430
-void main(void) {
-    float A[10];
-    float B[10];
-    float C[10]
-    float D[10]
     for (int i = 0; i < 10; i++) {
         A[i] = B[i];
         B[i] = A[i];
@@ -417,9 +418,17 @@ void main(void) {
         C[i] = D[i];
         D[i] = C[i];
     }
-}
 
-
+We then check that the loop is broken into four for loops like so, if the pass
+is run twice:
+    for (int i = 0; i < 10; i++)
+        A[i] = B[i];
+    for (int i = 0; i < 10; i++)
+        B[i] = A[i];
+    for (int i = 0; i < 10; i++)
+        C[i] = D[i];
+    for (int i = 0; i < 10; i++)
+        D[i] = C[i];
 
 */
 
@@ -620,8 +629,6 @@ void main(void) {
         accumulator += i;
     }
 }
-
-
 */
 TEST_F(FissionClassTest, FissionWithAccumulator) {
   // clang-format off
@@ -1750,9 +1757,6 @@ OpFunctionEnd
   SinglePassRunAndCheck<opt::LoopFissionPass>(source, expected, true);
 }
 
-
-
-
 /*
 #version 430
 layout(location=0) flat in int condition;
@@ -1850,8 +1854,5 @@ OpFunctionEnd
   SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
   SinglePassRunAndCheck<opt::LoopFissionPass>(source, source, true);
 }
-
-
-
 
 }  // namespace
