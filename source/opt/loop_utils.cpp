@@ -494,7 +494,7 @@ ir::Loop* LoopUtils::CloneLoop(LoopCloningResult* cloning_result) const {
 ir::Loop* LoopUtils::CloneAndAttachLoopToHeader(
     LoopCloningResult* cloning_result) {
   // Clone the loop.
-  ir::Loop* second_loop = CloneLoop(cloning_result);
+  ir::Loop* new_loop = CloneLoop(cloning_result);
 
   // Create a new exit block/label for the new loop.
   std::unique_ptr<ir::Instruction> new_label{new ir::Instruction(
@@ -527,7 +527,7 @@ ir::Loop* LoopUtils::CloneAndAttachLoopToHeader(
   }
 
   const uint32_t old_header = loop_->GetHeaderBlock()->id();
-  const uint32_t new_header = second_loop->GetHeaderBlock()->id();
+  const uint32_t new_header = new_loop->GetHeaderBlock()->id();
   opt::analysis::DefUseManager* def_use = context_->get_def_use_mgr();
 
   def_use->ForEachUse(
@@ -543,11 +543,14 @@ ir::Loop* LoopUtils::CloneAndAttachLoopToHeader(
           inst->SetOperand(operand, {new_merge_block});
 
       });
-  second_loop->SetMergeBlock(new_exit_bb.get());
+  new_loop->SetMergeBlock(new_exit_bb.get());
+
+  new_loop->SetPreHeaderBlock(loop_->GetPreHeaderBlock());
+
   // Add the new block into the cloned instructions.
   cloning_result->cloned_bb_.push_back(std::move(new_exit_bb));
 
-  return second_loop;
+  return new_loop;
 }
 
 ir::Loop* LoopUtils::CloneLoop(

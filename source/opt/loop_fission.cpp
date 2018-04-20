@@ -21,6 +21,12 @@ class LoopFissionImpl {
   bool MovableInstruction(const ir::Instruction& inst) const;
 
  private:
+  // Traverse the def use chain of |inst| and add the users and uses of |inst|
+  // which are in the same loop to the |returned_set|.
+  void TraverseUseDef(ir::Instruction* inst,
+                      std::set<ir::Instruction*>* returned_set,
+                      bool ignore_phi_users = false, bool report_loads = false);
+
   // We group the instructions in the block into two different groups, the
   // instructions to be kept in the original loop and the ones to be cloned into
   // the new loop. As the cloned loop is attached to the preheader it will be
@@ -44,12 +50,6 @@ class LoopFissionImpl {
   // related to the loop condition and any if conditions should any of those
   // instructions be a load.
   bool load_used_in_condition_;
-
-  // Traverse the def use chain of |inst| and add the users and uses of |inst|
-  // which are in the same loop to the |returned_set|.
-  void TraverseUseDef(ir::Instruction* inst,
-                      std::set<ir::Instruction*>* returned_set,
-                      bool ignore_phi_users = false, bool report_loads = false);
 };
 
 bool LoopFissionImpl::MovableInstruction(const ir::Instruction& inst) const {
@@ -272,6 +272,7 @@ ir::Loop* LoopFissionImpl::SplitLoop() {
       util.GetFunction()->FindBlock(loop_->GetOrCreatePreHeaderBlock()->id());
   util.GetFunction()->AddBasicBlocks(clone_results.cloned_bb_.begin(),
                                      clone_results.cloned_bb_.end(), ++it);
+  loop_->SetPreHeaderBlock(second_loop->GetMergeBlock());
   //  second_loop->GetOrCreatePreHeaderBlock();
 
   std::vector<ir::Instruction*> instructions_to_kill{};
@@ -312,7 +313,7 @@ ir::Loop* LoopFissionImpl::SplitLoop() {
 }
 
 LoopFissionPass::LoopFissionPass(const size_t register_threshold_to_split)
-    : split_multiple_times_(false) {
+    : split_multiple_times_(true) {
   // Split if the number of registers in the loop exceeds
   // |register_threshold_to_split|.
   split_criteria_ =
@@ -385,8 +386,11 @@ Pass::Status LoopFissionPass::Process(ir::IRContext* c) {
           if (ShouldSplitLoop(*loop, c)) new_loops_to_split.push_back(loop);
         }
       }
-
-      inner_most_loops = std::move(new_loops_to_split);
+      if (split_multiple_times_) {
+        inner_most_loops = std::move(new_loops_to_split);
+      } else {
+        break;
+      }
     }
   }
 

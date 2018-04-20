@@ -583,6 +583,116 @@ OpBranch %23
 OpReturn
 OpFunctionEnd
 )";
+
+
+const std::string expected_multiple_passes = R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %2 "main"
+OpExecutionMode %2 OriginUpperLeft
+OpSource GLSL 430
+OpName %2 "main"
+OpName %3 "i"
+OpName %4 "A"
+OpName %5 "B"
+OpName %6 "C"
+OpName %7 "D"
+%8 = OpTypeVoid
+%9 = OpTypeFunction %8
+%10 = OpTypeInt 32 1
+%11 = OpTypePointer Function %10
+%12 = OpConstant %10 0
+%13 = OpConstant %10 10
+%14 = OpTypeBool
+%15 = OpTypeFloat 32
+%16 = OpTypeInt 32 0
+%17 = OpConstant %16 10
+%18 = OpTypeArray %15 %17
+%19 = OpTypePointer Function %18
+%20 = OpTypePointer Function %15
+%21 = OpConstant %10 1
+%2 = OpFunction %8 None %9
+%22 = OpLabel
+%3 = OpVariable %11 Function
+%4 = OpVariable %19 Function
+%5 = OpVariable %19 Function
+%6 = OpVariable %19 Function
+%7 = OpVariable %19 Function
+OpBranch %63
+%63 = OpLabel
+%64 = OpPhi %10 %12 %22 %75 %74
+OpLoopMerge %76 %74 None
+OpBranch %65
+%65 = OpLabel
+%66 = OpSLessThan %14 %64 %13
+OpBranchConditional %66 %67 %76
+%67 = OpLabel
+%68 = OpAccessChain %20 %5 %64
+%69 = OpLoad %15 %68
+%70 = OpAccessChain %20 %4 %64
+OpStore %70 %69
+OpBranch %74
+%74 = OpLabel
+%75 = OpIAdd %10 %64 %21
+OpBranch %63
+%76 = OpLabel
+OpBranch %43
+%43 = OpLabel
+%44 = OpPhi %10 %12 %76 %61 %60
+OpLoopMerge %62 %60 None
+OpBranch %45
+%45 = OpLabel
+%46 = OpSLessThan %14 %44 %13
+OpBranchConditional %46 %47 %62
+%47 = OpLabel
+%51 = OpAccessChain %20 %4 %44
+%52 = OpLoad %15 %51
+%53 = OpAccessChain %20 %5 %44
+OpStore %53 %52
+OpBranch %60
+%60 = OpLabel
+%61 = OpIAdd %10 %44 %21
+OpBranch %43
+%62 = OpLabel
+OpBranch %77
+%77 = OpLabel
+%78 = OpPhi %10 %12 %62 %89 %88
+OpLoopMerge %90 %88 None
+OpBranch %79
+%79 = OpLabel
+%80 = OpSLessThan %14 %78 %13
+OpBranchConditional %80 %81 %90
+%81 = OpLabel
+%82 = OpAccessChain %20 %7 %78
+%83 = OpLoad %15 %82
+%84 = OpAccessChain %20 %6 %78
+OpStore %84 %83
+OpBranch %88
+%88 = OpLabel
+%89 = OpIAdd %10 %78 %21
+OpBranch %77
+%90 = OpLabel
+OpBranch %23
+%23 = OpLabel
+%24 = OpPhi %10 %12 %90 %25 %26
+OpLoopMerge %27 %26 None
+OpBranch %28
+%28 = OpLabel
+%29 = OpSLessThan %14 %24 %13
+OpBranchConditional %29 %30 %27
+%30 = OpLabel
+%40 = OpAccessChain %20 %6 %24
+%41 = OpLoad %15 %40
+%42 = OpAccessChain %20 %7 %24
+OpStore %42 %41
+OpBranch %26
+%26 = OpLabel
+%25 = OpIAdd %10 %24 %21
+OpBranch %23
+%27 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
   // clang-format on
   std::unique_ptr<ir::IRContext> context =
       BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, source,
@@ -597,6 +707,16 @@ OpFunctionEnd
 
   SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
   SinglePassRunAndCheck<opt::LoopFissionPass>(source, expected, true);
+
+  // By passing 1 as argument we are using the constructor which makes the
+  // critera to split the loop be if the registers in the loop exceede 1. By
+  // using this constructor we are also enabling multiple passes (disabled by
+  // default).
+  SinglePassRunAndCheck<opt::LoopFissionPass>(source, expected_multiple_passes,
+                                              true, 1);
+  /*  std::cout << std::get<0>(
+        SinglePassRunAndDisassemble<opt::LoopFissionPass>(source, false, true,
+     1));*/
 }
 
 /*
