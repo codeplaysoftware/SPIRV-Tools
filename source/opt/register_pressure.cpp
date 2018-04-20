@@ -85,7 +85,6 @@ class ComputeRegisterLiveness {
   }
 
  private:
-
   // Registers all SSA register used by successors of |bb| in their phi
   // instructions.
   void ComputePhiUses(const ir::BasicBlock& bb,
