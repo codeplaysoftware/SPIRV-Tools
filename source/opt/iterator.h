@@ -208,7 +208,7 @@ class FilterIterator
   inline FilterIterator operator++(int) {
     FilterIterator old = *this;
     MoveToNextPosition();
-    return *old;
+    return old;
   }
 
   reference operator*() const { return *cur_; }
@@ -228,10 +228,6 @@ class FilterIterator
   FilterIterator GetEnd() const { return FilterIterator(end_, predicate_); }
 
  private:
-  SubIterator cur_;
-  SubIterator end_;
-  Predicate predicate_;
-
   // Returns true if the predicate is satisfied or the current iterator reached
   // the end.
   bool IsPredicateSatisfied() { return cur_ == end_ || predicate_(*cur_); }
@@ -243,6 +239,10 @@ class FilterIterator
       ++cur_;
     } while (!IsPredicateSatisfied());
   }
+
+  SubIterator cur_;
+  SubIterator end_;
+  Predicate predicate_;
 };
 
 template <typename SubIterator, typename Predicate>
