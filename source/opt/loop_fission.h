@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef LIBSPIRV_OPT_DATA_DEPENDENCE_H
-#define LIBSPIRV_OPT_DATA_DEPENDENCE_H_
+#ifndef LIBSPIRV_OPT_LOOP_FISSION_H_
+#define LIBSPIRV_OPT_LOOP_FISSION_H_
 
 #include <algorithm>
 #include <cstdint>
@@ -39,12 +39,18 @@ class LoopFissionPass : public Pass {
   using FissionCriteriaFunction =
       std::function<bool(const RegisterLiveness::RegionRegisterLiveness&)>;
 
+  // Pass built with this constructor will split all loops regardless of
+  // register pressure. Will not split loops more than once.
   LoopFissionPass();
 
   // Split the loop if the number of registers used in the loop exceeds
-  // |register_threshold_to_split|.
-  LoopFissionPass(size_t register_threshold_to_split);
+  // |register_threshold_to_split|. |split_multiple_times| flag determines
+  // whether or not the pass should split loops after already splitting them
+  // once.
+  LoopFissionPass(size_t register_threshold_to_split,
+                  bool split_multiple_times = true);
 
+  // Split loops whose register pressure meets the criteria of |functor|.
   LoopFissionPass(FissionCriteriaFunction functor,
                   bool split_multiple_times = true)
       : split_criteria_(functor), split_multiple_times_(split_multiple_times) {}
@@ -69,4 +75,4 @@ class LoopFissionPass : public Pass {
 }  // namespace opt
 }  // namespace spvtools
 
-#endif  // LIBSPIRV_OPT_DATA_DEPENDENCE_H
+#endif  // LIBSPIRV_OPT_LOOP_FISSION_H_

@@ -1,6 +1,54 @@
+// Copyright (c) 2018 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "opt/loop_fission.h"
 #include "opt/register_pressure.h"
+
+// Implement loop fission with an optional parameter to split only
+// if the register pressure in a given loop meets a certain criteria. This is
+// controlled via the constructors of LoopFissionPass.
+//
+// 1 - Build a list of loops to be split, these are top level loops (loops
+// without child loops themselves) which meet the register pressure criteria, as
+// determined by the ShouldSplitLoop method of LoopFissionPass.
+//
+// 2 - For each loop in the list, group each instruction into a set of related
+// instructions by traversing each instructions users and operands recursively.
+// We stop if we encounter an instruction we have seen before or an instruction
+// which we don't consider relevent (i.e OpLoopMerge). We then group these
+// groups into two different sets, one for the first loop and one for the
+// second.
+//
+// 3 - We then run CanPerformSplit to check that it would be legal to split a
+// loop using those two sets. We check that we haven't altered the relative
+// order load/stores appear in the binary and that we aren't breaking any
+// dependency between load/stores by splitting them into two loops. We also
+// check that none of the OpBranch instructions are dependent on a load as we
+// leave control flow structure intact and move only instructions in the body so
+// we want to avoid any loads with side affects or aliasing.
+//
+// 4 - We then split the loop by calling SplitLoop. This function clones the
+// loop and attaches it to the preheader and connects the new loops merge block
+// to the current loop header block. We then use the two sets built in step 2 to
+// remove instructions from each loop. If an instruction appears in the first
+// set it is removed from the second loop and vice versa.
+//
+// 5 - If the multiple split passes flag is set we check if each of the loops
+// still meet the register pressure criteria. If they do then we add them to the
+// list of loops to be split (created in step one) to allow for loops to be
+// split multiple times.
+//
 
 namespace spvtools {
 namespace opt {
@@ -10,10 +58,17 @@ class LoopFissionImpl {
   LoopFissionImpl(ir::IRContext* context, ir::Loop* loop)
       : context_(context), loop_(loop), load_used_in_condition_(false) {}
 
-  bool BuildRelatedSets();
+  // Group each instruction in the loop into sets of instructions related by
+  // their usedef chains. An instruction which uses another will appear in the
+  // same set. Then merge those sets into just two sets. Returns false if there
+  // was one or less sets created.
+  bool GroupInstructionsByUseDef();
 
+  // Check if the sets built by GroupInstructionsByUseDef violate any data
+  // dependence rules.
   bool CanPerformSplit();
 
+  // Split the loop and return a pointer to the new loop.
   ir::Loop* SplitLoop();
 
   // Checks if |inst| is safe to move. We can only move instructions which don't
@@ -73,12 +128,19 @@ void LoopFissionImpl::TraverseUseDef(ir::Instruction* inst,
   std::function<void(ir::Instruction*)> traverser_functor;
   traverser_functor = [this, def_use, &inst_set, &traverser_functor,
                        ignore_phi_users, report_loads](ir::Instruction* user) {
+    // If we've seen the instruction before or it is not inside the loop end the
+    // traversal.
     if (!user || seen_instructions_.count(user) != 0 ||
         !context_->get_instr_block(user) ||
         !loop_->IsInsideLoop(context_->get_instr_block(user))) {
       return;
     }
 
+    // Don't include labels or loop merge instructions in the instruction sets.
+    // Including them would mean we group instructions related only by using the
+    // same labels (i.e phis). We already preempt the inclusion of
+    // OpSelectionMerge by adding related instructions to the seen_instructions_
+    // set.
     if (user->opcode() == SpvOp::SpvOpLoopMerge ||
         user->opcode() == SpvOp::SpvOpLabel)
       return;
@@ -90,37 +152,42 @@ void LoopFissionImpl::TraverseUseDef(ir::Instruction* inst,
       load_used_in_condition_ = true;
     }
 
+    // Add the instruction to the set of instructions already seen, this breaks
+    // recursion and allows us to ignore certain instructions.
     seen_instructions_.insert(user);
+
+    // We want to traverse the operands of branches but we don't want to include
+    // them in the set.
     if (!user->IsBranch()) {
       inst_set.insert(user);
     }
 
+    // Wrapper functor to traverse the operands of each instruction.
     auto traverse_operand = [&traverser_functor, def_use](const uint32_t* id) {
       traverser_functor(def_use->GetDef(*id));
     };
-
     user->ForEachInOperand(traverse_operand);
 
     // For the first traversal we want to ignore the users of the phi.
     if (ignore_phi_users && user->opcode() == SpvOp::SpvOpPhi) return;
 
+    // Traverse each user with this lambda.
     def_use->ForEachUser(user, traverser_functor);
 
+    // Wrapper functor for the use traversal.
     auto traverse_use = [&traverser_functor](ir::Instruction* use, uint32_t) {
       traverser_functor(use);
     };
-
     def_use->ForEachUse(user, traverse_use);
 
   };
 
   // We start the traversal of the use def graph by invoking the above
-  // lambda with the loop instruction which has not already been found in a
-  // traversal.
+  // lambda with the |inst| parameter.
   traverser_functor(inst);
 }
 
-bool LoopFissionImpl::BuildRelatedSets() {
+bool LoopFissionImpl::GroupInstructionsByUseDef() {
   std::vector<std::set<ir::Instruction*>> sets{};
 
   // We want to ignore all the instructions stemming from the loop condition
@@ -128,38 +195,55 @@ bool LoopFissionImpl::BuildRelatedSets() {
   ir::BasicBlock* condition_block = loop_->FindConditionBlock();
   ir::Instruction* condition = &*condition_block->tail();
 
-  std::set<ir::Instruction*> tmp_set{};
-  TraverseUseDef(condition, &tmp_set, true, true);
+  // We iterate over the blocks via iterating over all the blocks in the
+  // function, we do this so we are iterating in the same order which the blocks
+  // appear in the binary.
+  ir::Function& function = *loop_->GetHeaderBlock()->GetParent();
 
-  for (uint32_t block_id : loop_->GetBlocks()) {
-    ir::BasicBlock* block = context_->cfg()->block(block_id);
+  // Create a temporary set to ignore certain groups of instructions within the
+  // loop. We don't want any instructions related to control flow to be removed
+  // from either loop only instructions within the control flow bodies.
+  std::set<ir::Instruction*> instructions_to_ignore{};
+  TraverseUseDef(condition, &instructions_to_ignore, true, true);
 
-    for (ir::Instruction& inst : *block) {
+  // Traverse control flow instructions to ensure they are added to the
+  // seen_instructions_ set and will be ignored when it it called with actual
+  // sets.
+  for (ir::BasicBlock& block : function) {
+    if (!loop_->IsInsideLoop(block.id())) continue;
+
+    for (ir::Instruction& inst : block) {
       // Ignore all instructions related to control flow.
       if (inst.opcode() == SpvOp::SpvOpSelectionMerge ||
           inst.opcode() == SpvOp::SpvOpBranchConditional) {
-        TraverseUseDef(&inst, &tmp_set, true, true);
+        TraverseUseDef(&inst, &instructions_to_ignore, true, true);
         continue;
       }
     }
   }
 
-  for (uint32_t block_id : loop_->GetBlocks()) {
-    ir::BasicBlock* block = context_->cfg()->block(block_id);
+  // Traverse the instructions and generate the sets, automatically ignoring any
+  // instructions in instructions_to_ignore.
+  for (ir::BasicBlock& block : function) {
+    if (!loop_->IsInsideLoop(block.id()) ||
+        loop_->GetHeaderBlock()->id() == block.id())
+      continue;
 
-    for (ir::Instruction& inst : *block) {
+    for (ir::Instruction& inst : block) {
+      // Record the order that each load/store is seen.
       if (inst.opcode() == SpvOp::SpvOpLoad ||
           inst.opcode() == SpvOp::SpvOpStore) {
         instruction_order_[&inst] = instruction_order_.size();
       }
 
+      // Ignore instructions already seen in a traversal.
       if (seen_instructions_.count(&inst) != 0) {
         continue;
       }
 
+      // Build the set.
       std::set<ir::Instruction*> inst_set{};
       TraverseUseDef(&inst, &inst_set);
-
       if (!inst_set.empty()) sets.push_back(std::move(inst_set));
     }
   }
@@ -171,6 +255,9 @@ bool LoopFissionImpl::BuildRelatedSets() {
     return false;
   }
 
+  // Merge the loop sets into two different sets. In CanPerformSplit we will
+  // validate that we don't break the relative ordering of loads/stores by doing
+  // this.
   for (size_t index = 0; index < sets.size() / 2; ++index) {
     first_loop_instructions_.insert(sets[index].begin(), sets[index].end());
   }
@@ -188,9 +275,10 @@ bool LoopFissionImpl::CanPerformSplit() {
     return false;
   }
 
+  // Build a list of all parent loops of this loop. Loop dependency analysis
+  // needs this structure.
   std::vector<const ir::Loop*> loops;
   ir::Loop* parent_loop = loop_;
-
   while (parent_loop) {
     loops.push_back(parent_loop);
     parent_loop = parent_loop->GetParent();
@@ -198,9 +286,13 @@ bool LoopFissionImpl::CanPerformSplit() {
 
   LoopDependenceAnalysis analysis{context_, loops};
 
+  // A list of all the stores in the first loop.
   std::vector<ir::Instruction*> set_one_stores{};
+
+  // A list of all the loads in the first loop.
   std::vector<ir::Instruction*> set_one_loads{};
 
+  // Populate the above lists.
   for (ir::Instruction* inst : first_loop_instructions_) {
     if (inst->opcode() == SpvOp::SpvOpStore) {
       set_one_stores.push_back(inst);
@@ -208,15 +300,24 @@ bool LoopFissionImpl::CanPerformSplit() {
       set_one_loads.push_back(inst);
     }
 
+    // If we find any instruction which we can't move (such as a barrier),
+    // return false.
     if (!MovableInstruction(*inst)) return false;
   }
 
+  // We need to calculate the depth of the loop to create the loop dependency
+  // distance vectors.
   const size_t loop_depth = loop_->GetDepth();
 
+  // Check the dependencies between loads in the first loop and stores in the
+  // second and vice versa.
   for (ir::Instruction* inst : second_loop_instructions_) {
+    // If we find any instruction which we can't move (such as a barrier),
+    // return false.
     if (!MovableInstruction(*inst)) return false;
 
-    // Look at the dependency between the.
+    // Look at the dependency between the loads in the second and stores in the
+    // first.
     if (inst->opcode() == SpvOp::SpvOpLoad) {
       for (ir::Instruction* store : set_one_stores) {
         DistanceVector vec{loop_depth};
@@ -312,8 +413,9 @@ ir::Loop* LoopFissionImpl::SplitLoop() {
   return second_loop;
 }
 
-LoopFissionPass::LoopFissionPass(const size_t register_threshold_to_split)
-    : split_multiple_times_(true) {
+LoopFissionPass::LoopFissionPass(const size_t register_threshold_to_split,
+                                 bool split_multiple_times)
+    : split_multiple_times_(split_multiple_times) {
   // Split if the number of registers in the loop exceeds
   // |register_threshold_to_split|.
   split_criteria_ =
@@ -366,7 +468,7 @@ Pass::Status LoopFissionPass::Process(ir::IRContext* c) {
         // Group the instructions in the loop into two different sets of related
         // instructions. If we can't group the instructions into the two sets
         // then we can't split the loop any further.
-        if (!impl.BuildRelatedSets()) {
+        if (!impl.GroupInstructionsByUseDef()) {
           continue;
         }
 
@@ -386,6 +488,10 @@ Pass::Status LoopFissionPass::Process(ir::IRContext* c) {
           if (ShouldSplitLoop(*loop, c)) new_loops_to_split.push_back(loop);
         }
       }
+
+      // If the split multiple times flag has been set add the new loops which
+      // meet the splitting criteria into the list of loops to be split on the
+      // next iteration.
       if (split_multiple_times_) {
         inner_most_loops = std::move(new_loops_to_split);
       } else {

@@ -714,9 +714,6 @@ OpFunctionEnd
   // default).
   SinglePassRunAndCheck<opt::LoopFissionPass>(source, expected_multiple_passes,
                                               true, 1);
-  /*  std::cout << std::get<0>(
-        SinglePassRunAndDisassemble<opt::LoopFissionPass>(source, false, true,
-     1));*/
 }
 
 /*
@@ -1644,219 +1641,263 @@ OpFunctionEnd
 
 /*
 #version 430
-layout(location=0) flat in int condition;
 void main(void) {
     float A[10];
     float B[10];
-
     for (int i = 0; i < 10; i++) {
-        if (condition == 1)
-            A[i] = B[i];
-        else
-            B[i] = A[i];
+      if (i == 1)
+        B[i] = A[i];
+      else if (i == 2)
+        A[i] = B[i];
+      else
+        A[i] = 0;
     }
 }
 
+After running the pass with multiple splits enabled (via register threshold of
+1) we expect the equivalent of:
+
+#version 430
+void main(void) {
+    float A[10];
+    float B[10];
+    for (int i = 0; i < 10; i++) {
+      if (i == 1)
+        B[i] = A[i];
+      else if (i == 2)
+      else
+    }
+    for (int i = 0; i < 10; i++) {
+      if (i == 1)
+      else if (i == 2)
+        A[i] = B[i];
+      else
+    }
+    for (int i = 0; i < 10; i++) {
+      if (i == 1)
+      else if (i == 2)
+      else
+        A[i] = 0;
+    }
+
+}
 
 */
 TEST_F(FissionClassTest, FissionControlFlow2) {
   // clang-format off
   // With opt::LocalMultiStoreElimPass
-  const std::string source = R"(
-               OpCapability Shader
+  const std::string source = R"(OpCapability Shader
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450
-               OpEntryPoint Fragment %2 "main" %3
+               OpEntryPoint Fragment %2 "main"
                OpExecutionMode %2 OriginUpperLeft
                OpSource GLSL 430
                OpName %2 "main"
-               OpName %4 "i"
-               OpName %3 "condition"
+               OpName %3 "i"
+               OpName %4 "B"
                OpName %5 "A"
-               OpName %6 "B"
-               OpDecorate %3 Flat
-               OpDecorate %3 Location 0
-          %7 = OpTypeVoid
-          %8 = OpTypeFunction %7
-          %9 = OpTypeInt 32 1
-         %10 = OpTypePointer Function %9
-         %11 = OpConstant %9 0
-         %12 = OpConstant %9 10
-         %13 = OpTypeBool
-         %14 = OpTypePointer Input %9
-          %3 = OpVariable %14 Input
-         %15 = OpConstant %9 1
-         %16 = OpTypeFloat 32
-         %17 = OpTypeInt 32 0
-         %18 = OpConstant %17 10
-         %19 = OpTypeArray %16 %18
-         %20 = OpTypePointer Function %19
-         %21 = OpTypePointer Function %16
-         %22 = OpConstant %9 2
-         %23 = OpConstant %16 2
-          %2 = OpFunction %7 None %8
-         %24 = OpLabel
-          %4 = OpVariable %10 Function
-          %5 = OpVariable %20 Function
-          %6 = OpVariable %20 Function
-         %33 = OpLoad %9 %3
-               OpBranch %25
-         %25 = OpLabel
-         %26 = OpPhi %9 %11 %24 %27 %28
-               OpLoopMerge %29 %28 None
-               OpBranch %30
-         %30 = OpLabel
-         %31 = OpSLessThan %13 %26 %12
-               OpBranchConditional %31 %32 %29
-         %32 = OpLabel
-         %34 = OpIEqual %13 %33 %15
-               OpSelectionMerge %35 None
-               OpBranchConditional %34 %36 %37
-         %36 = OpLabel
-         %38 = OpAccessChain %21 %6 %26
-         %39 = OpLoad %16 %38
-         %40 = OpAccessChain %21 %5 %26
-               OpStore %40 %39
-               OpBranch %35
-         %37 = OpLabel
-         %42 = OpIEqual %13 %33 %22
-               OpSelectionMerge %43 None
-               OpBranchConditional %42 %44 %45
-         %44 = OpLabel
-         %46 = OpAccessChain %21 %5 %26
-         %47 = OpLoad %16 %46
-         %48 = OpAccessChain %21 %6 %26
-               OpStore %48 %47
-               OpBranch %43
-         %45 = OpLabel
-         %49 = OpAccessChain %21 %6 %26
-         %50 = OpLoad %16 %49
-         %51 = OpFMul %16 %50 %23
-         %52 = OpAccessChain %21 %5 %26
-               OpStore %52 %51
-               OpBranch %43
-         %43 = OpLabel
-               OpBranch %35
-         %35 = OpLabel
+          %6 = OpTypeVoid
+          %7 = OpTypeFunction %6
+          %8 = OpTypeInt 32 1
+          %9 = OpTypePointer Function %8
+         %10 = OpConstant %8 0
+         %11 = OpConstant %8 10
+         %12 = OpTypeBool
+         %13 = OpConstant %8 1
+         %14 = OpTypeFloat 32
+         %15 = OpTypeInt 32 0
+         %16 = OpConstant %15 10
+         %17 = OpTypeArray %14 %16
+         %18 = OpTypePointer Function %17
+         %19 = OpTypePointer Function %14
+         %20 = OpConstant %8 2
+         %21 = OpConstant %14 0
+          %2 = OpFunction %6 None %7
+         %22 = OpLabel
+          %3 = OpVariable %9 Function
+          %4 = OpVariable %18 Function
+          %5 = OpVariable %18 Function
+               OpStore %3 %10
+               OpBranch %23
+         %23 = OpLabel
+         %24 = OpPhi %8 %10 %22 %25 %26
+               OpLoopMerge %27 %26 None
                OpBranch %28
          %28 = OpLabel
-         %27 = OpIAdd %9 %26 %15
-               OpBranch %25
-         %29 = OpLabel
+         %29 = OpSLessThan %12 %24 %11
+               OpBranchConditional %29 %30 %27
+         %30 = OpLabel
+         %31 = OpIEqual %12 %24 %13
+               OpSelectionMerge %32 None
+               OpBranchConditional %31 %33 %34
+         %33 = OpLabel
+         %35 = OpAccessChain %19 %5 %24
+         %36 = OpLoad %14 %35
+         %37 = OpAccessChain %19 %4 %24
+               OpStore %37 %36
+               OpBranch %32
+         %34 = OpLabel
+         %38 = OpIEqual %12 %24 %20
+               OpSelectionMerge %39 None
+               OpBranchConditional %38 %40 %41
+         %40 = OpLabel
+         %42 = OpAccessChain %19 %4 %24
+         %43 = OpLoad %14 %42
+         %44 = OpAccessChain %19 %5 %24
+               OpStore %44 %43
+               OpBranch %39
+         %41 = OpLabel
+         %45 = OpAccessChain %19 %5 %24
+               OpStore %45 %21
+               OpBranch %39
+         %39 = OpLabel
+               OpBranch %32
+         %32 = OpLabel
+               OpBranch %26
+         %26 = OpLabel
+         %25 = OpIAdd %8 %24 %13
+               OpStore %3 %25
+               OpBranch %23
+         %27 = OpLabel
                OpReturn
                OpFunctionEnd
-  )";
+    )";
 
   const std::string expected = R"(OpCapability Shader
 %1 = OpExtInstImport "GLSL.std.450"
 OpMemoryModel Logical GLSL450
-OpEntryPoint Fragment %2 "main" %3
+OpEntryPoint Fragment %2 "main"
 OpExecutionMode %2 OriginUpperLeft
 OpSource GLSL 430
 OpName %2 "main"
-OpName %4 "i"
-OpName %3 "condition"
+OpName %3 "i"
+OpName %4 "B"
 OpName %5 "A"
-OpName %6 "B"
-OpDecorate %3 Flat
-OpDecorate %3 Location 0
-%7 = OpTypeVoid
-%8 = OpTypeFunction %7
-%9 = OpTypeInt 32 1
-%10 = OpTypePointer Function %9
-%11 = OpConstant %9 0
-%12 = OpConstant %9 10
-%13 = OpTypeBool
-%14 = OpTypePointer Input %9
-%3 = OpVariable %14 Input
-%15 = OpConstant %9 1
-%16 = OpTypeFloat 32
-%17 = OpTypeInt 32 0
-%18 = OpConstant %17 10
-%19 = OpTypeArray %16 %18
-%20 = OpTypePointer Function %19
-%21 = OpTypePointer Function %16
-%22 = OpConstant %9 2
-%23 = OpConstant %16 2
-%2 = OpFunction %7 None %8
-%24 = OpLabel
-%4 = OpVariable %10 Function
-%5 = OpVariable %20 Function
-%6 = OpVariable %20 Function
-%25 = OpLoad %9 %3
-OpBranch %52
+%6 = OpTypeVoid
+%7 = OpTypeFunction %6
+%8 = OpTypeInt 32 1
+%9 = OpTypePointer Function %8
+%10 = OpConstant %8 0
+%11 = OpConstant %8 10
+%12 = OpTypeBool
+%13 = OpConstant %8 1
+%14 = OpTypeFloat 32
+%15 = OpTypeInt 32 0
+%16 = OpConstant %15 10
+%17 = OpTypeArray %14 %16
+%18 = OpTypePointer Function %17
+%19 = OpTypePointer Function %14
+%20 = OpConstant %8 2
+%21 = OpConstant %14 0
+%2 = OpFunction %6 None %7
+%22 = OpLabel
+%3 = OpVariable %9 Function
+%4 = OpVariable %18 Function
+%5 = OpVariable %18 Function
+OpStore %3 %10
+OpBranch %46
+%46 = OpLabel
+%47 = OpPhi %8 %10 %22 %67 %66
+OpLoopMerge %68 %66 None
+OpBranch %48
+%48 = OpLabel
+%49 = OpSLessThan %12 %47 %11
+OpBranchConditional %49 %50 %68
+%50 = OpLabel
+%51 = OpIEqual %12 %47 %13
+OpSelectionMerge %65 None
+OpBranchConditional %51 %61 %52
 %52 = OpLabel
-%53 = OpPhi %9 %11 %24 %76 %75
-OpLoopMerge %77 %75 None
-OpBranch %54
+%53 = OpIEqual %12 %47 %20
+OpSelectionMerge %60 None
+OpBranchConditional %53 %56 %54
 %54 = OpLabel
-%55 = OpSLessThan %13 %53 %12
-OpBranchConditional %55 %56 %77
+OpBranch %60
 %56 = OpLabel
-%57 = OpIEqual %13 %25 %15
-OpSelectionMerge %74 None
-OpBranchConditional %57 %70 %58
-%58 = OpLabel
-%59 = OpIEqual %13 %25 %22
-OpSelectionMerge %69 None
-OpBranchConditional %59 %65 %60
+OpBranch %60
 %60 = OpLabel
-OpBranch %69
+OpBranch %65
+%61 = OpLabel
+%62 = OpAccessChain %19 %5 %47
+%63 = OpLoad %14 %62
+%64 = OpAccessChain %19 %4 %47
+OpStore %64 %63
+OpBranch %65
 %65 = OpLabel
-%66 = OpAccessChain %21 %5 %53
-%67 = OpLoad %16 %66
-%68 = OpAccessChain %21 %6 %53
-OpStore %68 %67
+OpBranch %66
+%66 = OpLabel
+%67 = OpIAdd %8 %47 %13
+OpStore %3 %67
+OpBranch %46
+%68 = OpLabel
 OpBranch %69
 %69 = OpLabel
-OpBranch %74
-%70 = OpLabel
-OpBranch %74
-%74 = OpLabel
-OpBranch %75
+%70 = OpPhi %8 %10 %68 %87 %86
+OpLoopMerge %88 %86 None
+OpBranch %71
+%71 = OpLabel
+%72 = OpSLessThan %12 %70 %11
+OpBranchConditional %72 %73 %88
+%73 = OpLabel
+%74 = OpIEqual %12 %70 %13
+OpSelectionMerge %85 None
+OpBranchConditional %74 %84 %75
 %75 = OpLabel
-%76 = OpIAdd %9 %53 %15
-OpBranch %52
+%76 = OpIEqual %12 %70 %20
+OpSelectionMerge %83 None
+OpBranchConditional %76 %79 %77
 %77 = OpLabel
+OpBranch %83
+%79 = OpLabel
+%80 = OpAccessChain %19 %4 %70
+%81 = OpLoad %14 %80
+%82 = OpAccessChain %19 %5 %70
+OpStore %82 %81
+OpBranch %83
+%83 = OpLabel
+OpBranch %85
+%84 = OpLabel
+OpBranch %85
+%85 = OpLabel
+OpBranch %86
+%86 = OpLabel
+%87 = OpIAdd %8 %70 %13
+OpStore %3 %87
+OpBranch %69
+%88 = OpLabel
+OpBranch %23
+%23 = OpLabel
+%24 = OpPhi %8 %10 %88 %25 %26
+OpLoopMerge %27 %26 None
+OpBranch %28
+%28 = OpLabel
+%29 = OpSLessThan %12 %24 %11
+OpBranchConditional %29 %30 %27
+%30 = OpLabel
+%31 = OpIEqual %12 %24 %13
+OpSelectionMerge %32 None
+OpBranchConditional %31 %33 %34
+%33 = OpLabel
+OpBranch %32
+%34 = OpLabel
+%38 = OpIEqual %12 %24 %20
+OpSelectionMerge %39 None
+OpBranchConditional %38 %40 %41
+%40 = OpLabel
+OpBranch %39
+%41 = OpLabel
+%45 = OpAccessChain %19 %5 %24
+OpStore %45 %21
+OpBranch %39
+%39 = OpLabel
+OpBranch %32
+%32 = OpLabel
 OpBranch %26
 %26 = OpLabel
-%27 = OpPhi %9 %11 %77 %28 %29
-OpLoopMerge %30 %29 None
-OpBranch %31
-%31 = OpLabel
-%32 = OpSLessThan %13 %27 %12
-OpBranchConditional %32 %33 %30
-%33 = OpLabel
-%34 = OpIEqual %13 %25 %15
-OpSelectionMerge %35 None
-OpBranchConditional %34 %36 %37
-%36 = OpLabel
-%38 = OpAccessChain %21 %6 %27
-%39 = OpLoad %16 %38
-%40 = OpAccessChain %21 %5 %27
-OpStore %40 %39
-OpBranch %35
-%37 = OpLabel
-%41 = OpIEqual %13 %25 %22
-OpSelectionMerge %42 None
-OpBranchConditional %41 %43 %44
-%43 = OpLabel
-OpBranch %42
-%44 = OpLabel
-%48 = OpAccessChain %21 %6 %27
-%49 = OpLoad %16 %48
-%50 = OpFMul %16 %49 %23
-%51 = OpAccessChain %21 %5 %27
-OpStore %51 %50
-OpBranch %42
-%42 = OpLabel
-OpBranch %35
-%35 = OpLabel
-OpBranch %29
-%29 = OpLabel
-%28 = OpIAdd %9 %27 %15
-OpBranch %26
-%30 = OpLabel
+%25 = OpIAdd %8 %24 %13
+OpStore %3 %25
+OpBranch %23
+%27 = OpLabel
 OpReturn
 OpFunctionEnd
 )";
@@ -1874,7 +1915,7 @@ OpFunctionEnd
   EXPECT_EQ(ld.NumLoops(), 1u);
 
   SetDisassembleOptions(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER);
-  SinglePassRunAndCheck<opt::LoopFissionPass>(source, expected, true);
+  SinglePassRunAndCheck<opt::LoopFissionPass>(source, expected, true, 1);
 }
 
 /*
